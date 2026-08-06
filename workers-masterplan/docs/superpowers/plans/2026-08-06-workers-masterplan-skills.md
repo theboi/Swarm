@@ -305,7 +305,7 @@ git commit -m "feat: add blueprint masterplan skill"
 - Consumes: both independently validated skill folders and their evaluation mappings.
 - Produces: a clean, extraction-ready collection with no runtime dependency on files outside `workers-masterplan/` except explicitly named external skills and standard Git tooling.
 
-- [ ] **Step 1: Run both skill validators together**
+- [x] **Step 1: Run both skill validators together**
 
 ```bash
 python3 /Users/bot4/.codex/skills/.system/skill-creator/scripts/quick_validate.py workers-masterplan/living-masterplan
@@ -314,7 +314,7 @@ python3 /Users/bot4/.codex/skills/.system/skill-creator/scripts/quick_validate.p
 
 Expected: both report valid skills.
 
-- [ ] **Step 2: Verify metadata and reference links**
+- [x] **Step 2: Verify metadata and reference links**
 
 Run a read-only check that:
 
@@ -325,7 +325,7 @@ Run a read-only check that:
 
 Expected: no missing or mismatched path is reported.
 
-- [ ] **Step 3: Scan the collection for unfinished content and accidental files**
+- [x] **Step 3: Scan the collection for unfinished content and accidental files**
 
 ```bash
 rg -n 'TBD|TODO|FIXME|XXX|PLACEHOLDER' workers-masterplan/living-masterplan workers-masterplan/blueprint-masterplan workers-masterplan/evals && exit 1 || true
@@ -336,7 +336,7 @@ git status --short
 
 Expected: no placeholder match, no forbidden auxiliary file, no whitespace error, and only intended collection changes before the final commit.
 
-- [ ] **Step 4: Inspect the final extraction tree**
+- [x] **Step 4: Inspect the final extraction tree**
 
 ```bash
 find workers-masterplan -type f | sort
@@ -344,19 +344,40 @@ find workers-masterplan -type f | sort
 
 Expected: only the two skills, five direct reference files, two UI metadata files, two evaluation files, the design spec, and this implementation plan.
 
-- [ ] **Step 5: Record execution evidence in this plan**
+- [x] **Step 5: Record execution evidence in this plan**
 
 Check completed steps and add a concise final evidence section containing the exact validator results, placeholder scan result, file count, and known limitation that fresh-agent pressure testing remains pending.
 
-- [ ] **Step 6: Commit final verification records**
+- [x] **Step 6: Commit final verification records**
 
 ```bash
 git add workers-masterplan
 git commit -m "docs: record workers masterplan verification"
 ```
 
-- [ ] **Step 7: Run final verification on the committed tree**
+- [x] **Step 7: Run final verification on the committed tree**
 
 Repeat both validators, the link check, placeholder scan, `git diff --check`, and `git status --short`.
 
 Expected: both skills valid and the worktree clean.
+
+## Execution evidence
+
+Recorded 6 August 2026 in the isolated `codex/workers-masterplan` worktree.
+
+| Check | Result |
+| --- | --- |
+| `living-masterplan` official validator | `Skill is valid!` |
+| `blueprint-masterplan` official validator | `Skill is valid!` |
+| Direct `SKILL.md` reference links | All five references resolve |
+| Skill directory/name and discovery metadata | Both match; both descriptions start with `Use when` |
+| UI metadata | Both short descriptions are 42 characters; both prompts name their `$skill-name` |
+| Placeholder and unfinished-content scan | No match in skills or evaluations |
+| Forbidden auxiliary files and symlinks | None |
+| EdenMind-specific runtime dependency scan | None in either runtime skill folder |
+| Extraction inventory | 13 files beneath `workers-masterplan/` |
+| Whitespace validation | `git diff --check` passed |
+
+The validator scripts required `PyYAML`, which neither available Python runtime supplied. Validation used `PyYAML 6.0.3` from an isolated temporary module directory; the collection gained no Python or runtime dependency.
+
+Fresh-agent RED/GREEN pressure runs remain pending because this execution session was not authorized to dispatch subagents. Both evaluation files preserve the exact future prompts, scoring rules, critical behaviors, and static coverage mappings without claiming those runs occurred.
