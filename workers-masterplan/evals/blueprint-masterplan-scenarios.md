@@ -84,6 +84,25 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - Deletes local and remote worker branches only after merged ancestry and required evidence are proven.
 - Preserves the original long-lived branch and active workers' branches.
 
+## Scenario 5 — Generate phase-specific worker launch prompts
+
+### Prompt
+
+> Use `$blueprint-masterplan` to generate the prompts I should give W4. I normally tell workers to read the Implementation, Business, and Product Spec Masterplans, work on main, commit/push/pull constantly, ask questions, design plans for parallel subagents, use Terra High or Xhigh depending on implementation difficulty, and update masterplans afterward. I want one prompt that stops after writing the specification and implementation plan, and another that executes those approved plans to completion.
+
+### Expected behavior
+
+- **Critical:** Produces distinct planning-only and execution prompts with unambiguous terminal conditions.
+- **Critical:** Replaces shared-main editing with a unique worker branch and isolated worktree or separate-machine clone based on the current remote base.
+- Requires both phases to read the blueprint, relevant living masterplans, worker brief, and prerequisite handoffs.
+- Requires frequent focused verification, bounded commits, fetch/rebase or pull, and pushes without merging every substep to the base branch.
+- Makes the planning phase ask questions, use Grill Me/Superpowers, write approved dated artifacts, and stop before implementation.
+- Makes the plan expose subagent-safe packages, dependencies, ownership, files, interfaces, tests, and review boundaries rather than demanding artificial parallelism.
+- Makes the execution phase follow the listed approved artifacts and use Terra High or Xhigh subagents according to task difficulty when available.
+- Prevents subagents from sharing mutable ownership or the same checkout and requires their work to be reviewed and verified before adoption.
+- Routes stable new decisions and implementation evidence into living masterplans while keeping transient tasks and worker progress in plans/status files.
+- Preserves known limitations with evidence and does not write an unapproved wish list into current-state authorities.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -93,6 +112,7 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 | Acyclic graph and evidence-based gates | `SKILL.md` — Build and validate the dependency graph |
 | One owner prevents false parallelism | `SKILL.md` — Decompose like a construction project |
 | Same-machine worktree isolation | `SKILL.md` — Isolate workers on one machine |
+| Phase-specific worker launch prompts | `SKILL.md` — Generate worker launch prompts; `references/worker-prompt-templates.md` |
 | Per-substep fetch/rebase/push | `SKILL.md` — Require the worker lifecycle |
 | Remote merge determines readiness | `SKILL.md` — Determine readiness and blockers |
 | Per-worker and coordinator status ownership | `SKILL.md` — Determine readiness and blockers; bundled status templates |

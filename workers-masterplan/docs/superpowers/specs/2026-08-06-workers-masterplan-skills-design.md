@@ -58,6 +58,7 @@ workers-masterplan/
     │   └── openai.yaml
     └── references/
         ├── blueprint-masterplan-template.md
+        ├── worker-prompt-templates.md
         ├── worker-status-template.md
         └── status-summary-template.md
 ```
@@ -219,6 +220,8 @@ Every worker brief defines:
 - merge and completion conditions;
 - handoff contents; and
 - exact workers or gates unblocked by completion.
+
+For workers whose planning and execution may run in separate sessions, the blueprint also creates phase-specific launch prompts with exact document inputs, isolation, ownership, synchronization, subagent policy, and terminal conditions.
 
 No worker may depend on private conversation history.
 
@@ -422,6 +425,7 @@ Its discovery metadata must trigger on requests to create, consolidate, refresh,
 ### 12.2 `blueprint-masterplan` resources
 
 - `blueprint-masterplan-template.md` encodes the EdenMind-style frozen blueprint structure.
+- `worker-prompt-templates.md` encodes distinct planning-only and execution prompts, including safe worktree isolation and user-approved subagent model/effort guidance.
 - `worker-status-template.md` encodes unique worker-owned status fields.
 - `status-summary-template.md` encodes coordinator-owned readiness, blocker, gate, and critical-path reporting.
 
@@ -441,6 +445,8 @@ Implementation is accepted when:
 - the blueprint skill enforces current living authorities before freezing work;
 - newly discovered stable information routes back into living documents;
 - the blueprint template reproduces the structural strengths of EdenMind's implementation masterplan;
+- planning-only and execution worker prompts have distinct terminal conditions and never direct concurrent workers to edit a shared long-lived checkout;
+- worker prompts preserve approved Terra High/Xhigh-style subagent guidance while requiring independent ownership, review, and fallback reporting;
 - worker graphs are acyclic and their written dependencies match their Mermaid edges;
 - worker ownership prevents shared-file false parallelism;
 - per-worker status and coordinator aggregation expose blockers and readiness;

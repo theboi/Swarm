@@ -185,6 +185,7 @@ Do not begin Task 3 until this commit exists and all Task 2 checks pass.
 - Create: `workers-masterplan/blueprint-masterplan/SKILL.md`
 - Create: `workers-masterplan/blueprint-masterplan/agents/openai.yaml`
 - Create: `workers-masterplan/blueprint-masterplan/references/blueprint-masterplan-template.md`
+- Create: `workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md`
 - Create: `workers-masterplan/blueprint-masterplan/references/worker-status-template.md`
 - Create: `workers-masterplan/blueprint-masterplan/references/status-summary-template.md`
 
@@ -246,6 +247,8 @@ Write `blueprint-masterplan-template.md` with the full required structure:
 
 Write `worker-status-template.md` with worker ID, branch, pushed commit, state, completed substep, verification, blockers, unblock owner/criterion, next action, last integration sync, downstream unblock, and timestamp.
 
+Write `worker-prompt-templates.md` with separate planning-only and execution prompts, exact terminal conditions, safe branch/worktree isolation, frequent Git synchronization, living-authority routing, and user-approved subagent model/effort guidance.
+
 Write `status-summary-template.md` with ready/active/reviewing/complete/blocked workers, blocker ownership, stale status, verification gaps, gate state, critical path, newly unblocked work, and cleanup receipts.
 
 - [x] **Step 5: Replace the scaffold with the minimal workflow skill**
@@ -266,7 +269,7 @@ Write `SKILL.md` in imperative form with these required sections:
 - Quick reference
 - Common mistakes and stop conditions
 
-Require `living-masterplan` before updating stable authority information and name applicable Superpowers sub-skills explicitly. Link all three reference files directly.
+Require `living-masterplan` before updating stable authority information and name applicable Superpowers sub-skills explicitly. Link all four reference files directly.
 
 - [x] **Step 6: Validate `blueprint-masterplan`**
 
@@ -274,13 +277,13 @@ Run:
 
 ```bash
 python3 /Users/bot4/.codex/skills/.system/skill-creator/scripts/quick_validate.py workers-masterplan/blueprint-masterplan
-test "$(find workers-masterplan/blueprint-masterplan/references -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+test "$(find workers-masterplan/blueprint-masterplan/references -maxdepth 1 -type f | wc -l | tr -d ' ')" = "4"
 test "$(wc -l < workers-masterplan/blueprint-masterplan/SKILL.md | tr -d ' ')" -lt 500
 rg -n 'TBD|TODO|FIXME|XXX' workers-masterplan/blueprint-masterplan workers-masterplan/evals/blueprint-masterplan-scenarios.md && exit 1 || true
 git diff --check
 ```
 
-Expected: validator success, exactly three references, SKILL under 500 lines, no placeholders, and no whitespace errors.
+Expected: validator success, exactly four references, SKILL under 500 lines, no placeholders, and no whitespace errors.
 
 - [x] **Step 7: Check the evaluation rubric against the skill contract**
 
@@ -342,7 +345,7 @@ Expected: no placeholder match, no forbidden auxiliary file, no whitespace error
 find workers-masterplan -type f | sort
 ```
 
-Expected: only the two skills, five direct reference files, two UI metadata files, two evaluation files, the design spec, and this implementation plan.
+Expected: only the two skills, six direct reference files, two UI metadata files, two evaluation files, the design spec, and this implementation plan.
 
 - [x] **Step 5: Record execution evidence in this plan**
 
@@ -361,6 +364,29 @@ Repeat both validators, the link check, placeholder scan, `git diff --check`, an
 
 Expected: both skills valid and the worktree clean.
 
+### Task 5: Add phase-specific worker prompt templates
+
+**Files:**
+- Create: `workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md`
+- Modify: `workers-masterplan/blueprint-masterplan/SKILL.md`
+- Modify: `workers-masterplan/blueprint-masterplan/references/blueprint-masterplan-template.md`
+- Modify: `workers-masterplan/evals/blueprint-masterplan-scenarios.md`
+- Modify: collection design, plan, and verification records
+
+**Interfaces:**
+- Consumes: the user's existing planning-worker and execution-worker prompts.
+- Produces: safe, parameterized launch prompts that preserve phase boundaries, frequent Git synchronization, masterplan updates, questions, and Terra High/Xhigh guidance without shared-main editing.
+
+- [x] **Step 1: Add the RED scenario and prove the prompt reference is absent**
+
+- [x] **Step 2: Create planning-only and execution prompt templates**
+
+- [x] **Step 3: Link prompt generation from the blueprint workflow and template**
+
+- [x] **Step 4: Validate the updated skill, links, counts, and evaluation coverage**
+
+- [x] **Step 5: Commit, integrate, verify, and safely remove the follow-up worker branch**
+
 ## Execution evidence
 
 Recorded 6 August 2026 in the isolated `codex/workers-masterplan` worktree.
@@ -369,13 +395,14 @@ Recorded 6 August 2026 in the isolated `codex/workers-masterplan` worktree.
 | --- | --- |
 | `living-masterplan` official validator | `Skill is valid!` |
 | `blueprint-masterplan` official validator | `Skill is valid!` |
-| Direct `SKILL.md` reference links | All five references resolve |
+| Direct `SKILL.md` reference links | All six references resolve |
 | Skill directory/name and discovery metadata | Both match; both descriptions start with `Use when` |
 | UI metadata | Both short descriptions are 42 characters; both prompts name their `$skill-name` |
+| Phase-specific worker prompts | Planning and execution terminals, worktree isolation, synchronization, masterplan routing, and Terra High/Xhigh guidance verified |
 | Placeholder and unfinished-content scan | No match in skills or evaluations |
 | Forbidden auxiliary files and symlinks | None |
 | EdenMind-specific runtime dependency scan | None in either runtime skill folder |
-| Extraction inventory | 13 files beneath `workers-masterplan/` |
+| Extraction inventory | 14 files beneath `workers-masterplan/` |
 | Whitespace validation | `git diff --check` passed |
 
 The validator scripts required `PyYAML`, which neither available Python runtime supplied. Validation used `PyYAML 6.0.3` from an isolated temporary module directory; the collection gained no Python or runtime dependency.

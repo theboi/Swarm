@@ -166,6 +166,15 @@ A prerequisite is satisfied only when its commits and evidence are reachable fro
 
 Repeat for every worker. Keep one clear outcome per worker package.
 
+### 8.1 Worker launch prompts
+
+For each worker that may use separate sessions, create:
+
+- `docs/workers/<blueprint-id>/prompts/<worker-id>-planning.md`, which stops after approved specification, implementation plan, stable living-authority updates, and planning handoff; and
+- `docs/workers/<blueprint-id>/prompts/<worker-id>-execution.md`, which follows those approved artifacts through implementation, review, integration evidence, handoff, and safe teardown.
+
+Both prompts name exact prerequisites, ownership, status path, remote/base, unique isolated workspace, synchronization rhythm, and approved subagent model/effort policy. Neither directs concurrent workers to edit the shared long-lived checkout.
+
 ## 9. Shared integration contracts
 
 For every contract used by at least two workers, state:

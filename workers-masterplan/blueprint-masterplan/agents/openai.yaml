@@ -1,4 +1,4 @@
 interface:
   display_name: "Blueprint Masterplan"
   short_description: "Plan collision-safe multi-worker execution"
-  default_prompt: "Use $blueprint-masterplan to build a gated dependency-aware worker execution blueprint."
+  default_prompt: "Use $blueprint-masterplan to build a gated dependency-aware execution blueprint and phase-specific worker prompts."

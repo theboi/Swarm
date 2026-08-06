@@ -1,6 +1,6 @@
 ---
 name: blueprint-masterplan
-description: Use when splitting a bounded delivery objective across independent workers, agents, branches, worktrees, clones, or machines, especially when dependencies, ownership, blocker visibility, delivery gates, Git synchronization, or collision avoidance must be explicit.
+description: Use when splitting a bounded delivery objective across independent workers, agents, branches, worktrees, clones, or machines, or when writing phase-specific worker launch prompts with explicit dependencies, ownership, blocker visibility, delivery gates, Git synchronization, or collision avoidance.
 ---
 
 # Blueprint Masterplan
@@ -47,6 +47,14 @@ Do not rerun living-masterplan bootstrap merely because this is a new session. E
 9. **Obtain approval and commit the frozen snapshot.**
 
 Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting. Follow established project paths; otherwise default the blueprint to `docs/plans` and coordination files to `docs/workers/<blueprint-id>`.
+
+## Generate worker launch prompts
+
+Read [the worker prompt templates](references/worker-prompt-templates.md) completely. Create separate planning-only and execution prompts when phases may run in different sessions.
+
+Every prompt must name the blueprint, relevant living authorities, worker/task ID, prerequisites, owned and excluded surfaces, status path, remote/base, unique branch, isolated workspace, verification rhythm, and exact terminal condition.
+
+Preserve user-approved subagent model/effort guidance. Replace instructions to work directly on a shared `main` checkout with a branch and isolated worktree based on current remote `main`; workers still fetch, incorporate, commit, and push regularly. Planning prompts stop after approved specifications/plans and living-authority updates. Execution prompts follow those artifacts through review, integration, evidence, and safe teardown.
 
 ## Decompose like a construction project
 
