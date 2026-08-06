@@ -33,15 +33,15 @@
 - Consumes: the user-approved design and EdenMind's source-project reference at `docs/plans/EdenMind_Implementation_Masterplan.md`.
 - Produces: extraction-ready design and plan records whose runtime file references resolve within `workers-masterplan/`.
 
-- [ ] **Step 1: Move the approved design into the collection**
+- [x] **Step 1: Move the approved design into the collection**
 
 Use `apply_patch` to move the file without changing its historical contents unnecessarily.
 
-- [ ] **Step 2: Update the collection layout and reference language**
+- [x] **Step 2: Update the collection layout and reference language**
 
 Add `docs/superpowers/specs`, `docs/superpowers/plans`, and `evals` to the architecture tree. Mark the EdenMind path as a source-project design reference, while making the generic blueprint template the runtime authority.
 
-- [ ] **Step 3: Verify self-contained record paths**
+- [x] **Step 3: Verify self-contained record paths**
 
 Run:
 
@@ -54,7 +54,7 @@ git diff --check
 
 Expected: all commands exit 0.
 
-- [ ] **Step 4: Commit the record relocation**
+- [x] **Step 4: Commit the record relocation**
 
 ```bash
 git add docs/superpowers/specs/2026-08-06-workers-masterplan-skills-design.md workers-masterplan/docs/superpowers
