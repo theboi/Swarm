@@ -192,7 +192,7 @@ Do not begin Task 3 until this commit exists and all Task 2 checks pass.
 - Consumes: current committed living masterplans, a bounded delivery objective, repository evidence, remote Git state, optional user gates, and applicable Superpowers skills.
 - Produces: a frozen EdenMind-style execution blueprint, per-worker status contracts, aggregate blocker/readiness reporting, isolated worktree rules, and safe teardown requirements.
 
-- [ ] **Step 1: Write the RED evaluation scenarios before the skill exists**
+- [x] **Step 1: Write the RED evaluation scenarios before the skill exists**
 
 Create four realistic scenarios and a scoring rubric:
 
@@ -203,7 +203,7 @@ Create four realistic scenarios and a scoring rubric:
 
 Require the rubric to check living-authority freshness, acyclic dependency graphs, one owner per shared surface, evidence-based gates, remote-merge prerequisites, worktree isolation, substep push/rebase behavior, and non-forced teardown. Record fresh-agent runs as pending under the current no-subagent constraint.
 
-- [ ] **Step 2: Verify the second skill is absent at RED**
+- [x] **Step 2: Verify the second skill is absent at RED**
 
 Run:
 
@@ -213,7 +213,7 @@ test ! -e workers-masterplan/blueprint-masterplan/SKILL.md
 
 Expected: exit 0.
 
-- [ ] **Step 3: Initialize the skill with deterministic metadata**
+- [x] **Step 3: Initialize the skill with deterministic metadata**
 
 Run:
 
@@ -228,7 +228,7 @@ python3 /Users/bot4/.codex/skills/.system/skill-creator/scripts/init_skill.py bl
 
 Expected: the second skill, reference directory, and `agents/openai.yaml` are created.
 
-- [ ] **Step 4: Write the blueprint and coordination templates**
+- [x] **Step 4: Write the blueprint and coordination templates**
 
 Write `blueprint-masterplan-template.md` with the full required structure:
 
@@ -248,7 +248,7 @@ Write `worker-status-template.md` with worker ID, branch, pushed commit, state, 
 
 Write `status-summary-template.md` with ready/active/reviewing/complete/blocked workers, blocker ownership, stale status, verification gaps, gate state, critical path, newly unblocked work, and cleanup receipts.
 
-- [ ] **Step 5: Replace the scaffold with the minimal workflow skill**
+- [x] **Step 5: Replace the scaffold with the minimal workflow skill**
 
 Write `SKILL.md` in imperative form with these required sections:
 
@@ -268,7 +268,7 @@ Write `SKILL.md` in imperative form with these required sections:
 
 Require `living-masterplan` before updating stable authority information and name applicable Superpowers sub-skills explicitly. Link all three reference files directly.
 
-- [ ] **Step 6: Validate `blueprint-masterplan`**
+- [x] **Step 6: Validate `blueprint-masterplan`**
 
 Run:
 
@@ -282,11 +282,11 @@ git diff --check
 
 Expected: validator success, exactly three references, SKILL under 500 lines, no placeholders, and no whitespace errors.
 
-- [ ] **Step 7: Check the evaluation rubric against the skill contract**
+- [x] **Step 7: Check the evaluation rubric against the skill contract**
 
 For each expected behavior in `blueprint-masterplan-scenarios.md`, cite the exact `SKILL.md` or direct reference section that supplies it. Fix every uncovered behavior before continuing. Do not claim fresh-agent GREEN pressure testing was run.
 
-- [ ] **Step 8: Commit the verified second skill**
+- [x] **Step 8: Commit the verified second skill**
 
 ```bash
 git add workers-masterplan/blueprint-masterplan workers-masterplan/evals/blueprint-masterplan-scenarios.md
