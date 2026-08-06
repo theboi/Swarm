@@ -76,7 +76,7 @@ git commit -m "docs: make workers masterplan records self-contained"
 - Consumes: repository evidence, user-provided decisions, existing authority documents, Grill Me, and Superpowers brainstorming/verification workflows.
 - Produces: parameterized living business, product, architecture, implementation, operations, or custom masterplans with bootstrap and maintenance behavior.
 
-- [ ] **Step 1: Write the RED evaluation scenarios before the skill exists**
+- [x] **Step 1: Write the RED evaluation scenarios before the skill exists**
 
 Create three realistic scenarios and a scoring rubric:
 
@@ -86,7 +86,7 @@ Create three realistic scenarios and a scoring rubric:
 
 Require the rubric to check evidence inspection, authority classification, targeted updates, contradiction handling, approval boundaries, and commit behavior. Record that fresh-agent baseline and pressure runs are pending because this execution session cannot dispatch subagents.
 
-- [ ] **Step 2: Verify the skill is absent at RED**
+- [x] **Step 2: Verify the skill is absent at RED**
 
 Run:
 
@@ -96,7 +96,7 @@ test ! -e workers-masterplan/living-masterplan/SKILL.md
 
 Expected: exit 0, proving the behavior is not yet supplied by the collection.
 
-- [ ] **Step 3: Initialize the skill with deterministic metadata**
+- [x] **Step 3: Initialize the skill with deterministic metadata**
 
 Run:
 
@@ -111,7 +111,7 @@ python3 /Users/bot4/.codex/skills/.system/skill-creator/scripts/init_skill.py li
 
 Expected: the skill, reference directory, and `agents/openai.yaml` are created.
 
-- [ ] **Step 4: Write reusable masterplan references**
+- [x] **Step 4: Write reusable masterplan references**
 
 Write `masterplan-types.md` with:
 
@@ -131,7 +131,7 @@ Write `living-masterplan-template.md` with:
 - exclusions and superseded material; and
 - evidence-backed change history.
 
-- [ ] **Step 5: Replace the scaffold with the minimal workflow skill**
+- [x] **Step 5: Replace the scaffold with the minimal workflow skill**
 
 Write `SKILL.md` in imperative form with these required sections:
 
@@ -149,7 +149,7 @@ Write `SKILL.md` in imperative form with these required sections:
 
 Link both reference files directly from `SKILL.md`. Do not repeat their full contents.
 
-- [ ] **Step 6: Validate `living-masterplan`**
+- [x] **Step 6: Validate `living-masterplan`**
 
 Run:
 
@@ -163,11 +163,11 @@ git diff --check
 
 Expected: validator success, exactly two references, SKILL under 500 lines, no placeholders, and no whitespace errors.
 
-- [ ] **Step 7: Check the evaluation rubric against the skill contract**
+- [x] **Step 7: Check the evaluation rubric against the skill contract**
 
 For each expected behavior in `living-masterplan-scenarios.md`, cite the exact `SKILL.md` or direct reference section that supplies it. Fix any uncovered behavior before continuing. Do not claim fresh-agent GREEN pressure testing was run.
 
-- [ ] **Step 8: Commit the verified first skill**
+- [x] **Step 8: Commit the verified first skill**
 
 ```bash
 git add workers-masterplan/living-masterplan workers-masterplan/evals/living-masterplan-scenarios.md

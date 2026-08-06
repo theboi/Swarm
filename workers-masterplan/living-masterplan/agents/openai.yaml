@@ -1,0 +1,4 @@
+interface:
+  display_name: "Living Masterplan"
+  short_description: "Maintain authoritative project masterplans"
+  default_prompt: "Use $living-masterplan to create or update the project's authoritative masterplans."
