@@ -7,7 +7,7 @@
 | Scenario design | Complete before skill authoring |
 | No-skill structural baseline | Skill absent before initialization |
 | Fresh-agent pre-rewrite baseline | Complete on 8 August 2026: observed 14-wide over-fragmented frontier and flat Superpowers artifact roots |
-| Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs |
+| Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs; Scenario 9 post-change run pending |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -171,6 +171,31 @@ The fresh agent already selected the correct authorship boundary. The rewrite pr
 
 The fresh agent rejected coordinator-authored worker plans. It assigned the coordinator the blueprint, compact briefs, prompts, aggregate status, and gates while assigning each of six workers its own specification, implementation plan, status, and handoff under the shared `2026-08-08-payments` blueprint folder.
 
+## Scenario 9 — Worker specification synchronizes the product specification
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a school homework-upload delivery. W2 owns an approved educator upload flow: its dated task specification adds browser routes and client state, a private upload API, durable submission records, signed storage, a background checker, and audit logging. It also contains a proposed parent-notification feature that is not approved. The director wants W2 to finish tonight by committing only its dated specification and lets a later worker update the Product Spec Masterplan as a dashboard of “available now,” “approved future,” and “deferred” items. Write W2’s planning-only launch prompt and terminal condition. W3 will begin implementation tomorrow from W2’s planning handoff.
+
+### Expected behavior
+
+- **Critical:** Requires W2 to identify and update every affected Product Spec Masterplan in the same planning substep as its dated task specification.
+- **Critical:** Makes planning incomplete until the approved behavior is consolidated into a unified high-level product description from educator frontend through client state, API, records/storage, background work, audit, security, reliability, and acceptance.
+- Keeps the unapproved parent-notification proposal out of the Product Spec Masterplan.
+- Rejects availability/future/deferred, worker, and delivery-history organization in the Product Spec Masterplan.
+- Requires W2 to assess direct and transitive downstream effects and update W3’s documents or record an evidence-backed no-impact finding.
+- Requires the dated specification, Product Spec Masterplan update, and downstream propagation to be verified and integrated together into `origin/main` before W3 is ready.
+
+### Observed pre-change baseline
+
+The fresh agent correctly kept the unapproved notification outside executable
+scope and prevented W3 from starting. It nevertheless allowed W2 to integrate
+only its dated specification as a limited handoff, directed a separately owned
+later Product Spec Masterplan dashboard update, and used “available now,”
+“approved future,” and “deferred” status language. It failed both critical
+behaviors because it did not require same-substep synchronization or the
+unified product-specification format.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -190,3 +215,5 @@ The fresh agent rejected coordinator-authored worker plans. It assigned the coor
 | Per-worker and coordinator status ownership | `SKILL.md` — Require remote-evidenced readiness; bundled status templates |
 | Safe integration and teardown | `SKILL.md` — Integrate and tear down safely |
 | No force deletion of dirty or unmerged work | `SKILL.md` — Integrate and tear down safely; Stop conditions |
+| Worker task specifications synchronize affected product specifications | `SKILL.md` — Write worker briefs, not worker plans; Require the worker execution lifecycle; `references/worker-prompt-templates.md` — Planning-only worker prompt |
+| Product specifications remain unified and end-to-end | `SKILL.md` — Write worker briefs, not worker plans; `references/worker-prompt-templates.md` — Planning-only worker prompt |

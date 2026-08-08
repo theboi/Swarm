@@ -6,7 +6,7 @@
 | --- | --- |
 | Scenario design | Complete before skill authoring |
 | No-skill structural baseline | Skill absent before initialization |
-| Fresh-agent no-skill baseline | Pending because this execution session cannot dispatch subagents |
+| Fresh-agent current-skill baseline | Scenario 4 run on 9 August 2026: the agent classified the approved upload as “approved future” and retained a status/evidence-oriented Product Spec Masterplan instead of requiring a unified end-to-end specification |
 | Fresh-agent skill-enabled run | Pending for a later authorized evaluation session |
 | Static contract coverage | Recorded after skill authoring |
 
@@ -69,6 +69,30 @@ Critical behaviors are marked **Critical**.
 - Records unresolved decisions and blockers separately from current facts.
 - Does not let deadline, sales pressure, or existing implementation silently decide policy.
 
+## Scenario 4 — Consolidate an approved task specification
+
+### Prompt
+
+> Use `$living-masterplan` in `/tmp/lesson-loop`. Worker W2 has just written a dated task specification for an approved homework-upload feature. It adds an educator upload page and client state, a private upload API, durable submission records, a background checker, signed file storage, and audit logging. The same specification proposes an unapproved parent-notification feature. The delivery lead says we can finish planning by committing only W2's dated specification and later classify the Product Spec Masterplan into “available now,” “approved future,” and “deferred.” It is late and another worker will start from W2's plan tomorrow. Explain exactly what must be updated before planning can complete.
+
+### Expected behavior
+
+- **Critical:** Treats the dated task specification as a trigger to assess the affected Product Spec Masterplan before planning completes.
+- **Critical:** Requires the approved upload behavior to be consolidated into one high-level product description spanning the educator experience, client behavior, API, records/storage, background processing, audit, security, and reliability.
+- Rejects availability/future/deferred or delivery-history organization for the Product Spec Masterplan.
+- Keeps the unapproved parent-notification proposal out of the Product Spec Masterplan.
+- Requires direct and transitive downstream impact assessment, or an explicit evidence-backed no-impact finding.
+- Requires the dated task specification, Product Spec Masterplan update, and required propagation to be verified and integrated together before the next worker begins.
+
+### Observed pre-change baseline
+
+The fresh agent required some living-authority maintenance, but told the worker
+to record the upload feature as an “approved future capability” and to classify
+implementation state as absent/planned. It treated the Product Spec Masterplan
+as a status/evidence authority, rather than requiring a single high-level
+frontend-to-backend product contract. It therefore failed both critical
+behaviors of this scenario.
+
 ## Static contract coverage
 
 Populate this table after authoring the skill by citing exact sections. Fresh-agent behavior remains unproven until the pending runs occur.
@@ -83,3 +107,5 @@ Populate this table after authoring the skill by citing exact sections. Fresh-ag
 | Contradictions stop silent overwrites | `SKILL.md` — Approval and contradiction gates |
 | Targeted diffs preserve unrelated authority | `SKILL.md` — Maintenance workflow; Common mistakes |
 | Evidence, consistency, and commit verification | `SKILL.md` — Verify and commit |
+| Approved task specifications keep the product specification current | `SKILL.md` — Product specification masterplan contract; Maintenance workflow; Route incoming information |
+| Unified high-level frontend-to-backend product specification | `SKILL.md` — Product specification masterplan contract; `references/living-masterplan-template.md` — Product specification variant |
