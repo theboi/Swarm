@@ -22,7 +22,8 @@ Adapt vocabulary and paths to the project. Preserve every section responsibility
 | Status | Approved execution snapshot |
 | Blueprint ID | `YYYY-MM-DD-<short-slug>` |
 | Effective date | <date> |
-| Integration authority | `<remote>/<base-branch>` |
+| Integration authority | `origin/main` |
+| Main-integration lock or queue | `<exact serialization mechanism>` |
 | Coordinator | <role or named owner> |
 | Business authority | `<relative path>` |
 | Product authority | `<relative path>` |
@@ -111,20 +112,20 @@ For a multi-worker objective, target three to seven concurrently ready workers i
 
 ## 6. Readiness and blocker rules
 
-- `not-ready`: at least one hard prerequisite is not integrated.
-- `ready`: every hard prerequisite and required contract is integrated.
-- `in-progress`: the worker claimed its isolated workspace and pushed current work.
+- `not-ready`: at least one hard prerequisite is not integrated into `origin/main`.
+- `ready`: every hard prerequisite and required contract is integrated into `origin/main`.
+- `in-progress`: the worker claimed its isolated workspace and every completed substep is integrated into `origin/main`.
 - `blocked`: a named dependency, decision, conflict, or external condition prevents progress.
 - `review`: work exists but required review, evidence, or integration is open.
 - `complete`: the coordinator verified integration, handoff, evidence, and cleanup.
 
-Remote integration state is authoritative. A local “done” claim or pushed feature branch does not unblock a dependant.
+`origin/main` is authoritative. A local “done” claim or pushed feature branch does not unblock a dependant or complete a substep.
 
 ## 7. Mandatory lifecycle for every worker
 
 ### 7.1 Worker-authored Superpowers planning
 
-1. Prove prerequisites and evidence are integrated on the remote base.
+1. Pull `origin/main` and prove prerequisites and evidence are integrated there.
 2. Enter the assigned unique isolated branch/worktree or clone and run a clean baseline.
 3. Read this blueprint, relevant living authorities, the worker brief, and prerequisite handoffs.
 4. Use Superpowers brainstorming for task-local decisions.
@@ -145,24 +146,42 @@ The coordinator reserves these paths but does not author their detailed contents
 
 ### 7.3 Worktree isolation
 
-Use one branch and isolated worktree per local worker. Prefer native platform worktree support; otherwise use an ignored project-local `.worktrees/<worker-id>` path after verifying isolation and a clean baseline.
+Use one branch and isolated workspace per local worker. Because each worker must update local `main`, provide either a worker-private clone or a serialized dedicated integration worktree controlled by the completing worker under an exclusive integration lock. Never use the user's control checkout for worker integration.
 
 Use separate clones for separate machines or incompatible environments.
 
 ### 7.4 Substep Git synchronization
 
-After each independently testable plan substep:
+After each independently testable subtask or plan substep:
 
 1. run focused verification;
-2. update only the worker-owned status file;
+2. update only worker-owned status, living-authority, and downstream-impact documents;
 3. commit only owned verified changes;
-4. fetch and incorporate the current remote base;
+4. pull `origin/main` into the feature branch;
 5. resolve only mechanical conflicts within ownership;
 6. stop on semantic, ownership, contract, generated-file, or migration conflicts;
-7. rerun affected checks; and
-8. push before the next substep.
+7. rerun affected checks on the reconciled feature branch;
+8. acquire the exclusive main-integration lock;
+9. pull local `main` from `origin/main` with fast-forward only;
+10. merge the verified feature substep into local `main`;
+11. rerun affected checks on local `main`;
+12. push local `main` to `origin/main`; and
+13. prove the substep commit is reachable from `origin/main` before the next substep.
 
-Merge at contract/dependency, completed-package, or gate boundaries—not after every substep.
+If another worker wins the push race, pull the new `origin/main` into the feature branch and repeat reconciliation, verification, and locked main integration. Never force-push `main`. A feature-branch push alone does not complete a substep. Contract, package, dependency, and gate boundaries add review or evidence; they do not delay integration.
+
+### 7.5 Living-authority downstream propagation
+
+Whenever a worker changes a living business, product/specification, architecture, implementation, operations, security, release, or custom masterplan:
+
+1. identify every direct and transitive downstream worker or gate;
+2. assess changes to dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, and implementation assumptions;
+3. update every relevant downstream brief, specification, plan, prompt, worker status, and coordinator status through each document's owner;
+4. mark affected downstream work blocked or not-ready until its documents are current and approved;
+5. integrate the authority and downstream-document updates into `origin/main`; and
+6. record propagation evidence or an evidence-backed finding of no downstream impact.
+
+If frozen blueprint scope, ownership, dependencies, gates, or completion semantics change, require an approved blueprint revision before affected work continues.
 
 ## 8. Worker packages
 
@@ -234,28 +253,31 @@ The planning prompt makes the worker author its own reserved specification/plan 
 
 ## 11. Coordination status
 
-- An active worker owns `docs/workers/<blueprint-id>/status/<worker-id>.md` on its branch.
+- An active worker owns `docs/workers/<blueprint-id>/status/<worker-id>.md`; each completed substep integrates the updated file into `origin/main`.
 - The coordinator alone owns `docs/workers/<blueprint-id>/STATUS.md` when aggregate status is needed.
-- The coordinator fetches active remote branches before reporting readiness or blockers.
+- The coordinator pulls `origin/main` before reporting readiness or blockers and inspects active branches only for unintegrated work.
 - Ready-but-unscheduled workers remain `ready` when execution slots are full.
 
 ## 12. Merge and conflict policy
 
-- Use narrow feature branches and unique worktrees.
-- Treat the named remote base as the only integration authority.
+- Use narrow feature branches and unique isolated workspaces plus a serialized worker-controlled path for updating local `main`.
+- Treat `origin/main` as the only integration authority.
 - Assign every shared mutable surface one owner.
-- Merge foundations early only when their complete evidence unblocks dependants.
+- Merge every independently testable verified substep into `main` and push `origin/main` before starting the next substep.
 - Regenerate generated files from their authority.
-- Coordinate migration ordering through the remote base.
+- Coordinate migration ordering through `origin/main`.
 - Resolve mechanical owned conflicts and reverify.
 - Stop on semantic or cross-owner conflicts.
+- Serialize worker merges and pushes through an exclusive main-integration lock; retry rejected pushes only after pulling and reverifying the new `origin/main`.
+- Propagate living-authority changes to every relevant downstream document through its owner before affected work continues.
+- Never force-push `main`.
 - Never reset, overwrite, or discard another worker's change to make integration pass.
 
 ## 13. Completion, handoff, and teardown
 
-A worker handoff includes its ID, branch/final commit/base, worker-authored spec/plan, living-authority updates, verification, review, migrations/generated/operational actions, conflict resolutions, limitations, and downstream unblock.
+A worker handoff includes its ID, branch/final commit/containing `origin/main` commit, worker-authored spec/plan, living-authority and downstream-document updates, verification, review, migrations/generated/operational actions, conflict resolutions, limitations, and downstream unblock.
 
-After integration: prove ancestry, verify the integrated result, preserve the handoff/status, confirm the worker tree is clean, remove only that tree without force, safely delete merged branches, and record a cleanup receipt.
+After final integration: prove ancestry from `origin/main`, verify the integrated result and downstream-document propagation, preserve the handoff/status, confirm the worker tree is clean, remove only that tree without force, safely delete merged branches, and record a cleanup receipt.
 
 Preserve dirty, unmerged, failing, under-review, or uncertain work.
 
@@ -268,10 +290,12 @@ List adjacent products, deferred capabilities, speculative infrastructure, and f
 Ordinary progress updates status, not this frozen blueprint. When approved stable information changes scope, ownership, dependencies, gates, or completion:
 
 1. update affected living authorities;
-2. identify invalidated worker assumptions;
-3. issue an explicit blueprint revision/replacement;
-4. update graph, briefs, prompts/status baseline, and readiness together; and
-5. obtain approval before affected workers continue.
+2. identify every directly or transitively affected worker and invalidated assumption;
+3. update all relevant downstream briefs, specs, plans, prompts, and statuses through their owners;
+4. issue an explicit blueprint revision/replacement;
+5. update graph, briefs, prompts/status baseline, and readiness together;
+6. integrate the coherent update into `origin/main`; and
+7. obtain approval before affected workers continue.
 ````
 
 ## Graph rules

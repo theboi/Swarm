@@ -1,6 +1,6 @@
 # Coordinator Status Summary Template
 
-Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after fetching the remote base and all active worker branches.
+Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and fetching any active worker branches that contain unintegrated work.
 
 ```markdown
 # <Blueprint> Coordination Status
@@ -8,8 +8,8 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 | Field | Value |
 | --- | --- |
 | Blueprint | `<relative path>` |
-| Remote base authority | `<remote>/<base-branch>` |
-| Base commit inspected | `<commit>` |
+| Integration authority | `origin/main` |
+| `origin/main` commit inspected | `<commit>` |
 | Remote branches fetched | `<timestamp and timezone>` |
 | Coordinator | <role or named owner> |
 | Snapshot status | Current / Stale / Blocked |
@@ -41,13 +41,21 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 | Worker/gate | Written prerequisites | Integrated prerequisites | Effective state | Reason |
 | --- | --- | --- | --- | --- |
-| <ID> | <IDs> | <IDs verified on remote base> | not-ready / ready / active / review / complete | <concise evidence> |
+| <ID> | <IDs> | <IDs verified on origin/main> | not-ready / ready / active / review / complete | <concise evidence> |
 
 ## Verification and remote-state gaps
 
-| Worker | Gap | Last pushed commit | Last base sync | Required action |
+| Worker | Gap | Latest integrated `origin/main` commit | Last `main` pull | Required action |
 | --- | --- | --- | --- | --- |
 | <ID> | Stale branch / Missing tests / Open review / Non-ancestor commit | <commit> | <commit/date> | <action> |
+
+## Living-authority downstream propagation
+
+| Authority change | Affected downstream workers/gates | Required document updates | Owner/approval state | Integrated `origin/main` commit |
+| --- | --- | --- | --- | --- |
+| <change> | <IDs> | <briefs/specs/plans/prompts/statuses> | <owners and state> | <commit or pending> |
+
+Any affected worker remains blocked or not-ready while a required document update is missing, unapproved, or absent from `origin/main`.
 
 ## Gate status
 
@@ -76,11 +84,12 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 ## Aggregation rules
 
-- Fetch before calculating; never trust a cached local branch list.
-- Read each worker's status from its remote feature branch while active.
-- Recompute hard-dependency readiness from remote base ancestry and gate evidence.
+- Pull `origin/main` before calculating; never trust a cached local branch list.
+- Read each worker's latest completed-substep status from `origin/main`; inspect its feature branch only for explicitly unintegrated work.
+- Recompute hard-dependency readiness from `origin/main` ancestry and gate evidence.
+- Recompute living-authority downstream impact and require every relevant downstream document update before clearing blockers.
 - Treat a worker's `complete` claim as advisory until integration and cleanup checks pass.
 - Keep coordinator conclusions out of worker-owned status files.
-- Mark the entire snapshot stale if remote fetch fails.
+- Mark the entire snapshot stale if the `origin/main` pull fails.
 - Report “no blocker” only after checking dependency, review, verification, conflict, and external-decision state.
-- Active worker branches remain. Delete only branches for verified integrated workers.
+- Active worker branches may remain between substeps even though completed work is integrated. Delete only branches for verified fully integrated workers.
