@@ -16,7 +16,7 @@ Use only the types the project needs. Preserve established project vocabulary an
 | Type | Answers | Include | Exclude |
 | --- | --- | --- | --- |
 | Business or commercial | Why the project exists and how it creates value | market, customer, offer, pricing, commercial constraints, success measures | endpoint schemas, task checklists, temporary delivery status |
-| Product or feature specification | What users may do and what behavior is approved | users, journeys, capabilities, domain rules, acceptance boundaries, deferred behavior | worker branches, speculative implementation steps, sales tactics |
+| Product or feature specification | What users may do and what complete behavior is approved | one high-level frontend-to-backend contract: users, journeys, frontend surfaces, client data, APIs, authorization, records, persistence, storage, processing, integrations, models, reliability, security, privacy, observability, acceptance boundaries, and product exclusions | availability/future/deferred or delivery-status partitions, worker branches, speculative implementation steps, sales tactics, chronological implementation history |
 | Architecture | Which stable technical boundaries govern implementation | system context, components, data ownership, integration contracts, security and reliability boundaries | ordinary task sequencing, transient incidents, unapproved alternatives |
 | Implementation state | What is currently implemented and what remains within approved scope | repository evidence, migrations, deployed capability, known gaps, verification state | desired behavior presented as fact, daily worker narration |
 | Operations, security, or release | How the system is operated and what must be proven for release | environments, runbooks, controls, observability, release criteria, recovery | product rationale already owned elsewhere, feature implementation plans |
@@ -49,7 +49,7 @@ Classify each incoming item before editing.
 | Proposed decision | Unresolved-decisions section or design conversation | use Grill Me and Superpowers brainstorming; do not write it as current policy |
 | Temporary execution status | Worker status or execution coordination files | keep it out of living product and business authorities |
 | Historical or superseded material | History or superseded section | retain only when it prevents confusion; mark dates and replacement authority |
-| Task-level design or steps | Dated Superpowers specification or plan | promote only stable approved decisions into a living masterplan |
+| New or modified task-level design or steps | Dated Superpowers specification or plan and every affected product specification masterplan | consolidate all approved product changes into each affected product specification in the same planning substep, or record an evidence-backed no-impact finding; keep task narration and proposals out of the product specification |
 | External claim | Owning authority after verification | cite the source and distinguish a verified constraint from an assumption |
 
 Stable shared decisions may affect several masterplans. Update each affected authority in one bounded change or explicitly sequence the updates so no contradictory intermediate state is treated as approved.

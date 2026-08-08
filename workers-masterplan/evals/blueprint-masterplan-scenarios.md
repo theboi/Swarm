@@ -7,7 +7,7 @@
 | Scenario design | Complete before skill authoring |
 | No-skill structural baseline | Skill absent before initialization |
 | Fresh-agent pre-rewrite baseline | Complete on 8 August 2026: observed 14-wide over-fragmented frontier and flat Superpowers artifact roots |
-| Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs; Scenario 9 post-change run pending |
+| Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs; Scenario 9 passed on 9 August 2026 |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -195,6 +195,16 @@ later Product Spec Masterplan dashboard update, and used “available now,”
 “approved future,” and “deferred” status language. It failed both critical
 behaviors because it did not require same-substep synchronization or the
 unified product-specification format.
+
+### Observed post-change run
+
+The fresh agent required W2 to consolidate the approved educator journey,
+frontend/client state, API/authorization, records/storage, background checking,
+audit, security/privacy, reliability, and acceptance boundaries into the
+affected Product Spec Masterplan in the same planning substep. It rejected the
+delivery-dashboard categorization, kept notification out of approved scope,
+required W3 downstream updates, and made integration of the complete planning
+handoff the terminal condition. All critical behaviors passed.
 
 ## Static contract coverage
 

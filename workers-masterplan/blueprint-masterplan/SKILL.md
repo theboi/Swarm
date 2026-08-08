@@ -150,10 +150,21 @@ Each worker's planning phase:
 3. reads the blueprint, relevant living authorities, brief, and prerequisite handoffs;
 4. uses Superpowers brainstorming for task-local decisions;
 5. writes and obtains approval for its dated specification inside the blueprint specs folder;
-6. uses `superpowers:writing-plans` to write its detailed plan inside the blueprint plans folder;
-7. updates stable living authorities before implementation depends on changed decisions;
-8. propagates any dependency, blocker, contract, acceptance, or implementation impact into every affected downstream worker document through its owner; and
-9. integrates the approved planning artifacts and propagation updates into `main`, pushes `origin/main`, and hands them off before implementation begins.
+6. immediately identifies every affected product specification masterplan and
+   consolidates all approved changes from the dated specification into the
+   high-level frontend-to-backend product contract, or records an
+   evidence-backed no-impact finding;
+7. uses `superpowers:writing-plans` to write its detailed plan inside the blueprint plans folder;
+8. updates other stable living authorities before implementation depends on changed decisions;
+9. propagates any dependency, blocker, contract, acceptance, or implementation impact into every affected downstream worker document through its owner; and
+10. integrates the dated specification, affected product specification updates or
+    no-impact findings, approved planning artifacts, and propagation updates into
+    `main`, pushes `origin/main`, and hands them off before implementation begins.
+
+Repeat step 6 whenever the dated specification changes. Do not defer this
+product-specification maintenance to a different worker or a later delivery
+phase. A planning handoff is incomplete while an affected product specification
+masterplan is stale.
 
 ## Generate launch prompts when needed
 
@@ -161,7 +172,11 @@ Read [the worker prompt templates](references/worker-prompt-templates.md) comple
 
 Create separate planning and execution prompts when phases may run in different sessions or the user requests a launch packet. Both prompts name the blueprint, living authorities, worker brief, prerequisites, owned/excluded surfaces, artifact paths, status path, `origin/main` integration authority, unique branch/workspace, synchronization rhythm, and exact terminal condition.
 
-The planning prompt stops after the worker-authored specification, implementation plan, stable authority updates, and planning handoff. The execution prompt consumes those approved artifacts and continues through implementation, review, integration evidence, handoff, and safe teardown.
+The planning prompt stops after the worker-authored specification, affected
+product-specification consolidation or no-impact findings, implementation plan,
+stable authority updates, and planning handoff. The execution prompt consumes
+those approved artifacts and continues through implementation, review,
+integration evidence, handoff, and safe teardown.
 
 ## Require remote-evidenced readiness
 
@@ -213,6 +228,13 @@ Use one feature branch and isolated workspace per worker. Because every worker m
 
 Whenever a worker updates a living business, product/specification, architecture, implementation, operations, security, release, or custom masterplan, it MUST assess the direct and transitive downstream workers and gates before integrating the update.
 
+Writing or modifying a dated task specification always requires this assessment
+for every affected product specification masterplan. The worker must consolidate
+all and only approved product behavior into one high-level frontend-to-backend
+contract in the same planning substep, or record an evidence-backed no-impact
+finding. Do not use available-now, approved-future, deferred, worker, or
+delivery-history categories in that product specification masterplan.
+
 If the authority change affects a dependency, readiness condition, blocker, contract, ownership boundary, acceptance evidence, test expectation, launch instruction, or implementation assumption, the change is incomplete until:
 
 1. the affected downstream set is identified from the DAG and coordination contracts;
@@ -255,6 +277,12 @@ Before freezing:
 - verify worktree, synchronization, integration, and teardown rules;
 - verify every completed substep must be pulled against, merged into, and pushed through `origin/main`;
 - verify the blueprint names a workable exclusive main-integration lock or queue and workers can push `origin/main`;
+- verify every new or modified worker specification synchronizes each affected
+  product specification masterplan in the same planning substep, or carries an
+  evidence-backed no-impact finding;
+- verify product specification masterplans read as unified high-level
+  frontend-to-backend contracts rather than availability or delivery-status
+  dashboards;
 - verify living-authority changes require downstream-impact assessment and all relevant downstream document updates;
 - scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
 - obtain approval, then commit the frozen snapshot when authorized.
@@ -272,6 +300,7 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Fewer active slots than ready workers | Keep the DAG flat and schedule from the ready queue |
 | Shared file/schema/generated output | Assign one owner or sequence behind its merge |
 | Worker needs detailed steps | Worker authors its own spec and plan after launch |
+| Worker specification is created or changed | Consolidate approved changes into every affected product specification in the same planning substep, or record no impact |
 | Worker says done off-main | Keep dependants not-ready |
 | Worker completes a testable substep | Pull `origin/main`, reverify, merge into local `main`, verify, and push `origin/main` before continuing |
 | Living-authority change affects downstream work | Update every relevant downstream document through its owner and block stale work until `origin/main` contains the updates |
@@ -289,10 +318,11 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Unmerged branch satisfies dependency | Require `origin/main` ancestry and evidence |
 | Feature-branch push treated as substep completion | Require merge into local `main`, verification on `main`, push to `origin/main`, and ancestry proof |
 | Main integration deferred to package completion | Integrate each independently testable substep; use package/gate boundaries for added review, not delayed merging |
+| Worker specification lands while product specification is stale | Integrate the specification, product-specification update or no-impact finding, and required propagation together |
 | Living authority updated without downstream propagation | Identify affected downstream workers and update their relevant briefs, specs, plans, prompts, and statuses before they continue |
 | Daily progress rewrites the blueprint | Update worker/coordinator status instead |
 | Force cleanup saves time | Preserve uncertain work and expose the blocker |
 
 ## Stop conditions
 
-Pause with an owner, unblock criterion, and downstream impact when authorities contradict; the objective is too broad; a material decision is unapproved; the DAG cycles; ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; `origin/main` cannot be pulled or pushed safely; remote ancestry cannot be proven; a dependant started from an unmerged branch or stale document; required downstream propagation is incomplete; a gate lacks evidence/verifier; or safe isolation/cleanup cannot be established.
+Pause with an owner, unblock criterion, and downstream impact when authorities contradict; the objective is too broad; a material decision is unapproved; the DAG cycles; ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; `origin/main` cannot be pulled or pushed safely; remote ancestry cannot be proven; a dependant started from an unmerged branch or stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; a gate lacks evidence/verifier; or safe isolation/cleanup cannot be established.

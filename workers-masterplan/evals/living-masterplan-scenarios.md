@@ -7,7 +7,7 @@
 | Scenario design | Complete before skill authoring |
 | No-skill structural baseline | Skill absent before initialization |
 | Fresh-agent current-skill baseline | Scenario 4 run on 9 August 2026: the agent classified the approved upload as “approved future” and retained a status/evidence-oriented Product Spec Masterplan instead of requiring a unified end-to-end specification |
-| Fresh-agent skill-enabled run | Pending for a later authorized evaluation session |
+| Fresh-agent skill-enabled run | Scenario 4 passed on 9 August 2026: the agent required same-substep consolidation into the affected Product Spec Masterplan and rejected availability/future/deferred organization |
 | Static contract coverage | Recorded after skill authoring |
 
 These scenarios are prompts for fresh-context evaluation. Do not give the evaluating agent the rubric or expected behavior until after it responds.
@@ -92,6 +92,16 @@ implementation state as absent/planned. It treated the Product Spec Masterplan
 as a status/evidence authority, rather than requiring a single high-level
 frontend-to-backend product contract. It therefore failed both critical
 behaviors of this scenario.
+
+### Observed post-change run
+
+The fresh agent required same-substep consolidation of the approved educator
+upload route/client state, API, submission records, signed storage, background
+checking, audit, security/privacy, recovery, and acceptance into the affected
+Product Spec Masterplan. It rejected available-now/approved-future/deferred
+organization, kept the notification proposal out of approved scope, required
+downstream assessment, and made the synchronized documentation set a planning
+completion condition. All critical behaviors passed.
 
 ## Static contract coverage
 

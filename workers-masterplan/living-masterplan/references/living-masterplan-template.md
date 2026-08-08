@@ -3,6 +3,7 @@
 ## Contents
 
 - Template
+- Product specification variant
 - Section rules
 - Update rules
 
@@ -83,6 +84,75 @@ Retain only history needed to explain migrations, rejected vocabulary, compatibi
 | <date> | <bounded authority change> | Decision / Repository evidence / External constraint | <identifier> |
 ```
 
+## Product specification variant
+
+Use this variant for a product or feature specification masterplan instead of
+the generic status, current-state/evidence, unresolved-decision, deferred-scope,
+and change-history sections above. It is the consolidated high-level description
+of all approved product behavior, not a delivery dashboard.
+
+```markdown
+# <Product or Feature> Spec Masterplan
+
+> Living product specification for <the complete approved user and system behavior>.
+
+| Field | Value |
+| --- | --- |
+| Authority type | Product specification |
+| Scope | <bounded products, users, domains, and systems> |
+| Decision owner | <role or named owner> |
+| Related authorities | <repository-relative links> |
+
+## 1. Product purpose and boundaries
+
+State the product outcome, users, scope, and explicit product boundaries.
+
+## 2. Users, contexts, and journeys
+
+Describe the authorized users, record or tenant contexts, and complete journeys.
+
+## 3. Frontend experience
+
+Describe routes, screens, interaction behavior, accessibility, and client data
+contracts.
+
+## 4. Application and domain behavior
+
+Describe APIs, authorization, domain records, persistence, storage, and the
+business rules that connect the frontend to system behavior.
+
+## 5. Processing, integrations, and derived behavior
+
+Describe applicable background work, models, integrations, derived insights,
+retries, and recovery behavior.
+
+## 6. Reliability, security, privacy, and observability
+
+Describe product-facing quality, access, data-protection, audit, and
+safe-failure requirements.
+
+## 7. Acceptance requirements
+
+List the observable conditions that prove the approved product behavior is
+coherent from frontend to backend.
+
+## 8. Product boundaries
+
+List adjacent behavior that is outside this product specification so compatible
+ideas are not mistaken for approved product behavior.
+```
+
+For a product specification variant:
+
+- consolidate approved changes from every affected dated task specification in
+  the same planning substep, or record an evidence-backed no-impact finding;
+- rewrite affected sections to the latest approved product contract;
+- include neither availability/future/deferred categories nor worker, gate,
+  branch, implementation-history, evidence-ledger, or chronological-diary
+  organization; and
+- keep unapproved proposals and transient execution information in their owning
+  task, decision, or status authority.
+
 ## Section rules
 
 - Keep purpose, scope, and authority explicit so another session can route new information correctly.
@@ -93,6 +163,9 @@ Retain only history needed to explain migrations, rejected vocabulary, compatibi
 - Link related authorities with repository-relative paths.
 - Preserve user-instructed structure when updating an established document unless the user approves a redesign.
 - Omit an empty optional section only when its responsibility is genuinely irrelevant, not merely inconvenient to investigate.
+- For product specifications, use the product specification variant rather than
+  preserving generic authority sections that would turn the document into a
+  status or history report.
 
 ## Update rules
 
@@ -109,3 +182,6 @@ For maintenance updates:
 9. Commit the approved bounded update with its evidence.
 
 Do not append a running diary. Rewrite current-state sections so the document remains readable as an authority, then retain only useful history in the designated sections.
+
+For a product specification variant, rewrite the affected high-level product
+sections instead of adding status, evidence, or history entries.

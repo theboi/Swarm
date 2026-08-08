@@ -51,14 +51,29 @@ During planning:
 2. Use `grilling` for material unanswered decisions and `superpowers:brainstorming` for approval.
 3. Ask the authorized decision owner only when evidence cannot settle a material boundary.
 4. Write `<SPEC_PATH>` with the task-local architecture, behavior, error handling, tests, and acceptance decisions.
-5. Use `superpowers:writing-plans` to write `<PLAN_PATH>` with exact files, interfaces, tests, commands, ownership, dependencies, and review gates.
-6. Split plan tasks only when execution state and mutable surfaces are independent; sequence shared contracts, migrations, generated artifacts, and central composition.
-7. Add review and verification checkpoints for every subagent-produced change.
-8. Update relevant living masterplans with stable approved decisions before implementation relies on them. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient progress in `<STATUS_PATH>`.
+5. Immediately identify every affected product specification masterplan. In the
+   same planning substep, consolidate all and only approved changes from
+   `<SPEC_PATH>` into its unified high-level product contract: applicable user
+   journeys, frontend surfaces and client data, APIs and authorization, records
+   and storage, processing and integrations, reliability, security, privacy,
+   observability, acceptance, and product boundaries. Do not organize that
+   masterplan by available now, approved future, deferred, worker, or delivery
+   history. If `<SPEC_PATH>` has no approved product impact, record an
+   evidence-backed no-impact finding instead.
+6. Use `superpowers:writing-plans` to write `<PLAN_PATH>` with exact files, interfaces, tests, commands, ownership, dependencies, and review gates.
+7. Split plan tasks only when execution state and mutable surfaces are independent; sequence shared contracts, migrations, generated artifacts, and central composition.
+8. Add review and verification checkpoints for every subagent-produced change.
+9. Update relevant non-product living masterplans with stable approved decisions before implementation relies on them. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient progress in `<STATUS_PATH>`.
 
 After every completed planning subtask or plan substep, run focused checks, update only owned documents and `<STATUS_PATH>`, make a bounded commit, pull `origin/main` into `<FEATURE_BRANCH>`, resolve only mechanical owned conflicts, and rerun affected checks. Then acquire `<MAIN_INTEGRATION_LOCK>`, pull local `main` from `origin/main` with fast-forward only, merge the verified substep into local `main`, rerun affected checks on `main`, push local `main` to `origin/main`, and prove the substep commit is reachable there. If the push is rejected, pull the new `origin/main` into the feature branch and repeat reconciliation, verification, and locked integration. Never force-push `main`. A feature-branch push alone does not complete a substep.
 
-Planning is complete only when the worker-authored specification and plan are approved, committed, integrated into `origin/main`, linked from status, and affected living authorities plus required downstream documents contain stable current decisions. Hand off exact commits, verification, propagation evidence, unresolved questions, known limitations, and execution inputs. Then stop before implementation.
+Planning is complete only when the worker-authored specification, affected
+product specification masterplan updates or evidence-backed no-impact findings,
+and plan are approved, committed, integrated into `origin/main`, linked from
+status, and affected non-product living authorities plus required downstream
+documents contain stable current decisions. Hand off exact commits, verification,
+propagation evidence, unresolved questions, known limitations, and execution
+inputs. Then stop before implementation.
 ```
 
 ## Execution worker prompt
@@ -86,7 +101,19 @@ During execution:
 3. Give editing subagents explicit owned paths, interfaces, tests, isolated workspaces, and terminal deliverables.
 4. Review every subagent diff/evidence before adoption; a subagent report is not verification.
 5. Request/address code review and run verification-before-completion.
-6. Update living masterplans with stable implementation evidence, changed approved decisions, and durable limitations. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient work in `<PLAN_PATH>` or `<STATUS_PATH>`.
+6. When execution changes the approved product contract or changes
+   `<SPEC_PATH>`, immediately consolidate the approved change into every affected
+   product specification masterplan using the same unified high-level
+   frontend-to-backend format, or record an evidence-backed no-impact finding.
+   Do not add availability or delivery-status partitions. Update other living
+   masterplans with stable implementation evidence, changed approved decisions,
+   and durable limitations. For every living-authority change, identify direct
+   and transitive downstream workers and gates. If dependencies, blockers,
+   contracts, ownership, acceptance, tests, launch instructions, or
+   implementation assumptions change, ensure the relevant downstream briefs,
+   specs, plans, prompts, and statuses are updated and approved by their owners
+   before those workers continue. Keep transient work in `<PLAN_PATH>` or
+   `<STATUS_PATH>`.
 
 After every completed implementation subtask or plan substep, run focused verification, update only owned documents and `<STATUS_PATH>`, make a bounded commit, pull `origin/main` into `<FEATURE_BRANCH>`, resolve only mechanical owned conflicts, and rerun affected checks. Then acquire `<MAIN_INTEGRATION_LOCK>`, pull local `main` from `origin/main` with fast-forward only, merge the verified substep into local `main`, rerun affected checks on `main`, push local `main` to `origin/main`, and prove the substep commit is reachable there. If the push is rejected, pull the new `origin/main` into the feature branch and repeat reconciliation, verification, and locked integration. Never force-push `main`. A feature-branch push alone does not complete a substep.
 
@@ -110,5 +137,8 @@ Model strength does not make unsafe parallelism acceptable. The parent worker re
 - Interpret “pull regularly” as pulling `origin/main` into the worker branch; fetching without incorporation is insufficient.
 - Require every independently testable substep to be merged into local `main` and pushed to `origin/main` before the next substep.
 - Require living-authority changes to update every relevant downstream worker document through its owner before affected work continues.
+- Require every new or modified worker specification to synchronize every
+  affected product specification masterplan in the same planning substep, or to
+  record an evidence-backed no-impact finding.
 - Route stable decisions/evidence through `living-masterplan`; keep transient work in plans/status.
 - State the fallback when subagents or requested model settings are unavailable.

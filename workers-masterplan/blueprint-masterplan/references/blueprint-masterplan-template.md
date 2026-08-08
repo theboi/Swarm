@@ -130,9 +130,19 @@ For a multi-worker objective, target three to seven concurrently ready workers i
 3. Read this blueprint, relevant living authorities, the worker brief, and prerequisite handoffs.
 4. Use Superpowers brainstorming for task-local decisions.
 5. Write and obtain approval for `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`.
-6. Use `superpowers:writing-plans` to write `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`.
-7. Update affected living authorities with stable approved decisions.
-8. Hand off the approved planning artifacts and stop before implementation.
+6. Immediately identify every affected product specification masterplan and
+   consolidate all approved changes from the dated specification into its unified
+   high-level frontend-to-backend product contract, or record an evidence-backed
+   no-impact finding.
+7. Use `superpowers:writing-plans` to write `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`.
+8. Update affected non-product living authorities with stable approved decisions.
+9. Hand off the dated specification, product specification updates or no-impact
+   findings, approved plan, and required downstream propagation together; then
+   stop before implementation.
+
+Repeat step 6 whenever the dated specification changes. Do not complete planning
+or unblock implementation while an affected product specification masterplan is
+stale.
 
 The coordinator reserves these paths but does not author their detailed contents.
 
@@ -224,7 +234,10 @@ When planning and execution may run in separate sessions or a launch packet is r
 - `docs/workers/<blueprint-id>/prompts/<worker-id>-planning.md`; and
 - `docs/workers/<blueprint-id>/prompts/<worker-id>-execution.md`.
 
-The planning prompt makes the worker author its own reserved specification/plan and stops before product implementation. The execution prompt consumes those approved files and continues through integrated evidence and safe teardown.
+The planning prompt makes the worker author its own reserved specification/plan,
+synchronize every affected product specification masterplan in the same planning
+substep, and stop before product implementation. The execution prompt consumes
+those approved files and continues through integrated evidence and safe teardown.
 
 ## 9. Shared integration contracts
 
@@ -275,7 +288,11 @@ The planning prompt makes the worker author its own reserved specification/plan 
 
 ## 13. Completion, handoff, and teardown
 
-A worker handoff includes its ID, branch/final commit/containing `origin/main` commit, worker-authored spec/plan, living-authority and downstream-document updates, verification, review, migrations/generated/operational actions, conflict resolutions, limitations, and downstream unblock.
+A worker handoff includes its ID, branch/final commit/containing `origin/main`
+commit, worker-authored spec/plan, affected product specification masterplan
+updates or evidence-backed no-impact findings, living-authority and
+downstream-document updates, verification, review, migrations/generated/
+operational actions, conflict resolutions, limitations, and downstream unblock.
 
 After final integration: prove ancestry from `origin/main`, verify the integrated result and downstream-document propagation, preserve the handoff/status, confirm the worker tree is clean, remove only that tree without force, safely delete merged branches, and record a cleanup receipt.
 
@@ -289,7 +306,9 @@ List adjacent products, deferred capabilities, speculative infrastructure, and f
 
 Ordinary progress updates status, not this frozen blueprint. When approved stable information changes scope, ownership, dependencies, gates, or completion:
 
-1. update affected living authorities;
+1. update affected living authorities and consolidate changes from every changed
+   worker specification into its affected product specification masterplans, or
+   record evidence-backed no impact;
 2. identify every directly or transitively affected worker and invalidated assumption;
 3. update all relevant downstream briefs, specs, plans, prompts, and statuses through their owners;
 4. issue an explicit blueprint revision/replacement;

@@ -31,6 +31,34 @@ Do not run a full interview for an explicit, already approved, evidence-backed m
 
 Read [masterplan types and routing](references/masterplan-types.md) completely when choosing types, resolving overlaps, adding a custom type, or routing ambiguous information.
 
+## Product specification masterplan contract
+
+For a product or feature specification, write one current, high-level contract
+for all approved product behavior. It must be readable from the user experience
+through the technical system without requiring task history or private context.
+
+Adapt headings to the product, but cover the applicable:
+
+- purpose, users, record contexts, journeys, and product boundaries;
+- frontend routes, surfaces, interactions, accessibility, and client data
+  contracts;
+- APIs, authorization, domain records, persistence, storage, and integrations;
+- background processing, model behavior, derived insights, and recovery;
+- reliability, security, privacy, observability, and acceptance requirements.
+
+Consolidate every approved feature change into the affected sections so the
+document describes one coherent frontend-to-backend product. Do not organize a
+product specification masterplan by available now, approved future, deferred,
+milestone, worker, gate, branch, evidence ledger, implementation status, or
+chronological change history. Keep temporary execution progress in worker status
+or implementation plans; keep unapproved proposals in their decision process.
+
+When a dated task specification is written or modified, assess every affected
+product specification masterplan in the same planning substep. Promote all and
+only its approved product changes, or record an evidence-backed finding that it
+has no product-specification impact. A dated task specification is not complete
+while an affected product specification masterplan is stale.
+
 ## Bootstrap workflow
 
 1. **Inspect before interviewing.**
@@ -52,7 +80,8 @@ Read [masterplan types and routing](references/masterplan-types.md) completely w
    - Do not create mutually contradictory “approved” masterplans to meet a deadline.
 5. **Write the authority set.**
    - Read [the living masterplan template](references/living-masterplan-template.md) completely.
-   - Adapt headings to the domain while preserving purpose, authority, current state, approved decisions, unresolved decisions, exclusions, evidence, and relationships.
+   - Use the product specification variant for product/feature authorities; use
+     the generic authority responsibilities for every other type.
    - Consolidate competing documents without deleting useful history.
 6. **Verify and commit.**
    - Run the verification gate below.
@@ -62,15 +91,20 @@ Read [masterplan types and routing](references/masterplan-types.md) completely w
 ## Maintenance workflow
 
 1. Read the complete target masterplan and every directly affected authority section.
-2. Inspect the supplied source, commit, code, test, release, or external evidence.
+2. Inspect the supplied task specification, source, commit, code, test, release,
+   or external evidence.
 3. Classify the information using the routing reference.
 4. Determine whether it changes current fact, approved intent, unresolved policy, scope, or only task status.
-5. If the update is explicit, settled, and consistent, edit only the affected sections without restarting discovery.
-6. If it creates a material contradiction or new decision, stop the edit, use Grill Me as needed, and obtain Superpowers brainstorming approval.
-7. Update every authority affected by one stable shared decision. Do not leave a knowingly contradictory intermediate state.
-8. Preserve unrelated structure, wording, user instructions, and valid history.
-9. Review the diff and run the verification gate.
-10. Commit the bounded update when the request and repository workflow authorize the change.
+5. When the source is a new or modified dated task specification, identify every
+   affected product specification masterplan and consolidate its approved product
+   changes in the same bounded update, or record an evidence-backed no-impact
+   finding.
+6. If the update is explicit, settled, and consistent, edit only the affected sections without restarting discovery.
+7. If it creates a material contradiction or new decision, stop the edit, use Grill Me as needed, and obtain Superpowers brainstorming approval.
+8. Update every authority affected by one stable shared decision. Do not leave a knowingly contradictory intermediate state.
+9. Preserve unrelated structure, wording, user instructions, and valid history.
+10. Review the diff and run the verification gate.
+11. Commit the bounded update when the request and repository workflow authorize the change.
 
 Repository evidence may update implementation state. It does not automatically override desired product behavior, commercial policy, legal constraints, or an approved architecture boundary.
 
@@ -80,12 +114,15 @@ Repository evidence may update implementation state. It does not automatically o
 | --- | --- |
 | Implemented behavior with fresh evidence | Implementation state and affected factual sections |
 | Approved business, product, or architecture decision | Owning living authority and every constrained authority |
+| New or modified dated task specification | Assess every affected product specification masterplan; consolidate all approved product changes in the same planning substep or record an evidence-backed no-impact finding |
 | Unapproved proposal | Unresolved decisions or a Superpowers design |
 | Worker branch, substep, or blocker status | Worker-owned status file |
 | Historical rule readers may still encounter | Superseded/history section |
 | Detailed task steps | Dated Superpowers implementation plan |
 
-Never copy task narration into a masterplan. Promote only stable, approved decisions and verified current state.
+Never copy task narration into a masterplan. Promote only stable, approved
+product behavior into product specifications; retain verified current state in
+the authority that owns implementation evidence.
 
 ## Approval and contradiction gates
 
@@ -118,6 +155,11 @@ Before claiming an authority is current:
 - verify purpose, scope, and decision owner are explicit;
 - confirm implemented claims have reproducible evidence;
 - confirm proposals are not presented as approved decisions;
+- for every changed task specification, confirm each affected product
+  specification masterplan is current or has an evidence-backed no-impact finding;
+- for a product specification masterplan, confirm all approved behavior reads as
+  one high-level frontend-to-backend contract with no availability or delivery
+  status partitions;
 - confirm superseded rules are not simultaneously current;
 - check related authorities for stale contradictions;
 - review the diff for accidental broad rewrites;
@@ -135,7 +177,7 @@ Use a bounded commit message that states the authority change. Push only when th
 | Code differs from product intent | Record implementation truth; escalate policy conflict |
 | Several masterplans share one decision | Update all affected authorities coherently |
 | Worker reports progress | Route to worker status |
-| Task plan contains a stable approved contract | Promote that contract before implementation depends on it |
+| Dated task specification is written or changed | Update affected product specifications in the same planning substep, or record an evidence-backed no-impact finding |
 | Evidence cannot settle the question | Record the blocker and decision owner |
 
 ## Common mistakes
@@ -145,6 +187,7 @@ Use a bounded commit message that states the authority change. Push only when th
 | Rewriting the whole document for one update | Change the smallest coherent set of sections |
 | Treating code as the product authority | Use code as evidence of current behavior |
 | Appending a chronological diary | Rewrite current-state sections and retain only useful history |
+| Treating a product specification as a roadmap or evidence dashboard | Rewrite it as one approved frontend-to-backend product contract |
 | Creating “v2” beside an existing authority | Consolidate or explicitly supersede |
 | Grilling a settled evidence-backed update | Verify and update it directly |
 | Skipping questions because delivery is urgent | Expose the unresolved decision and its blocker |
