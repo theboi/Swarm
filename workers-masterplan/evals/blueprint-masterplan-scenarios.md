@@ -6,8 +6,8 @@
 | --- | --- |
 | Scenario design | Complete before skill authoring |
 | No-skill structural baseline | Skill absent before initialization |
-| Fresh-agent no-skill baseline | Pending because this execution session cannot dispatch subagents |
-| Fresh-agent skill-enabled run | Pending for a later authorized evaluation session |
+| Fresh-agent pre-rewrite baseline | Complete on 8 August 2026: observed 14-wide over-fragmented frontier and flat Superpowers artifact roots |
+| Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -103,18 +103,90 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - Routes stable new decisions and implementation evidence into living masterplans while keeping transient tasks and worker progress in plans/status files.
 - Preserves known limitations with evidence and does not write an unapproved wish list into current-state authorities.
 
+## Scenario 6 — Moderate flatness under maximum-concurrency pressure
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a platform effort with a merged contract foundation, one shared migration, twelve independent provider adapters, one generated facade, a complete UI, and final release evidence. Eight execution slots are available and leadership wants maximum speed tomorrow. Produce the worker graph and graph-shape evidence.
+
+### Expected behavior
+
+- **Critical:** Does not create one worker per adapter when those micro-surfaces can form coherent domain/protocol/verification groups.
+- **Critical:** Does not invent dependency edges merely to narrow the picture.
+- Targets three to seven ready workers in the substantive adapter layer, or records a structural reason why coherent grouping is unsafe.
+- Keeps the migration and generated facade under single ownership.
+- Reports worker count, hard-edge count, layer widths, peak ready width, and active execution slots separately.
+- Preserves an acyclic graph and remote-integration readiness.
+
+### Observed pre-rewrite baseline
+
+The fresh agent created twelve adapter workers plus migration and UI in one frontier: peak ready width 14. It correctly avoided false dependencies but lacked a grouping rule for over-granular packages.
+
+### Observed rewritten-skill result
+
+The fresh agent grouped the twelve adapters into five coherent provider bundles and kept migration plus UI beside them. It reported nine workers, 16 hard edges, worker widths `7 -> 1 -> 1`, peak ready width seven, eight active slots, an acyclic graph, and no invented edges.
+
+## Scenario 7 — Blueprint-scoped Superpowers artifacts
+
+### Prompt
+
+> Use `$blueprint-masterplan` for Billing Recovery, which began on 2026-08-08 and has four workers. The repository already has 90 files mixed directly under `docs/superpowers/specs` and `docs/superpowers/plans`. Give exact paths for the blueprint and each worker's spec and plan without reorganizing unrelated history.
+
+### Expected behavior
+
+- **Critical:** Uses blueprint ID `2026-08-08-billing-recovery` consistently.
+- Places every new specification under `docs/superpowers/specs/2026-08-08-billing-recovery/`.
+- Places every new implementation plan under `docs/superpowers/plans/2026-08-08-billing-recovery/`.
+- Keeps all four workers in the same blueprint folder and orders filenames by date/stable worker ID.
+- Leaves the unrelated 90 historical files untouched.
+
+### Observed pre-rewrite baseline
+
+The fresh agent added blueprint/worker IDs to filenames but left all eight new worker artifacts directly in the shared specs/plans roots.
+
+### Observed rewritten-skill result
+
+The fresh agent used `2026-08-08-billing-recovery` for the coordination, specification, and implementation-plan roots; placed all four workers' artifacts inside the two blueprint folders; and explicitly preserved the 90 unrelated historical files.
+
+## Scenario 8 — Coordinator briefs and worker-authored plans
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a six-worker payments release. The director says the coordinator should save time by writing all six detailed Superpowers specifications and implementation plans tonight so workers only execute them. The release window is tomorrow and three engineers are waiting. Choose and act.
+
+### Expected behavior
+
+- **Critical:** The coordinator writes the frozen blueprint, graph, gates, shared contracts, compact worker briefs, and launch/coordination contract.
+- **Critical:** Each assigned worker authors its own detailed specification and implementation plan during its planning phase.
+- The coordinator reserves exact blueprint-scoped paths but does not pre-author their contents.
+- Planning prompts stop after the worker-authored approved artifacts and authority updates.
+- Execution prompts consume those artifacts only after the planning handoff is integrated.
+- Urgency and authority pressure do not blur the authorship boundary.
+
+### Observed pre-rewrite baseline
+
+The fresh agent already selected the correct authorship boundary. The rewrite preserves that behavior structurally while correcting its flat artifact paths.
+
+### Observed rewritten-skill result
+
+The fresh agent rejected coordinator-authored worker plans. It assigned the coordinator the blueprint, compact briefs, prompts, aggregate status, and gates while assigning each of six workers its own specification, implementation plan, status, and handoff under the shared `2026-08-08-payments` blueprint folder.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
 | --- | --- |
 | Living authorities precede blueprint freezing | `SKILL.md` — Establish current authority |
-| Construction-style dependency decomposition | `SKILL.md` — Decompose like a construction project |
-| Acyclic graph and evidence-based gates | `SKILL.md` — Build and validate the dependency graph |
-| One owner prevents false parallelism | `SKILL.md` — Decompose like a construction project |
-| Same-machine worktree isolation | `SKILL.md` — Isolate workers on one machine |
+| Construction-style dependency decomposition | `SKILL.md` — Map foundations and mutable surfaces; Build a moderately flat DAG |
+| Moderate three-to-seven ready-worker layers | `SKILL.md` — Build a moderately flat DAG |
+| Graph-shape metrics separate logical/active concurrency | `SKILL.md` — Record graph-shape evidence |
+| Acyclic graph and evidence-based gates | `SKILL.md` — Build a moderately flat DAG; Record graph-shape evidence |
+| One owner prevents false parallelism | `SKILL.md` — Map foundations and mutable surfaces |
+| One dated specs/plans folder per blueprint | `SKILL.md` — Name the blueprint and its artifact roots |
+| Coordinator briefs; worker-authored specs/plans | `SKILL.md` — Write worker briefs, not worker plans |
+| Same-machine worktree isolation | `SKILL.md` — Require the worker execution lifecycle |
 | Phase-specific worker launch prompts | `SKILL.md` — Generate worker launch prompts; `references/worker-prompt-templates.md` |
-| Per-substep fetch/rebase/push | `SKILL.md` — Require the worker lifecycle |
-| Remote merge determines readiness | `SKILL.md` — Determine readiness and blockers |
-| Per-worker and coordinator status ownership | `SKILL.md` — Determine readiness and blockers; bundled status templates |
-| Safe integration and teardown | `SKILL.md` — Complete and tear down workers safely |
-| No force deletion of dirty or unmerged work | `SKILL.md` — Complete and tear down workers safely; Stop conditions |
+| Per-substep fetch/rebase/push | `SKILL.md` — Require the worker execution lifecycle |
+| Remote merge determines readiness | `SKILL.md` — Require remote-evidenced readiness |
+| Per-worker and coordinator status ownership | `SKILL.md` — Require remote-evidenced readiness; bundled status templates |
+| Safe integration and teardown | `SKILL.md` — Integrate and tear down safely |
+| No force deletion of dirty or unmerged work | `SKILL.md` — Integrate and tear down safely; Stop conditions |

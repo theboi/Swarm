@@ -1,249 +1,257 @@
 ---
 name: blueprint-masterplan
-description: Use when splitting a bounded delivery objective across independent workers, agents, branches, worktrees, clones, or machines, or when writing phase-specific worker launch prompts with explicit dependencies, ownership, blocker visibility, delivery gates, Git synchronization, or collision avoidance.
+description: Use when splitting a bounded delivery objective across workers, agents, branches, worktrees, clones, or machines; flattening a dependency flowchart; assigning collision-safe ownership; or writing worker briefs, readiness rules, delivery gates, and phase-specific launch prompts.
 ---
 
 # Blueprint Masterplan
 
 ## Overview
 
-Turn current living authorities into a frozen construction-style execution contract: foundations first, independently owned trades in parallel, integration and evidence gates afterward.
+Turn current living authorities into a frozen execution contract: establish foundations, expose independently owned trades in parallel, converge through named integration owners, and close through evidence gates.
 
-**Core principle:** Parallelize only work with independent ownership and merged contracts. Remote integration state—not local claims or private branches—decides readiness.
+**Core principle:** Maximize safe throughput, not worker count. A coordinator freezes the execution system; each worker designs and plans its own bounded task.
+
+Use `docs/plans/EdenMind_Implementation_Masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
 
 ## Required companion skills
 
-- **REQUIRED SUB-SKILL:** Use `living-masterplan` to bootstrap missing authorities or maintain affected authorities when stable information changes.
-- **REQUIRED SUB-SKILL:** Use `grill-me` when scope, decomposition, ownership, gates, or acceptance criteria remain materially unsettled.
-- **REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before freezing or materially revising the blueprint.
-- **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion` before claiming the graph, ownership, status, or gate contract is valid.
-- **REQUIRED WORKER SUB-SKILLS:** Require `superpowers:using-git-worktrees`, `superpowers:writing-plans`, `superpowers:test-driven-development` where applicable, `superpowers:requesting-code-review`, and `superpowers:verification-before-completion` in worker briefs.
-- **REQUIRED CLOSEOUT SUB-SKILL:** Require `superpowers:finishing-a-development-branch` for integration and teardown.
+- **REQUIRED SUB-SKILL:** Use `living-masterplan` when an authority is missing or stable approved information changes.
+- **REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before freezing or materially revising an unsettled blueprint.
+- **REQUIRED SUB-SKILL:** Use `grilling` when scope, decomposition, ownership, gates, or acceptance remains materially unsettled.
+- **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion` before declaring the blueprint valid.
+- **REQUIRED WORKER SUB-SKILLS:** Require applicable Superpowers planning, worktree, TDD, review, verification, and branch-finishing skills in worker briefs or prompts.
 
-The generated blueprint must require workers to use applicable Superpowers planning, TDD, review, worktree, verification, and branch-finishing skills.
+Do not restart discovery for explicit, settled, evidence-backed maintenance.
+
+## Freeze the right document
+
+The coordinator-owned masterplan contains these responsibilities in this order:
+
+1. purpose, authority, and the one execution question;
+2. bounded outcome and measurable delivery gates;
+3. foundations workers must reuse;
+4. locked product, architecture, security, data, and ownership boundaries;
+5. a flattened hard-dependency DAG and graph-shape evidence;
+6. readiness and blocker rules;
+7. the mandatory worker lifecycle;
+8. compact worker briefs;
+9. shared integration contracts;
+10. integration gates;
+11. coordination, merge/conflict, handoff/teardown, exclusions, and revision policy.
+
+Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting.
+
+The masterplan owns worker boundaries, not worker implementation detail. A worker brief defines outcome, prerequisites, ownership, non-ownership, acceptance evidence, merge condition, and downstream unblock. The assigned worker later authors its own dated Superpowers specification and implementation plan.
 
 ## Establish current authority
 
-1. Identify the bounded delivery objective, remote, base branch, coordinator, and requested gates.
-2. Fetch remote state and inspect the current base branch without discarding local work.
-3. Find and read the relevant business, product, architecture, implementation, operations, and custom living masterplans.
-4. Confirm that their scope and evidence cover the objective.
-5. If an authority is missing, use `living-masterplan` bootstrap mode.
-6. If new stable information appears, use `living-masterplan` maintenance mode and commit the approved update before freezing the blueprint.
-7. Stop when contradictions or unanswered decisions would make ownership, dependencies, or acceptance unreliable.
+1. Identify the bounded objective, coordinator, remote, base branch, decision owners, and requested gates.
+2. Fetch remote state and inspect the current base without discarding local work.
+3. Read relevant business, product, architecture, implementation, operations, security, and custom authorities.
+4. Read existing code, migrations, tests, generated artifacts, components, and operational foundations that constrain decomposition.
+5. Use `living-masterplan` before freezing when an authority is missing or stable approved information changed.
+6. Stop when a contradiction or unanswered decision makes scope, ownership, dependencies, or acceptance unreliable.
 
-Do not rerun living-masterplan bootstrap merely because this is a new session. Existing current authorities are inputs; maintain them only when evidence or decisions changed.
+Living authorities own approved behavior and current truth. The frozen blueprint owns delivery decomposition. Worker status owns transient progress.
 
-## Blueprint workflow
+## Name the blueprint and its artifact roots
 
-1. **Map the foundations.** Inventory reusable modules, infrastructure, components, migrations, generated artifacts, contracts, tests, and operational patterns.
-2. **Map mutable surfaces.** List every file, schema, migration sequence, shared component, API contract, generated output, environment, and decision record likely to change.
-3. **Pressure-test the delivery boundary.** Use Grill Me and Superpowers brainstorming for unresolved scope, gates, ownership, or success criteria.
-4. **Decompose into worker packages.** Give each one a bounded outcome, prerequisites, ownership, non-ownership, acceptance evidence, merge condition, and unblock target.
-5. **Build the dependency DAG.** Add hard edges only for contracts or evidence that must be integrated first. Add optional gates as real nodes.
-6. **Design execution isolation.** Assign one branch and worktree or clone per worker, with a distinct status file.
-7. **Write the blueprint and coordination contracts.** Use the bundled templates.
-8. **Validate graph, ownership, readiness, gates, and teardown.**
-9. **Obtain approval and commit the frozen snapshot.**
+Create one stable `<blueprint-id>` as `YYYY-MM-DD-<short-slug>`, using the date the delivery effort began. Do not change the folder because an individual worker starts later.
 
-Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting. Follow established project paths; otherwise default the blueprint to `docs/plans` and coordination files to `docs/workers/<blueprint-id>`.
+Follow established project paths. Otherwise use:
 
-## Generate worker launch prompts
+```text
+docs/plans/<project>_<objective>_Implementation_Masterplan.md
+docs/superpowers/specs/<blueprint-id>/
+docs/superpowers/plans/<blueprint-id>/
+docs/workers/<blueprint-id>/
+```
 
-Read [the worker prompt templates](references/worker-prompt-templates.md) completely. Create separate planning-only and execution prompts when phases may run in different sessions.
+Reserve worker paths inside the one blueprint folder:
 
-Every prompt must name the blueprint, relevant living authorities, worker/task ID, prerequisites, owned and excluded surfaces, status path, remote/base, unique branch, isolated workspace, verification rhythm, and exact terminal condition.
+```text
+docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md
+docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md
+```
 
-Preserve user-approved subagent model/effort guidance. Replace instructions to work directly on a shared `main` checkout with a branch and isolated worktree based on current remote `main`; workers still fetch, incorporate, commit, and push regularly. Planning prompts stop after approved specifications/plans and living-authority updates. Execution prompts follow those artifacts through review, integration, evidence, and safe teardown.
+Do not create a folder per worker. The blueprint folder contains all worker documents for that delivery effort in date/ID order.
 
-## Decompose like a construction project
+## Map foundations and mutable surfaces
 
-Apply this sequence:
+Inventory reusable modules, contracts, infrastructure, migrations, generated outputs, components, tests, environments, and decision records.
 
-1. **Survey and authority:** settle approved scope and current site conditions.
-2. **Foundation:** merge shared types, seams, contracts, migrations, or ownership maps.
-3. **Independent trades:** run packages in parallel only when they do not contend for a mutable surface.
-4. **Assembly:** designate an integration owner for cross-package wiring and combined evidence.
-5. **Inspection gates:** verify observable outcomes such as UI Demo, MVP, security review, pilot, or release.
-6. **Closeout:** integrate, hand off, remove temporary workspaces, and delete merged worker branches.
+For every likely mutable surface, name exactly one owner. Include more than files: schemas, migration sequences, APIs, generated artifacts, central composition, environments, and operational records also collide.
 
-One shared mutable surface has one owner. When two proposed workers edit the same central file, migration sequence, generated artifact, or contract, do one of:
+When proposed workers overlap, choose one:
 
-- assign the entire surface to one foundation or integration worker;
-- sequence the packages with a remote-merge dependency; or
-- first refactor behind an approved, merged interface.
+- assign the whole surface to one foundation or integration owner;
+- sequence the packages behind a remote-merge dependency; or
+- first merge an approved interface that makes later ownership independent.
 
-Do not call overlapping edits “parallel” merely because Git can create two branches.
+Worktrees prevent filesystem collisions. They do not make overlapping semantic ownership parallel.
 
-## Build and validate the dependency graph
+## Build a moderately flat DAG
 
-For every worker and gate, define:
+Start from real contract and evidence dependencies. Remove convenience sequencing and wave-wide barriers.
 
-- stable ID and outcome;
-- hard prerequisites;
+For a multi-worker objective, target **three to seven concurrently ready workers** in each substantive post-foundation trade layer. This is a design band:
+
+- roots, contract foundations, joins, gates, closeout, and small objectives may be narrower;
+- a layer may exceed seven only when packages remain independently coherent and grouping would create unsafe ownership or verification; and
+- record a structural reason for every substantive exception.
+
+Flatten a serial wrapper when it owns no distinct surface, contract, decision, or acceptance evidence. Split an oversized worker only when every child has:
+
+- one coherent outcome and useful downstream handoff;
+- non-overlapping mutable ownership;
+- independently producible acceptance evidence; and
+- enough work to justify planning, review, integration, and status overhead.
+
+When a frontier exceeds seven, group related micro-surfaces by domain, protocol, risk, or shared verification. Keep migrations, generated artifacts, central facades, and tightly coupled files under one owner. Never invent hard edges to narrow the drawing.
+
+Measure logical readiness independently from active execution slots. Ready-but-unscheduled work remains `ready`.
+
+## Record graph-shape evidence
+
+Every blueprint records:
+
+| Metric | Required evidence |
+| --- | --- |
+| Worker nodes | Count and why each package is coherent |
+| Hard edges | Count and why remote integration is required |
+| Layer widths | Worker IDs in each substantive ready frontier |
+| Peak ready width | Widest logical frontier |
+| Active execution slots | Current capacity, separate from graph width |
+| Width exceptions | Structural reason for layers outside three to seven |
+
+Validate that the graph is acyclic; every node exists; every arrow matches written `Depends on` and `Unblocks`; gates are real nodes; and coordination-only relationships are not hard edges.
+
+If a cycle appears, redesign ownership or the interface. Do not hide it in prose.
+
+## Write worker briefs, not worker plans
+
+Each masterplan brief contains:
+
+- stable worker/task ID and bounded outcome;
+- hard prerequisites and immediate-start rule;
 - owned and excluded surfaces;
-- supplied contract or evidence;
-- acceptance evidence;
+- coordination relationships that are not hard dependencies;
+- work outcomes, not step-by-step implementation instructions;
+- exact acceptance evidence;
 - merge condition; and
-- exact downstream nodes unblocked.
+- downstream nodes and supplied contracts/evidence.
 
-Validate:
+The coordinator reserves artifact paths but does not pre-author the worker's detailed specification or implementation plan.
 
-- the graph is acyclic;
-- every referenced node exists;
-- every diagram edge matches written `Depends on` and `Unblocks` fields;
-- every non-root node has a justified predecessor or explicit immediate-start rule;
-- every shared mutable surface has exactly one owner;
-- every gate has measurable evidence, a verifier, failure ownership, and a downstream consequence; and
-- coordination-only relationships are not mislabeled as hard dependencies.
+Each worker's planning phase:
 
-If a cycle appears, redesign ownership or the interface. Never hide the cycle in prose.
+1. proves prerequisites are integrated on the remote base;
+2. enters its unique isolated branch/worktree or clone;
+3. reads the blueprint, relevant living authorities, brief, and prerequisite handoffs;
+4. uses Superpowers brainstorming for task-local decisions;
+5. writes and obtains approval for its dated specification inside the blueprint specs folder;
+6. uses `superpowers:writing-plans` to write its detailed plan inside the blueprint plans folder;
+7. updates stable living authorities before implementation depends on changed decisions; and
+8. hands off those approved artifacts before implementation begins.
 
-## Require the worker lifecycle
+## Generate launch prompts when needed
 
-Put this contract in every blueprint:
+Read [the worker prompt templates](references/worker-prompt-templates.md) completely before generating prompts.
 
-1. Fetch the remote base and confirm every hard prerequisite is integrated with required evidence.
-2. Enter a unique isolated worktree or clone and run a clean baseline.
-3. Read the blueprint, living authorities, worker brief, and prerequisite handoffs.
-4. Use Superpowers brainstorming for task-specific decisions.
-5. Write the approved dated task specification and implementation plan.
-6. Maintain living masterplans before implementation depends on newly approved stable contracts.
-7. Implement with TDD where applicable, request review, and verify.
-8. After each completed plan substep:
-   - run focused verification;
-   - update only the worker-owned status file;
-   - commit only owned changes;
-   - fetch and rebase or incorporate the remote base;
-   - resolve mechanical conflicts within ownership;
-   - stop on semantic or cross-owner conflicts;
-   - rerun affected checks; and
-   - push before the next substep.
-9. Merge at dependency boundaries, completed packages, or gates—not after every substep.
-10. Produce the evidence-backed handoff and perform safe teardown after integration.
+Create separate planning and execution prompts when phases may run in different sessions or the user requests a launch packet. Both prompts name the blueprint, living authorities, worker brief, prerequisites, owned/excluded surfaces, artifact paths, status path, remote/base, unique branch/workspace, synchronization rhythm, and exact terminal condition.
+
+The planning prompt stops after the worker-authored specification, implementation plan, stable authority updates, and planning handoff. The execution prompt consumes those approved artifacts and continues through implementation, review, integration evidence, handoff, and safe teardown.
+
+## Require remote-evidenced readiness
+
+| State | Meaning |
+| --- | --- |
+| not-ready | At least one hard prerequisite is not integrated |
+| ready | Every hard prerequisite and required contract is integrated |
+| in-progress | The worker claimed an isolated workspace and pushed current work |
+| blocked | A named dependency, decision, conflict, or external condition prevents progress |
+| review | Work exists but review, evidence, or integration remains open |
+| complete | The coordinator verified integration, handoff, evidence, and cleanup |
 
 An unmerged branch may be inspected for coordination. It never satisfies a hard prerequisite.
 
-## Isolate workers on one machine
+Use [the worker status template](references/worker-status-template.md) for active workers and [the coordinator summary template](references/status-summary-template.md) when aggregate coordination is needed. A worker owns only its status file; the coordinator alone owns the aggregate.
 
-Require one worktree and one named feature branch per worker.
+## Require the worker execution lifecycle
 
-1. Detect whether the session is already in a linked worktree; distinguish submodules.
-2. Prefer the platform's native worktree facility.
-3. Otherwise use `superpowers:using-git-worktrees` and an ignored project-local `.worktrees/<worker-id>` directory.
-4. Install project dependencies inside the isolated workspace as required.
-5. Run a clean baseline before implementation.
-6. Keep the user's control checkout out of worker ownership; user branch switches there must not alter worker files.
+1. Fetch the remote base and prove every prerequisite/evidence is integrated.
+2. Enter the assigned isolated branch/worktree or clone and run a clean baseline.
+3. Read the worker-authored approved specification and implementation plan.
+4. Implement only owned surfaces with TDD where applicable.
+5. After each independently testable plan substep: verify, update only the worker status, commit owned changes, fetch/incorporate the remote base, resolve only mechanical owned conflicts, reverify, and push.
+6. Stop on semantic, cross-owner, migration, generated-artifact, or contract conflicts.
+7. Request/address review and run fresh verification-before-completion.
+8. Integrate at meaningful package/dependency/gate boundaries, not after every substep.
+9. Produce an evidence-backed handoff and perform safe teardown only after integration.
 
-Use separate clones for separate machines, incompatible environments, or intentionally independent repository-level configuration. Do not default to full clones for ordinary same-machine file isolation.
+Use one branch and isolated worktree per same-machine worker. Use separate clones for separate machines or incompatible environments. Keep the user's control checkout outside worker ownership.
 
-Worktrees prevent filesystem collisions, not semantic merge conflicts. Ownership and dependency rules still apply.
+## Integrate and tear down safely
 
-## Determine readiness and blockers
+A worker is complete only after:
 
-Use these effective states:
+1. fresh full verification;
+2. approved integration;
+3. proof its final commit is reachable from the remote base;
+4. integrated or CI verification;
+5. preserved handoff and archival status;
+6. a clean worker-owned worktree;
+7. non-forced worktree removal;
+8. safe deletion of merged local and remote worker branches; and
+9. a coordinator cleanup receipt.
 
-| State | Remote-evidenced meaning |
-| --- | --- |
-| not-ready | at least one hard prerequisite is not integrated |
-| ready | all hard prerequisites and contracts are integrated |
-| in-progress | isolated workspace is claimed and current work is pushed |
-| blocked | a named dependency, decision, conflict, or external condition prevents progress |
-| review | implementation exists but review, evidence, or integration remains open |
-| complete | coordinator verified integration and cleanup evidence |
-
-Read [the worker status template](references/worker-status-template.md) completely before creating worker files. Each active worker owns only its unique status file on its branch.
-
-Read [the coordinator summary template](references/status-summary-template.md) completely before creating or updating `STATUS.md). The coordinator alone owns the aggregate and must fetch the base plus active remote branches before reporting:
-
-- ready and active workers;
-- blockers, owners, unblock criteria, and downstream impact;
-- stale branches or missing status;
-- verification and review gaps;
-- pending, passed, or failed gates;
-- critical path and newly unblocked work; and
-- integration and cleanup receipts.
-
-If fetch fails, label the snapshot stale. Recompute readiness from remote ancestry and evidence; do not copy optimistic worker states.
-
-## Complete and tear down workers safely
-
-A worker reaches final completion only through this sequence:
-
-1. Run fresh full verification on the worker tree.
-2. Integrate through the approved path.
-3. Prove the worker's final commit is reachable from the remote base.
-4. Verify the integrated result or required CI evidence.
-5. Preserve the merged handoff and archival worker status.
-6. Confirm the worker-owned worktree is clean.
-7. Remove only that owned worktree without force.
-8. Prune stale worktree registrations.
-9. Safely delete the merged local feature branch.
-10. Delete the matching remote feature branch.
-11. Give the coordinator a cleanup receipt; the coordinator records `complete`.
-
-If work is dirty, unmerged, failing, under review, or of uncertain ancestry, stop cleanup and report the exact blocker. Never use forced worktree removal or `git branch -D` for normal completion.
-
-Active workers retain their branches. When the execution effort closes, only the original long-lived branch, normally `main`, remains from that effort.
+Preserve dirty, unmerged, failing, under-review, or uncertain-ancestry work. Never force normal cleanup.
 
 ## Verify and freeze
 
-Before committing a blueprint:
+Before freezing:
 
-- re-read every cited living authority;
-- confirm new stable information was promoted first;
-- compare the Mermaid graph with every worker brief;
-- check for cycles, missing nodes, duplicate ownership, and unnamed mutable surfaces;
-- verify optional gates can be omitted and requested gates are evidence-based;
-- check worker and coordinator status paths are unique;
-- test readiness outcomes for initial, blocked, review, and complete examples;
-- verify worktree rules protect the user's control checkout;
-- verify merge cadence does not require every substep on the base branch;
-- verify teardown cannot delete dirty or unmerged work;
-- scan for incomplete language and unsupported assumptions; and
-- review the diff for unrelated living-authority changes.
+- re-read cited authorities and promote stable changes first;
+- verify every shared surface has one owner;
+- compare Mermaid edges with briefs and gate prerequisites;
+- compute node/edge counts, layers, peak width, and cycles;
+- review narrow serial stretches and over-wide micro-packages;
+- verify worker artifact roots use the blueprint ID;
+- verify the coordinator wrote briefs, not worker specifications/plans;
+- test initial, blocked, review, and completion readiness;
+- verify worktree, synchronization, integration, and teardown rules;
+- scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
+- obtain approval, then commit the frozen snapshot when authorized.
 
-Ordinary progress updates status files, not the frozen blueprint. Revise the blueprint explicitly only after living authorities change and the revision updates graph, briefs, ownership, gates, and readiness together.
+Ordinary progress updates status, not the blueprint. Revise the frozen blueprint only when approved stable information changes scope, ownership, dependencies, gates, or completion semantics.
 
 ## Quick reference
 
-| Situation | Required response |
+| Situation | Response |
 | --- | --- |
-| Living authority missing or stale | Bootstrap or maintain it before blueprint work |
-| Independent packages have merged interfaces | Run them in parallel |
-| Workers edit the same shared file or sequence | Assign one owner, order them, or refactor first |
-| Several local workers share one machine | Give each a unique worktree and branch |
-| Workers run on separate machines | Use separate clones and the same remote protocol |
-| Worker says done but commit is not on base | Keep dependants not-ready |
-| User requests UI Demo or MVP | Add evidence-based gate nodes |
-| Worker branch is dirty or under review | Preserve it; cleanup is blocked |
-| All workers integrated | Verify receipts, delete worker branches, preserve base |
+| Authority missing or stale | Bootstrap or maintain it before blueprint work |
+| Independent packages share merged contracts | Expose them in the same ready frontier |
+| Layer narrower than three | Remove artificial edges or record the bottleneck |
+| Layer wider than seven | Group coherent micro-surfaces or justify the exception |
+| Fewer active slots than ready workers | Keep the DAG flat and schedule from the ready queue |
+| Shared file/schema/generated output | Assign one owner or sequence behind its merge |
+| Worker needs detailed steps | Worker authors its own spec and plan after launch |
+| Worker says done off-base | Keep dependants not-ready |
+| Worker tree is dirty or unmerged | Preserve it and report the cleanup blocker |
 
 ## Common mistakes
 
 | Mistake | Correction |
 | --- | --- |
-| Maximizing worker count | Maximize independent ownership and safe throughput |
-| Letting several sessions use one checkout | Isolate with worktrees or separate-machine clones |
-| Merging every substep into `main` | Push substeps; merge only at meaningful boundaries |
-| Treating a pushed branch as a prerequisite | Require remote base ancestry and evidence |
-| Giving every worker broad “shared” ownership | Name one owner per mutable surface |
-| Updating the frozen blueprint with daily progress | Update worker and coordinator status |
-| Deleting a PR worktree to save space | Preserve it until integration and review finish |
-| Using force deletion during normal closeout | Stop and expose the unmerged or dirty state |
+| Maximizing worker count | Optimize coherent ownership and safe throughput |
+| One worker per independent file | Group related surfaces by outcome and verification |
+| Treating slot capacity as graph width | Report both; queued ready work is still logically parallel |
+| Coordinator writes every task plan | Coordinator writes briefs; each worker writes its own plan |
+| Flat shared specs/plans roots | Use one dated folder per blueprint in both roots |
+| Unmerged branch satisfies dependency | Require remote-base ancestry and evidence |
+| Daily progress rewrites the blueprint | Update worker/coordinator status instead |
+| Force cleanup saves time | Preserve uncertain work and expose the blocker |
 
 ## Stop conditions
 
-Pause and report an owner, unblock criterion, and downstream impact when:
-
-- living authorities are missing, contradictory, or outside current evidence;
-- the delivery objective is too broad for one blueprint;
-- a material decision remains unapproved;
-- the graph is cyclic or references missing nodes;
-- ownership overlaps or a shared contract has no owner;
-- a migration or generated artifact has competing writers;
-- remote fetch or ancestry proof is unavailable;
-- a dependant started from an unmerged prerequisite;
-- a gate lacks evidence or a verifier;
-- worktree isolation cannot be established safely; or
-- completion would require forced deletion or loss of unmerged work.
+Pause with an owner, unblock criterion, and downstream impact when authorities contradict; the objective is too broad; a material decision is unapproved; the DAG cycles; ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; remote ancestry cannot be proven; a dependant started from an unmerged branch; a gate lacks evidence/verifier; or safe isolation/cleanup cannot be established.
