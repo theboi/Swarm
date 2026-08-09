@@ -1,6 +1,6 @@
 # Coordinator Status Summary Template
 
-Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and checking every declared main-only checkout for dirty or unpushed work.
+Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and checking declared worker lanes for dirty or unpushed work. This summary and worker-owned artifacts replace worker-to-worker Codex chat.
 
 ```markdown
 # <Blueprint> Coordination Status
@@ -10,7 +10,7 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 | Blueprint | `<relative path>` |
 | Integration authority | `origin/main` |
 | `origin/main` commit inspected | `<commit>` |
-| Main-only checkouts inspected | `<paths/machines, timestamp, and timezone>` |
+| Worker lanes inspected | `<paths/machines, timestamp, and timezone>` |
 | Coordinator | <role or named owner> |
 | Snapshot status | Current / Stale / Blocked |
 
@@ -47,7 +47,7 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 | Worker | Gap | Latest integrated `origin/main` commit | Last `main` reconciliation | Required action |
 | --- | --- | --- | --- | --- |
-| <ID> | Wrong branch / Linked worktree / Dirty main / Unpushed main commit / Missing tests / Open review | <commit> | <commit/date> | <action> |
+| <ID> | Dirty owned paths / Unpushed commit / Stale main / Missing focused tests / Missing final full suite / Open review | <commit> | <commit/date> | <action> |
 
 ## Living-authority downstream propagation
 
@@ -71,7 +71,7 @@ Any affected worker remains blocked or not-ready while a required document updat
 
 ## Completion receipts
 
-| Worker | Final main commit reachable | Integrated verification | Main-only checkout clean | Handoff preserved | Recorded complete |
+| Worker | Final main commit reachable | Final full suite | Assigned lane clean | Handoff preserved | Recorded complete |
 | --- | --- | --- | --- | --- | --- |
 | <ID> | Yes / No | <evidence> | Yes / No | Yes / No | <timestamp or pending> |
 
@@ -85,11 +85,11 @@ Any affected worker remains blocked or not-ready while a required document updat
 ## Aggregation rules
 
 - Pull `origin/main` before calculating; never trust a cached local branch list.
-- Read each worker's latest completed-substep status from `origin/main`; inspect declared main-only checkouts only for dirty or unpushed work.
+- Read each worker's latest coherent-checkpoint status from `origin/main`; inspect declared worker lanes only for dirty or unpushed owned work.
 - Recompute hard-dependency readiness from `origin/main` ancestry and gate evidence.
 - Recompute living-authority downstream impact and require every relevant downstream document update before clearing blockers.
 - Treat a worker's `complete` claim as advisory until integration, verification, handoff, and clean-main checks pass.
 - Keep coordinator conclusions out of worker-owned status files.
 - Mark the entire snapshot stale if the `origin/main` pull fails.
 - Report “no blocker” only after checking dependency, review, verification, conflict, and external-decision state.
-- Treat any worker branch or linked worktree as a policy violation and migration blocker. Preserve uncertain work; retire it only after verified integration into `origin/main`.
+- Never treat workers sharing `main` or a checkout as a blocker. Preserve concurrent changes, require explicit surface ownership, and retire only dedicated lanes after verified integration into `origin/main`.

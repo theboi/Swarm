@@ -1,6 +1,6 @@
 # Worker Status Template
 
-Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id>.md`. Only that worker edits it; every completed substep integrates the update into `origin/main`, and the final version becomes an archival handoff record.
+Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id>.md`. Only that worker edits it; publish it with meaningful coherent checkpoints and the final handoff. This repository artifact replaces worker-to-worker Codex chat.
 
 ```markdown
 # <Worker ID> — <Task> Status
@@ -23,9 +23,9 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 
 - <paths, contracts, records, migrations, generated artifacts>
 
-## Current plan substep
+## Current work checkpoint
 
-**Completed:** <last completed substep, local main commit, and reachable origin/main commit>.
+**Completed:** <last coherent checkpoint, local main commit, and reachable origin/main commit>.
 
 **Next:** <one concrete next action>.
 
@@ -45,7 +45,7 @@ Use `None` only after checking remote prerequisites and current evidence.
 
 ## Coordination notes
 
-Record contract questions or cross-owner coordination that does not itself block progress. Do not use this section to weaken a hard dependency.
+Record contract questions or cross-owner coordination evidence that does not itself block progress. Workers do not message one another through Codex chats; the coordinator and document owners consume this section from the repository. Do not use it to weaken a hard dependency.
 
 ## Living-authority downstream propagation
 
@@ -69,7 +69,7 @@ Complete before final handoff:
 - Implementation plan: `<relative path>`
 - Living-authority updates: `<relative paths and commits>`
 - Final local `main` commit and reachable `origin/main` commit: `<commits>`
-- Full verification: `<commands and results>`
+- Final full-suite run after all owned tasks: `<command and result>`
 - Continuous-main integration or migration actions: <actions or none>
 - Downstream document propagation: <affected IDs, documents, approvals, and origin/main commits; or evidence-backed none>
 - Resolved conflicts: <summary or none>

@@ -9,7 +9,7 @@ description: Use when splitting a bounded delivery objective across workers, age
 
 Turn current living authorities into a frozen execution contract: establish foundations, expose independently owned trades in parallel, converge through named integration owners, and close through evidence gates.
 
-**Core principle:** Minimize drift between workers. Give every worker exactly one dedicated feature branch in exactly one linked Git worktree, integrate every independently testable worker subtask or plan substep into local `main` immediately, and keep local `main`, `origin/main`, and every active worker branch synchronized. Resolve conflicts at the earliest integration point instead of allowing divergent work to accumulate.
+**Core principle:** Minimize drift while maximizing delivery. Workers never communicate with one another through Codex chats. They work their assigned surfaces alongside concurrent workers on `main`, including when they share the branch or checkout, and treat that coexistence as normal rather than a blocker. Keep local `main` and `origin/main` current: pull before starting, refresh at meaningful checkpoints, and commit/push coherent progress when work runs long. Write code and tests continuously, run only the relevant test segment during implementation, and run the full suite once at the end of all tasks owned by that worker.
 
 Use `docs/plans/EdenMind_Implementation_Masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
 
@@ -19,8 +19,9 @@ Use `docs/plans/EdenMind_Implementation_Masterplan.md` as the structural exempla
 - **REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before freezing or materially revising an unsettled blueprint.
 - **REQUIRED SUB-SKILL:** Use `grilling` when scope, decomposition, ownership, gates, or acceptance remains materially unsettled.
 - **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion` before declaring the blueprint valid.
-- **REQUIRED WORKER SUB-SKILLS:** Require applicable Superpowers worktree setup, planning, TDD, review, verification, and branch-finishing skills in worker briefs or prompts.
-- **WORKTREE/BRANCH OVERRIDE:** Generic sub-skills do not permit a worker to hold more than one worktree/branch pair, defer integration until the whole package is complete, or leave a finished worktree or branch behind. This skill's continuous integration and cleanup lifecycle is authoritative.
+- **REQUIRED WORKER SUB-SKILLS:** Require applicable Superpowers planning, TDD, review, and verification skills in worker briefs or prompts.
+- **COEXISTENCE OVERRIDE:** Workers operate directly on `main`; sharing the branch or checkout is allowed and expected. Generic sub-skills must not create feature lanes, turn shared-main work into a blocker, or require worker-to-worker Codex chat. Workers preserve unrelated changes, stage only owned paths, and use repository state plus coordinator-owned artifacts as the coordination surface.
+- **VERIFICATION OVERRIDE:** During implementation, run focused tests only at meaningful code checkpoints. Do not run the full suite after each substep; run it once after the worker finishes all owned tasks.
 
 Do not restart discovery for explicit, settled, evidence-backed maintenance.
 
@@ -38,7 +39,7 @@ The coordinator-owned masterplan contains these responsibilities in this order:
 8. compact worker briefs;
 9. shared integration contracts;
 10. integration gates;
-11. coordination, worktree/branch integration, drift and conflict control, downstream-change propagation, handoff/cleanup, exclusions, and revision policy.
+11. coordination without worker-to-worker chat, shared-lane safety, drift and conflict control, downstream-change propagation, handoff/cleanup, exclusions, and revision policy.
 
 Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting.
 
@@ -46,8 +47,8 @@ The masterplan owns worker boundaries, not worker implementation detail. A worke
 
 ## Establish current authority
 
-1. Identify the bounded objective, coordinator, decision owners, requested gates, and one uniquely named feature branch plus linked worktree path per worker.
-2. Define the exclusive main-integration lock or queue, verify workers may update local `main` and push `main` to `origin/main`, and prove each worker can pull the latest `origin/main` into local `main` and synchronize its feature branch without discarding local work.
+1. Identify the bounded objective, coordinator, decision owners, requested gates, owned surfaces, and the normal `main` checkout or clone each worker will use.
+2. Define the main-integration lock or optimistic retry procedure, verify workers may pull local `main` and push to `origin/main`, and prove each worker can refresh without discarding any worker's changes.
 3. Read relevant business, product, architecture, implementation, operations, security, and custom authorities.
 4. Read existing code, migrations, tests, generated artifacts, components, and operational foundations that constrain decomposition.
 5. Use `living-masterplan` before freezing when an authority is missing or stable approved information changed.
@@ -89,7 +90,7 @@ When proposed workers overlap, choose one:
 - sequence the packages behind a remote-merge dependency; or
 - first merge an approved interface that makes later ownership independent.
 
-Worktree isolation does not make overlapping semantic ownership parallel. One worker owns each mutable surface, each worker has at most one active worktree/branch pair, and only the main-integration-lock holder may pull, merge into local `main`, resolve conflicts there, or push `origin/main`.
+Checkout or clone separation does not make overlapping semantic ownership parallel. One worker owns each mutable surface. Multiple workers may share `main` or its checkout, but each preserves unrelated changes, stages only owned paths, and checks current repository state before editing, committing, pulling, or pushing. Use the main-integration lock when available; otherwise fetch, reconcile, and retry without treating concurrent progress as a blocker.
 
 ## Build a moderately flat DAG
 
@@ -146,8 +147,8 @@ The coordinator reserves artifact paths but does not pre-author the worker's det
 
 Each worker's planning phase:
 
-1. acquires the main-integration lock, proves local `main` is clean, runs `git pull --ff-only origin main`, then enters its assigned linked worktree and proves the assigned feature branch is the only active worktree/branch pair it owns;
-2. synchronizes the current local `main` into the feature branch, proves prerequisites are integrated there, and runs a clean baseline;
+1. inspects the live worktree without disturbing unrelated changes, fetches `origin/main`, and fast-forwards clean local `main` with `git pull --ff-only origin main` when safe;
+2. synchronizes its assigned `main` checkout with current local and remote `main`, proves prerequisites are integrated there, and records the relevant baseline without running the full suite;
 3. reads the blueprint, relevant living authorities, brief, and prerequisite handoffs;
 4. uses Superpowers brainstorming for task-local decisions;
 5. writes and obtains approval for its dated specification inside the blueprint specs folder;
@@ -160,9 +161,8 @@ Each worker's planning phase:
 9. propagates any dependency, blocker, contract, acceptance, or implementation impact into every affected downstream worker document through its owner; and
 10. verifies and commits the dated specification, affected product specification
     updates or no-impact findings, approved planning artifacts, and propagation
-    updates to the feature branch; immediately merges that commit into local
-    `main`, pushes `origin/main`, synchronizes the feature branch from the resulting
-    `main`, and hands it off before implementation begins.
+    updates; refreshes from local and remote `main`, reconciles concurrent changes,
+    pushes the coherent planning checkpoint, and hands it off before implementation begins.
 
 Repeat step 6 whenever the dated specification changes. Do not defer this
 product-specification maintenance to a different worker or a later delivery
@@ -173,7 +173,7 @@ masterplan is stale.
 
 Read [the worker prompt templates](references/worker-prompt-templates.md) completely before generating prompts.
 
-Create separate planning and execution prompts when phases may run in different sessions or the user requests a launch packet. Both prompts name the blueprint, living authorities, worker brief, prerequisites, owned/excluded surfaces, artifact paths, status path, assigned feature branch and linked worktree, the one-pair-per-worker cap, `origin/main` integration authority, the main-integration lock or queue, synchronization rhythm, and exact terminal condition.
+Create separate planning and execution prompts when phases may run in different sessions or the user requests a launch packet. Both prompts name the blueprint, living authorities, worker brief, prerequisites, owned/excluded surfaces, artifact paths, status path, assigned `main` checkout or clone, whether it is shared, `origin/main` integration authority, synchronization rhythm, focused-test cadence, final full-suite requirement, the ban on worker-to-worker Codex chat, and the exact terminal condition.
 
 The planning prompt stops after the worker-authored specification, affected
 product-specification consolidation or no-impact findings, implementation plan,
@@ -187,57 +187,48 @@ integration evidence, handoff, and clean-main completion.
 | --- | --- |
 | not-ready | At least one hard prerequisite is not integrated into `origin/main` |
 | ready | Every hard prerequisite and required contract is integrated into `origin/main` |
-| in-progress | The worker claimed its owned scope in its sole feature worktree and every completed substep is integrated into `origin/main` |
+| in-progress | The worker claimed its owned surfaces, refreshed local `main` from `origin/main`, and is producing coherent checkpoints |
 | blocked | A named dependency, decision, conflict, or external condition prevents progress |
 | review | Work exists but review, evidence, or integration remains open |
-| complete | The coordinator verified `origin/main` integration, handoff, evidence, and removal of the finished worker worktree and branch |
+| complete | The coordinator verified final full-suite evidence, `origin/main` integration, handoff, and cleanup of any dedicated temporary lane |
 
-A feature-branch-only commit, unpushed local `main` commit, stash, or working-tree change never satisfies a hard prerequisite or counts as a completed substep. A substep becomes complete only when its commit is reachable from `origin/main`.
+A feature-branch-only commit, unpushed local commit, stash, or working-tree change never satisfies a hard prerequisite. A dependency handoff becomes ready only when its coherent commit is reachable from `origin/main`.
 
 Use [the worker status template](references/worker-status-template.md) for active workers and [the coordinator summary template](references/status-summary-template.md) when aggregate coordination is needed. A worker owns only its status file; the coordinator alone owns the aggregate.
 
-## Isolate every worker in one worktree and branch
+## Keep every worker current on `main`
 
-All planning, implementation, review fixes, and documentation updates happen on the worker's assigned feature branch inside its assigned linked Git worktree. Local `main` is the clean integration surface and is kept as close as possible to `origin/main`.
+All planning, implementation, review fixes, and documentation updates happen directly on checked-out `main`. A separate normal clone is optional; multiple workers may work on the same branch or checkout. Local `main` and `origin/main` remain the integration truth.
 
 **Mandatory lane rules:**
 
-- One worker owns exactly one uniquely named feature branch in exactly one linked worktree while it is active. Never share a worker worktree.
-- Each worker is capped at one active worktree and one active branch at a time. Do not create stacked, rescue, review, conflict, or temporary branches/worktrees around that lane.
-- Whenever a branch is created for worker work, create and use it through `git worktree`; do not work on a worker feature branch in the main checkout.
-- Do not use detached HEAD, stash queues, patch queues, or hidden refs as substitute lanes.
-- Keep the main checkout clean and reserved for integration. The exclusive main-integration lock covers updating local `main`, merging a worker branch, resolving conflicts on `main`, verification required by that merge, and pushing `origin/main`.
-- Run `git pull --ff-only origin main` in local `main` immediately before each integration. After each successful push, prove the integrated commit is on `origin/main`, then fast-forward or merge the resulting local `main` into the still-active worker branch before the worker starts another substep.
-- As soon as a worker's final substep is integrated and remotely proven, remove its linked worktree and delete its fully merged local feature branch immediately. Delete any remote counterpart if one was created. Never force-remove uncertain or unintegrated work.
-
-If a worker already owns a worktree/branch pair, reuse it. Before creating a replacement, either integrate and remove the existing pair through the normal lifecycle or record a blocker with an owner and recovery criterion.
+- Workers are banned from messaging, following up with, or handing off to other workers through Codex chats. Publish progress through commits, owned status/handoff artifacts, and coordinator-owned summaries.
+- Never stop merely because another worker is active on `main` or in the same checkout. Inspect live status, respect surface ownership, and continue on owned files.
+- Never reset, overwrite, clean, stash, or reformat another worker's changes. Stage explicit owned paths and review the exact staged diff before committing.
+- Fetch `origin/main` before starting. Fast-forward clean local `main` with `git pull --ff-only origin main` and reconcile concurrent changes safely.
+- Refresh again at meaningful checkpoints, before a dependency handoff, before final verification, and whenever a long-running task risks drift. Commit and push coherent progress rather than waiting indefinitely for the entire task.
+- Before every push, fetch and reconcile concurrent upstream changes. If rejected, preserve all work, integrate the new remote state, run the affected focused tests, and retry. Never force-push `main`.
+- Do not create new feature branches or linked worktrees. Preserve legacy or uncertain lanes and retire them only after final integration and remote proof.
 
 ## Require the worker execution lifecycle
 
-1. Confirm the main checkout is clean; acquire the main-integration lock, run `git pull --ff-only origin main`, and prove every prerequisite/evidence is present there.
-2. Create or enter the worker's sole linked worktree and feature branch, merge current local `main` into it, and run a clean baseline before editing.
+1. Inspect the current checkout and preserve all unrelated changes; fetch `origin/main`, fast-forward clean local `main` when safe, and prove every prerequisite/evidence is current.
+2. Enter the assigned `main` checkout, reconcile it with `origin/main`, and inspect the relevant baseline before editing.
 3. Read the worker-authored approved specification and implementation plan.
 4. Implement only owned surfaces with TDD where applicable.
-5. After each independently testable planning or execution substep, complete the mandatory continuous-integration cycle below before beginning another substep.
-6. Stop on semantic, cross-owner, migration, generated-artifact, or contract conflicts.
-7. Request/address review and run fresh verification-before-completion.
-8. Merge every verified feature-branch substep into local `main` and push it to `origin/main`; package, dependency, and gate boundaries add review and evidence requirements but never delay substep integration.
-9. Produce an evidence-backed handoff only after integration, remote reachability proof, and immediate removal of the finished worker worktree and branch.
+5. Write code and tests in coherent chunks. Run only the test segment relevant to changed behavior at meaningful checkpoints; do not run the full suite at every small turning point.
+6. Resolve ordinary concurrent edits and conflicts within owned surfaces. Escalate only a genuine semantic, ownership, migration, generated-artifact, or contract decision, through the coordinator rather than another worker's Codex chat.
+7. If the task runs long, commit coherent progress, fetch and reconcile local/remote `main`, run affected focused tests, and push the checkpoint to reduce drift.
+8. Request/address review and run fresh focused verification for the completed owned scope.
+9. After all tasks owned by the worker are finished, refresh from local and remote `main`, run the full suite once, integrate and push the final state, prove remote reachability, and produce the evidence-backed handoff.
 
-In this skill, a completed subtask means an independently testable planning or execution plan substep. After every such substep, the worker MUST:
+**Verification and synchronization cadence:**
 
-1. run focused verification in its feature worktree;
-2. update only its worker-owned status and any owned living-authority or downstream-impact documents;
-3. review the exact owned diff and commit only owned verified changes to its local feature branch;
-4. acquire the exclusive main-integration lock or queue slot immediately;
-5. update clean local `main` with `git pull --ff-only origin main`;
-6. merge the feature branch into local `main`;
-7. if conflicts occur, resolve them immediately, stop for every semantic or cross-owner decision, and rerun affected verification on the reconciled local `main`;
-8. if the merge is conflict-free, assess clash risk: omit duplicate post-merge verification only when the incoming changes clearly do not touch or affect the substep's surfaces, contracts, generated artifacts, migrations, or tests; when uncertain, reverify;
-9. push local `main` with `git push origin main`, fetch, and confirm the substep commit is reachable from `origin/main`;
-10. while the worker remains active, synchronize its feature branch to the resulting local `main` before releasing the lock and starting the next substep; or, after its final substep, remove the worktree and fully merged branch immediately.
-
-If another integration reaches `origin/main` first or the push is rejected, keep the worker commit preserved, pull the new `origin/main` into local `main`, merge or resolve immediately, reverify affected behavior, and retry under the main-integration lock. Never force-push `main`. Never begin the next independently testable substep with a completed feature-branch commit absent from `origin/main` or with the feature branch behind the resulting main.
+1. Before work: fetch `origin/main`, update clean local `main`, and reconcile the assigned lane.
+2. During work: prioritize writing code and tests. Run the narrow affected test segment after a coherent implementation chunk, before publishing a checkpoint, or when diagnosing a failure—not after every edit.
+3. During long tasks: use judgment. When drift risk grows, preserve a coherent commit, fetch/pull, reconcile, run only affected tests, and push.
+4. At worker completion: refresh again, run the full suite once, fix failures, then integrate and push final evidence.
+5. On shared `main` or a shared checkout: never use worker-to-worker Codex chat. Inspect live repository state, stage only owned paths, preserve concurrent changes, and retry safely after upstream movement.
 
 ## Propagate living-authority changes downstream
 
@@ -254,9 +245,9 @@ If the authority change affects a dependency, readiness condition, blocker, cont
 
 1. the affected downstream set is identified from the DAG and coordination contracts;
 2. every affected worker brief, specification, implementation plan, launch prompt, worker status, and coordinator status is updated where relevant;
-3. each cross-owned document is updated and approved by its owner rather than overwritten by the upstream worker;
+3. the originating worker records the impact in its owned artifact; the coordinator or owning worker consumes that repository evidence without direct worker-to-worker Codex chat, and no worker overwrites a cross-owned document;
 4. affected downstream work is marked blocked or not-ready until its documents and assumptions are current;
-5. the authority change and all required downstream document updates are verified and committed on the owning feature branch, then immediately merged into local `main` and pushed to `origin/main`; and
+5. the authority change and all required downstream document updates are verified with the relevant focused checks, committed as a coherent checkpoint, reconciled with current local and remote `main`, and pushed to `origin/main`; and
 6. the originating worker records propagation evidence or an explicit evidence-backed finding of no downstream impact.
 
 If the change alters frozen blueprint scope, ownership, dependencies, gates, or completion semantics, the coordinator must issue the required approved blueprint revision. No affected downstream worker may continue from stale documents.
@@ -265,13 +256,13 @@ If the change alters frozen blueprint scope, ownership, dependencies, gates, or 
 
 A worker is complete only after:
 
-1. fresh full verification;
-2. approved feature-branch integration into local `main`;
+1. one fresh full-suite run after all of the worker's owned tasks are finished;
+2. approved integration into current local `main`;
 3. proof its final commit and required downstream-document updates are reachable from `origin/main`;
 4. integrated or CI verification;
 5. preserved handoff and archival status;
 6. a clean main checkout;
-7. removal of the worker's finished linked worktree and fully merged local and remote feature branch; and
+7. cleanup of any fully integrated legacy dedicated lane, while shared `main` remains intact; and
 8. a coordinator completion receipt.
 
 Preserve dirty, unpushed, failing, under-review, or uncertain-ancestry work. Never reset, overwrite, force-push, or force-clean it.
@@ -288,10 +279,11 @@ Before freezing:
 - verify worker artifact roots use the blueprint ID;
 - verify the coordinator wrote briefs, not worker specifications/plans;
 - test initial, blocked, review, and completion readiness;
-- verify one-worktree/one-branch-per-worker isolation, synchronization, integration, and immediate cleanup rules;
-- verify every completed substep is verified and committed on its feature branch, immediately merged into local `main`, reconciled with, and pushed to `origin/main`;
-- verify the blueprint names a workable main-integration lock or queue and workers can pull and push `origin/main`;
-- verify conflict-free merges use an explicit clash-risk assessment and every conflict or uncertain integration triggers affected reverification;
+- verify worker-to-worker Codex chat is prohibited and repository/coordinator artifacts carry coordination;
+- verify shared `main` checkouts are accepted, surface ownership is explicit, unrelated changes are preserved, and only owned paths are staged;
+- verify workers refresh local `main` from `origin/main` before work, at meaningful or long-task checkpoints, and before final verification/integration;
+- verify implementation uses focused test segments and each worker runs the full suite only once after all owned tasks finish;
+- verify workers can pull, reconcile, and push `origin/main`, with a safe optimistic retry path when no integration lock exists;
 - verify every new or modified worker specification synchronizes each affected
   product specification masterplan in the same planning substep, or carries an
   evidence-backed no-impact finding;
@@ -316,11 +308,11 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Shared file/schema/generated output | Assign one owner or sequence behind its merge |
 | Worker needs detailed steps | Worker authors its own spec and plan after launch |
 | Worker specification is created or changed | Consolidate approved changes into every affected product specification in the same planning substep, or record no impact |
-| Worker already has a branch/worktree | Reuse its sole assigned pair; integrate and remove it before creating another |
-| Worker proposes a second branch or worktree | Reject it; one active worktree/branch pair per worker |
+| Workers share `main` or a checkout | Continue on explicitly owned surfaces; inspect live state and stage only owned paths |
+| Worker tries to message another worker in Codex | Ban the chat; publish through commits, owned artifacts, and coordinator summaries |
 | Worker says done on its feature branch or only locally | Keep dependants not-ready |
-| Worker completes a testable substep | Verify and commit on the feature branch; immediately merge to updated local `main`, reverify on conflict or uncertainty, push `origin/main`, and resynchronize the branch |
-| Worker finishes its final substep | Prove `origin/main` integration, then immediately remove the worktree and branch |
+| Worker reaches a meaningful checkpoint | Run the relevant test segment, commit coherent progress, refresh local/remote `main`, and push when drift risk warrants |
+| Worker finishes all owned tasks | Refresh, run the full suite once, push and prove `origin/main`, then remove only dedicated temporary lanes |
 | Living-authority change affects downstream work | Update every relevant downstream document through its owner and block stale work until `origin/main` contains the updates |
 | Main checkout is dirty or has unpushed commits | Preserve it and report the integration blocker |
 
@@ -333,11 +325,12 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Treating slot capacity as graph width | Report both; queued ready work is still logically parallel |
 | Coordinator writes every task plan | Coordinator writes briefs; each worker writes its own plan |
 | Flat shared specs/plans roots | Use one dated folder per blueprint in both roots |
-| Worker creates extra branches/worktrees for safety | Enforce exactly one dedicated worktree/branch pair per worker |
-| Feature-branch commit treated as substep completion | Require immediate merge to current local `main`, push to `origin/main`, and ancestry proof |
-| Main integration deferred to package completion | Integrate each independently testable substep; use package/gate boundaries for added review, not delayed merging |
-| Every clean merge is retested mechanically | Skip duplicate post-merge verification only after a positive low-clash-risk assessment; conflicts or uncertainty require reverification |
-| Finished worktree or branch retained for convenience | Remove it immediately after its final merge and remote proof |
+| Shared `main` treated as a blocker | Continue safely on owned paths and preserve concurrent changes |
+| Workers coordinate through Codex chat | Use repository evidence and coordinator-owned artifacts instead |
+| Local-only checkpoint treated as a dependency handoff | Reconcile current local/remote `main`, push the coherent commit, and prove ancestry |
+| Full suite run after every small substep | Run focused affected tests during implementation and the full suite once at worker completion |
+| Long task drifts from `main` | Preserve coherent progress, refresh local and remote `main`, reconcile, and push a checkpoint |
+| Dedicated finished worktree retained for convenience | Remove it after final merge and remote proof; never remove a shared lane |
 | Worker specification lands while product specification is stale | Integrate the specification, product-specification update or no-impact finding, and required propagation together |
 | Living authority updated without downstream propagation | Identify affected downstream workers and update their relevant briefs, specs, plans, prompts, and statuses before they continue |
 | Daily progress rewrites the blueprint | Update worker/coordinator status instead |
@@ -345,4 +338,4 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 
 ## Stop conditions
 
-Pause with an owner, unblock criterion, and downstream impact when authorities contradict; the objective is too broad; a material decision is unapproved; the DAG cycles; ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; a worker owns more than one active worktree or branch; a worker branch is not in its assigned linked worktree; existing worker state cannot yet be integrated or retired safely; `origin/main` cannot be pulled or pushed safely; a conflict requires a semantic or cross-owner decision; remote ancestry cannot be proven; a dependant started from feature-only or unpushed work or a stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; a gate lacks evidence/verifier; or safe main-integration coordination cannot be established.
+Pause with an owner, unblock criterion, and downstream impact when authorities contradict; the objective is too broad; a material decision is unapproved; the DAG cycles; semantic ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; existing worker state cannot be integrated safely; `origin/main` cannot be pulled or pushed safely after retry; a conflict requires a genuine semantic or cross-owner decision; remote ancestry cannot be proven; a dependant started from feature-only or unpushed work or a stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; or a gate lacks evidence/verifier. Another worker using the same `main` branch or checkout is never, by itself, a stop condition.

@@ -13,14 +13,16 @@ Before handing off a prompt:
 
 1. Replace every angle-bracket field with an exact value or remove the irrelevant line.
 2. Name the frozen blueprint, blueprint ID, and only the living authorities relevant to the task.
-3. Name the worker/task ID, bounded outcome, status path, `origin/main`, assigned normal checkout or clone, `<MAIN_MUTATION_LOCK>`, and `<MAIN_PUSH_LOCK>` mechanisms.
+3. Name the worker/task ID, bounded outcome, status path, `origin/main`, assigned normal checkout or clone, and the lock-or-retry mechanism for commits and pushes.
 4. Require prerequisite commits/evidence on `origin/main`.
 5. Include owned and excluded mutable surfaces plus exact downstream unblocks.
 6. Reserve the worker's paths under `docs/superpowers/specs/<blueprint-id>/` and `docs/superpowers/plans/<blueprint-id>/`.
 7. State that the worker—not the coordinator—authors the detailed specification and implementation plan.
 8. State one terminal condition: approved planning handoff, or approved-plan execution complete.
 9. Include the approved model/effort policy and fallback.
-10. Remove every feature-branch, worktree, detached-HEAD, and branch-finishing instruction; every worker and editing subagent must stay on `main`.
+10. Remove every feature-branch, worktree, detached-HEAD, and branch-finishing instruction; every editing worker must stay on `main`.
+11. Ban worker-to-worker Codex chat; use commits, owned status/handoff artifacts, and coordinator summaries.
+12. Require focused affected tests during implementation and one full-suite run only after all worker-owned tasks finish.
 
 ## Planning-only worker prompt
 
@@ -39,9 +41,9 @@ You are `<WORKER_ID>`, responsible for planning `<BOUNDED_OUTCOME>` and authorin
 
 Both paths must be inside the `<BLUEPRINT_ID>` folder. The coordinator reserved these paths but did not author their contents.
 
-Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Confirm the checkout is on `main` and is not a linked worktree. Before planning, acquire `<MAIN_MUTATION_LOCK>` when the checkout is shared, pull `origin/main`, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and run a clean baseline.
+Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and inspect only the relevant baseline.
 
-Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stop and report a semantic, ownership, contract, migration-order, or generated-artifact conflict rather than overwriting another worker's intent.
+Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
 
 Continue until you have authored, obtained approval for, committed, and integrated this task's specification and implementation plan into `origin/main`. Do not begin product implementation in this phase.
 
@@ -62,10 +64,10 @@ During planning:
    evidence-backed no-impact finding instead.
 6. Use `superpowers:writing-plans` to write `<PLAN_PATH>` with exact files, interfaces, tests, commands, ownership, dependencies, and review gates.
 7. Split plan tasks only when execution state and mutable surfaces are independent; sequence shared contracts, migrations, generated artifacts, and central composition.
-8. Add review and verification checkpoints for every subagent-produced change.
+8. Add review and focused-verification checkpoints at meaningful planning boundaries.
 9. Update relevant non-product living masterplans with stable approved decisions before implementation relies on them. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient progress in `<STATUS_PATH>`.
 
-The initial `<MAIN_MUTATION_LOCK>` acquisition above covers the first planning subtask or plan substep. Before editing every subsequent substep in a shared checkout, reacquire that lock, reconcile clean local `main` with `origin/main`, and hold the lock through remote reachability proof. After completing the substep, run focused checks on local `main`, update only owned documents and `<STATUS_PATH>`, review the exact owned diff, and make a bounded commit directly to `main`. Acquire `<MAIN_PUSH_LOCK>`, fetch `origin/main`, merge it into local `main` if histories diverge, resolve only mechanical owned conflicts, and rerun affected checks. Push local `main` to `origin/main` and prove the substep commit is reachable there before releasing both locks. Reacquire `<MAIN_MUTATION_LOCK>` before editing the next substep. If the push is rejected, fetch and merge the new `origin/main`, reverify, and retry under the locks. Never rebase or force-push published `main`.
+Prioritize authoring the specification and plan. At meaningful planning checkpoints—or when the task is taking long enough to risk drift—update only owned documents and `<STATUS_PATH>`, review and stage the exact owned diff, commit coherent progress, fetch/pull current `origin/main`, reconcile concurrent changes, and push. Use `<MAIN_MUTATION_LOCK>` / `<MAIN_PUSH_LOCK>` when available; otherwise use safe optimistic retry. If a push is rejected, preserve all work, fetch and merge the new `origin/main`, rerun only affected checks, and retry. Never rebase or force-push published `main`.
 
 Planning is complete only when the worker-authored specification, affected
 product specification masterplan updates or evidence-backed no-impact findings,
@@ -88,19 +90,19 @@ Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-author
 
 You are `<WORKER_ID>`, responsible for executing `<BOUNDED_OUTCOME>` to its defined acceptance evidence.
 
-Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Confirm the checkout is on `main` and is not a linked worktree. Before implementation, acquire `<MAIN_MUTATION_LOCK>` when the checkout is shared, pull `origin/main`, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and run the clean baseline.
+Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and inspect only the relevant baseline without running the full suite.
 
-Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stop and report a semantic, ownership, contract, migration-order, or generated-artifact conflict rather than overwriting another worker's intent.
+Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
 
 Continue until every applicable task in `<PLAN_PATH>` is implemented, reviewed, verified, integrated through `origin/main`, handed off, and leaves the assigned main checkout clean. If repository evidence invalidates the plan, revise the worker-authored artifacts and affected living authorities through their approval rules.
 
 During execution:
 
 1. Follow the approved plan task-by-task and use test-driven development where applicable.
-2. Use subagents only for genuinely independent packages under `<SUBAGENT_MODEL_POLICY>`.
-3. Give editing subagents explicit owned paths, interfaces, tests, main-only checkout and lock rules, and terminal deliverables. Do not let a subagent create or use a branch or worktree.
-4. Review every subagent diff/evidence before adoption; a subagent report is not verification.
-5. Request/address code review and run verification-before-completion.
+2. Do not spawn, message, follow up with, or hand off to peer workers through Codex chats.
+3. Execute the assigned owned surfaces directly while other workers proceed alongside you on their surfaces.
+4. Review live repository diffs and evidence before adoption; another worker's status claim is not verification.
+5. Request/address code review and run the focused verification relevant to the completed owned scope.
 6. When execution changes the approved product contract or changes
    `<SPEC_PATH>`, immediately consolidate the approved change into every affected
    product specification masterplan using the same unified high-level
@@ -115,18 +117,18 @@ During execution:
    before those workers continue. Keep transient work in `<PLAN_PATH>` or
    `<STATUS_PATH>`.
 
-The initial `<MAIN_MUTATION_LOCK>` acquisition above covers the first implementation subtask or plan substep. Before editing every subsequent substep in a shared checkout, reacquire that lock, reconcile clean local `main` with `origin/main`, and hold the lock through remote reachability proof. After completing the substep, run focused verification on local `main`, update only owned documents and `<STATUS_PATH>`, review the exact owned diff, and make a bounded commit directly to `main`. Acquire `<MAIN_PUSH_LOCK>`, fetch `origin/main`, merge it into local `main` if histories diverge, resolve only mechanical owned conflicts, and rerun affected checks. Push local `main` to `origin/main` and prove the substep commit is reachable there before releasing both locks. Reacquire `<MAIN_MUTATION_LOCK>` before editing the next substep. If the push is rejected, fetch and merge the new `origin/main`, reverify, and retry under the locks. Never rebase or force-push published `main`.
+Prioritize writing code and tests. Run only the narrow affected test segment after a coherent implementation chunk, before publishing a checkpoint, or while diagnosing a failure—not after every edit. At meaningful checkpoints, and whenever a long-running task risks drift, update only owned documents and `<STATUS_PATH>`, review and stage the exact owned diff, commit coherent progress, fetch/pull current `origin/main`, reconcile concurrent changes, rerun affected focused tests, and push. Use `<MAIN_MUTATION_LOCK>` / `<MAIN_PUSH_LOCK>` when available; otherwise use safe optimistic retry. If a push is rejected, preserve all work, fetch and merge the new `origin/main`, rerun affected tests, and retry. Never rebase or force-push published `main`.
 
-Execution is complete only when acceptance evidence is fresh, review is closed, the final commit and all required downstream-document updates are reachable from `origin/main`, the handoff is integrated, and the assigned main checkout is clean. Never reset, overwrite, force-push, or force-clean dirty, unpushed, failing, or under-review work.
+After every task owned by this worker is finished, refresh local and remote `main`, run the full suite once, fix failures, then integrate and push final evidence. Execution is complete only when acceptance evidence is fresh, review is closed, the final commit and all required downstream-document updates are reachable from `origin/main`, the handoff is integrated, and the assigned main checkout is clean. Never reset, overwrite, force-push, or force-clean dirty, unpushed, failing, or under-review work.
 ```
 
-## Model and subagent policy
+## Model policy
 
 Use the user's explicit model and reasoning settings. For the EdenMind-style policy:
 
 > When supported, use Terra High for bounded implementation and Terra Xhigh for difficult implementation, integration, migrations, or debugging. If unavailable, use the closest model/effort and report the deviation before dispatch.
 
-Model strength does not make unsafe parallelism acceptable. The parent worker remains responsible for ownership, context, review, testing, and integration.
+Model strength does not change ownership, review, testing, or integration responsibilities.
 
 ## Adaptation rules
 
@@ -135,11 +137,13 @@ Model strength does not make unsafe parallelism acceptable. The parent worker re
 - Keep planning and execution terminal conditions separate even if one person runs both.
 - Preserve one blueprint ID and one specs/plans folder for the whole delivery effort.
 - Interpret “pull regularly” as reconciling local `main` with `origin/main`; fetching without incorporation is insufficient.
-- Require every independently testable substep to be committed directly to local `main` and pushed to `origin/main` before the next substep.
+- Use meaningful coherent checkpoints, plus extra pull/push checkpoints when a task runs long enough to risk drift.
+- Run focused affected tests during implementation and the full suite only once after all tasks owned by the worker finish.
 - Reject every feature-branch, worktree, detached-HEAD, stash-lane, and branch-finishing instruction.
 - Require living-authority changes to update every relevant downstream worker document through its owner before affected work continues.
 - Require every new or modified worker specification to synchronize every
   affected product specification masterplan in the same planning substep, or to
   record an evidence-backed no-impact finding.
 - Route stable decisions/evidence through `living-masterplan`; keep transient work in plans/status.
-- State the fallback when subagents or requested model settings are unavailable.
+- State the fallback when requested model settings are unavailable.
+- Never use Codex chat for worker-to-worker coordination; use repository state and coordinator-owned artifacts.
