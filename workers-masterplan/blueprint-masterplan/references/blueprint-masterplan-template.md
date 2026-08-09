@@ -23,7 +23,8 @@ Adapt vocabulary and paths to the project. Preserve every section responsibility
 | Blueprint ID | `YYYY-MM-DD-<short-slug>` |
 | Effective date | <date> |
 | Integration authority | `origin/main` |
-| Main-integration lock or queue | `<exact serialization mechanism>` |
+| Same-checkout mutation lock | `<exact serialization mechanism>` |
+| Cross-checkout main-push lock or queue | `<exact serialization mechanism>` |
 | Coordinator | <role or named owner> |
 | Business authority | `<relative path>` |
 | Product authority | `<relative path>` |
@@ -43,10 +44,10 @@ Every worker receives:
 2. relevant living authorities;
 3. its worker ID and bounded brief;
 4. prerequisite handoffs;
-5. the current repository and remote integration branch; and
-6. its unique branch/workspace and reserved artifact/status paths.
+5. the assigned normal checkout or clone on `main`; and
+6. the main-mutation/main-push lock mechanisms and reserved artifact/status paths.
 
-No worker depends on private conversation history or an unmerged implementation branch. Each worker authors its own detailed specification and implementation plan after its prerequisites are integrated.
+No worker depends on private conversation history, off-main work, or an unpushed local commit. Each worker authors its own detailed specification and implementation plan after its prerequisites are integrated. Feature branches and linked Git worktrees are prohibited.
 
 ## 2. Outcome and delivery gates
 
@@ -114,19 +115,19 @@ For a multi-worker objective, target three to seven concurrently ready workers i
 
 - `not-ready`: at least one hard prerequisite is not integrated into `origin/main`.
 - `ready`: every hard prerequisite and required contract is integrated into `origin/main`.
-- `in-progress`: the worker claimed its isolated workspace and every completed substep is integrated into `origin/main`.
+- `in-progress`: the worker claimed its owned scope on `main` and every completed substep is integrated into `origin/main`.
 - `blocked`: a named dependency, decision, conflict, or external condition prevents progress.
 - `review`: work exists but required review, evidence, or integration is open.
 - `complete`: the coordinator verified integration, handoff, evidence, and cleanup.
 
-`origin/main` is authoritative. A local “done” claim or pushed feature branch does not unblock a dependant or complete a substep.
+`origin/main` is authoritative. An off-main commit, unpushed local `main` commit, stash, working-tree change, or local “done” claim does not unblock a dependant or complete a substep.
 
 ## 7. Mandatory lifecycle for every worker
 
 ### 7.1 Worker-authored Superpowers planning
 
-1. Pull `origin/main` and prove prerequisites and evidence are integrated there.
-2. Enter the assigned unique isolated branch/worktree or clone and run a clean baseline.
+1. Enter the assigned normal checkout or clone and prove it is on `main` and is not a linked worktree.
+2. Acquire the mutation lock when the checkout is shared, pull `origin/main`, prove prerequisites and evidence are integrated there, and run a clean baseline.
 3. Read this blueprint, relevant living authorities, the worker brief, and prerequisite handoffs.
 4. Use Superpowers brainstorming for task-local decisions.
 5. Write and obtain approval for `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`.
@@ -151,34 +152,35 @@ The coordinator reserves these paths but does not author their detailed contents
 1. Read the worker-authored approved specification and implementation plan.
 2. Implement only owned surfaces with TDD where applicable.
 3. Request/address review and run verification-before-completion.
-4. Integrate through the approved path.
-5. Hand off evidence and perform safe teardown.
+4. Commit and push every verified substep directly through `main`.
+5. Hand off evidence and leave the assigned main checkout clean.
 
-### 7.3 Worktree isolation
+### 7.3 Main-only execution
 
-Use one branch and isolated workspace per local worker. Because each worker must update local `main`, provide either a worker-private clone or a serialized dedicated integration worktree controlled by the completing worker under an exclusive integration lock. Never use the user's control checkout for worker integration.
+All new planning, implementation, review fixes, conflict resolution, and documentation updates happen on checked-out `main`. Do not create, switch to, or continue on feature, worker, review, rescue, integration, or temporary branches. Do not create or use linked Git worktrees, detached HEAD, stash queues, patch queues, or hidden refs as substitute worker lanes.
 
-Use separate clones for separate machines or incompatible environments.
+A separate normal clone is allowed only for a different machine or when workers cannot share one checkout, and every clone remains on `main`. In one shared checkout, an exclusive main-mutation lock covers edits through push. Across multiple main-only clones, an exclusive main-push lock serializes remote reconciliation, final verification, and pushes.
+
+Before new implementation begins, inventory any legacy worker branches/worktrees and freeze all new edits and commits there. Read-only inspection is allowed only for this transition. Merge committed legacy work into `main`, run authoritative verification on `main`, push `origin/main`, and prove ancestry. For dirty or untracked state, create one immutable recovery bundle outside Git containing a binary-capable diff, untracked-file archive, manifest, and hashes; apply it once on `main` under the locks, verify, commit, push, and prove content equivalence. Preserve the frozen state and bundle until proof succeeds, then have its owner remove only proven duplicate changes, confirm the checkout clean, remove the worktree without force, and delete only fully integrated branches. The bundle cannot become a patch queue or ongoing work surface. Block all new planning and implementation writes until every legacy worker branch and worktree is integrated and retired.
 
 ### 7.4 Substep Git synchronization
 
+The lifecycle's initial main-mutation-lock acquisition covers the first substep. Before editing every subsequent substep in a shared checkout, reacquire the lock, reconcile clean local `main` with `origin/main`, and hold the lock through remote reachability proof.
+
 After each independently testable subtask or plan substep:
 
-1. run focused verification;
-2. update only worker-owned status, living-authority, and downstream-impact documents;
-3. commit only owned verified changes;
-4. pull `origin/main` into the feature branch;
-5. resolve only mechanical conflicts within ownership;
-6. stop on semantic, ownership, contract, generated-file, or migration conflicts;
-7. rerun affected checks on the reconciled feature branch;
-8. acquire the exclusive main-integration lock;
-9. pull local `main` from `origin/main` with fast-forward only;
-10. merge the verified feature substep into local `main`;
-11. rerun affected checks on local `main`;
-12. push local `main` to `origin/main`; and
-13. prove the substep commit is reachable from `origin/main` before the next substep.
+1. confirm the same-checkout mutation lock is still held when the checkout is shared;
+2. run focused verification on local `main`;
+3. update only worker-owned status, living-authority, and downstream-impact documents;
+4. review the exact owned diff and commit only owned verified changes directly to `main`;
+5. acquire the exclusive cross-checkout main-push lock;
+6. fetch `origin/main` and merge it into local `main` when histories diverge;
+7. resolve only mechanical conflicts within ownership and stop on semantic, ownership, contract, generated-file, or migration conflicts;
+8. rerun affected checks on reconciled local `main`;
+9. push local `main` to `origin/main`; and
+10. fetch and prove the substep commit is reachable from `origin/main`, release both locks, and reacquire the mutation lock before editing the next substep.
 
-If another worker wins the push race, pull the new `origin/main` into the feature branch and repeat reconciliation, verification, and locked main integration. Never force-push `main`. A feature-branch push alone does not complete a substep. Contract, package, dependency, and gate boundaries add review or evidence; they do not delay integration.
+If another main-only checkout wins the push race, fetch and merge the new `origin/main` into local `main`, reverify, and retry under the main-push lock. Never rebase or force-push published `main`. Never start the next independently testable substep with a completed local commit still unpushed. Contract, package, dependency, and gate boundaries add review or evidence; they do not delay integration.
 
 ### 7.5 Living-authority downstream propagation
 
@@ -237,7 +239,7 @@ When planning and execution may run in separate sessions or a launch packet is r
 The planning prompt makes the worker author its own reserved specification/plan,
 synchronize every affected product specification masterplan in the same planning
 substep, and stop before product implementation. The execution prompt consumes
-those approved files and continues through integrated evidence and safe teardown.
+those approved files and continues through integrated evidence and a clean main checkout.
 
 ## 9. Shared integration contracts
 
@@ -268,35 +270,35 @@ those approved files and continues through integrated evidence and safe teardown
 
 - An active worker owns `docs/workers/<blueprint-id>/status/<worker-id>.md`; each completed substep integrates the updated file into `origin/main`.
 - The coordinator alone owns `docs/workers/<blueprint-id>/STATUS.md` when aggregate status is needed.
-- The coordinator pulls `origin/main` before reporting readiness or blockers and inspects active branches only for unintegrated work.
+- The coordinator pulls `origin/main` before reporting readiness or blockers and records any main-only checkout with unpushed or dirty work as an integration gap.
 - Ready-but-unscheduled workers remain `ready` when execution slots are full.
 
-## 12. Merge and conflict policy
+## 12. Main integration and conflict policy
 
-- Use narrow feature branches and unique isolated workspaces plus a serialized worker-controlled path for updating local `main`.
+- Require every worker and editing subagent to operate directly on checked-out `main`; prohibit feature branches and linked worktrees.
 - Treat `origin/main` as the only integration authority.
 - Assign every shared mutable surface one owner.
-- Merge every independently testable verified substep into `main` and push `origin/main` before starting the next substep.
+- Commit every independently testable verified substep directly to local `main` and push `origin/main` before starting the next substep.
 - Regenerate generated files from their authority.
 - Coordinate migration ordering through `origin/main`.
 - Resolve mechanical owned conflicts and reverify.
 - Stop on semantic or cross-owner conflicts.
-- Serialize worker merges and pushes through an exclusive main-integration lock; retry rejected pushes only after pulling and reverifying the new `origin/main`.
+- Serialize same-checkout writes through a main-mutation lock and cross-checkout reconciliation/pushes through a main-push lock; retry rejected pushes only after merging and reverifying the new `origin/main`.
 - Propagate living-authority changes to every relevant downstream document through its owner before affected work continues.
 - Never force-push `main`.
 - Never reset, overwrite, or discard another worker's change to make integration pass.
 
-## 13. Completion, handoff, and teardown
+## 13. Completion, handoff, and cleanup
 
-A worker handoff includes its ID, branch/final commit/containing `origin/main`
+A worker handoff includes its ID, final local `main` commit/reachable `origin/main`
 commit, worker-authored spec/plan, affected product specification masterplan
 updates or evidence-backed no-impact findings, living-authority and
 downstream-document updates, verification, review, migrations/generated/
 operational actions, conflict resolutions, limitations, and downstream unblock.
 
-After final integration: prove ancestry from `origin/main`, verify the integrated result and downstream-document propagation, preserve the handoff/status, confirm the worker tree is clean, remove only that tree without force, safely delete merged branches, and record a cleanup receipt.
+After final integration: prove ancestry from `origin/main`, verify the integrated result and downstream-document propagation, preserve the handoff/status, confirm the assigned main checkout is clean, and record a completion receipt.
 
-Preserve dirty, unmerged, failing, under-review, or uncertain work.
+Preserve dirty, unpushed, failing, under-review, or uncertain work. Never reset, overwrite, force-push, or force-clean it.
 
 ## 14. Explicit exclusions
 

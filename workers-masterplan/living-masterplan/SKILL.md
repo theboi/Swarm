@@ -116,7 +116,7 @@ Repository evidence may update implementation state. It does not automatically o
 | Approved business, product, or architecture decision | Owning living authority and every constrained authority |
 | New or modified dated task specification | Assess every affected product specification masterplan; consolidate all approved product changes in the same planning substep or record an evidence-backed no-impact finding |
 | Unapproved proposal | Unresolved decisions or a Superpowers design |
-| Worker branch, substep, or blocker status | Worker-owned status file |
+| Worker main commit, substep, or blocker status | Worker-owned status file |
 | Historical rule readers may still encounter | Superseded/history section |
 | Detailed task steps | Dated Superpowers implementation plan |
 
@@ -166,7 +166,7 @@ Before claiming an authority is current:
 - run repository-appropriate documentation and link checks; and
 - verify only intended files are staged.
 
-Use a bounded commit message that states the authority change. Push only when the user or repository workflow requests it.
+Use a bounded commit message that states the authority change. Inside a `blueprint-masterplan` worker lifecycle, commit directly to `main` and push the verified substep to `origin/main` before continuing. Outside that lifecycle, push only when the user or repository workflow requests it.
 
 ## Quick reference
 

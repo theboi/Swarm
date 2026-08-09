@@ -10,12 +10,13 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 | Blueprint | `<relative path>` |
 | Worker | `<worker-id>` |
 | State | not-ready / ready / in-progress / blocked / review |
-| Branch | `<feature-branch>` |
-| Worktree or clone | `<absolute path or machine identifier>` |
+| Checked-out branch | `main` |
+| Main checkout or clone | `<absolute path or machine identifier>` |
+| Linked worktree check | `No` |
 | Integration authority | `origin/main` |
-| Latest feature commit | `<commit>` |
+| Latest local `main` commit | `<commit>` |
 | Latest integrated `origin/main` commit | `<commit>` |
-| Last `main` pull | `<date, origin/main commit>` |
+| Last `main` reconciliation | `<date, origin/main commit>` |
 | Last update | `<timestamp and timezone>` |
 
 ## Owned scope
@@ -24,7 +25,7 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 
 ## Current plan substep
 
-**Completed:** <last completed substep, feature commit, and containing origin/main commit>.
+**Completed:** <last completed substep, local main commit, and reachable origin/main commit>.
 
 **Next:** <one concrete next action>.
 
@@ -67,14 +68,14 @@ Complete before final handoff:
 - Task specification: `<relative path>`
 - Implementation plan: `<relative path>`
 - Living-authority updates: `<relative paths and commits>`
-- Final feature commit and containing `origin/main` commit: `<commits>`
+- Final local `main` commit and reachable `origin/main` commit: `<commits>`
 - Full verification: `<commands and results>`
 - Continuous-main integration or migration actions: <actions or none>
 - Downstream document propagation: <affected IDs, documents, approvals, and origin/main commits; or evidence-backed none>
 - Resolved conflicts: <summary or none>
 - Known limitations: <bounded list or none>
 - Expected unblock: <worker/gate IDs>
-- Teardown owner: <worker or coordinator>
+- Main checkout cleanliness: <clean evidence or blocker>
 ```
 
-The worker status cannot truthfully record its own post-teardown branch deletion. The coordinator records final `complete` state and cleanup evidence in the aggregate status after final integration.
+The coordinator records final `complete` state only after `origin/main` ancestry, verification, handoff, and clean-checkout evidence are current.

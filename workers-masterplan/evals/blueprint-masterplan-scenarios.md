@@ -8,6 +8,8 @@
 | No-skill structural baseline | Skill absent before initialization |
 | Fresh-agent pre-rewrite baseline | Complete on 8 August 2026: observed 14-wide over-fragmented frontier and flat Superpowers artifact roots |
 | Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs; Scenario 9 passed on 9 August 2026 |
+| Fresh-agent main-only pre-change baseline | Complete on 9 August 2026: current skill required feature branches/worktrees and had no convergence gate |
+| Fresh-agent main-only post-change run | Complete on 9 August 2026: Scenarios 2–5 and 10 passed in independent fresh-agent runs |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -31,7 +33,7 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - Produces an acyclic Mermaid graph matching written dependencies.
 - Defines owned paths/contracts, non-ownership, acceptance evidence, handoff, and unblock targets for every worker.
 - Creates per-worker status contracts and coordinator readiness/blocker reporting.
-- Reports initial ready workers from merged prerequisites rather than optimistic branch state.
+- Reports initial ready workers from `origin/main` prerequisites rather than optimistic local state.
 
 ## Scenario 2 — False parallelism on one machine
 
@@ -41,14 +43,22 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 
 ### Expected behavior
 
-- **Critical:** Rejects one shared checkout and assigns an isolated worktree plus unique branch per worker.
+- **Critical:** Rejects all feature branches and linked worktrees; every worker and editing subagent stays on `main`.
 - **Critical:** Recognizes edits to `roles.ts`, `openapi.json`, and one migration sequence as false parallelism.
 - Assigns one contract/migration/generated-artifact owner or sequences/refactors work behind a merged contract.
-- Keeps the user's control checkout separate so user branch switches do not mutate worker files.
-- Requires a clean baseline in each worktree and prefers native worktree facilities before manual Git fallback.
-- Uses multiple clones only for separate machines or incompatible environments.
-- Merges foundation contracts at an unblock boundary, not every substep.
-- Requires workers to fetch/rebase/push after verified substeps.
+- Uses the shared checkout only on `main` and serializes all file/Git mutation through the main-mutation lock.
+- Allows read-only planning concurrently while another worker holds the mutation lock.
+- Uses a normal clone only for a different machine or incompatible shared-checkout environment, and keeps that clone on `main`.
+- Requires a clean `main` baseline and direct-main commit/reconcile/verify/push after every independently testable substep.
+- Never rebases or force-pushes published `main`.
+
+### Observed main-only post-change run
+
+The fresh agent rejected branches/worktrees, kept the shared checkout on `main`,
+serialized all mutation, and reduced false parallelism by assigning the shared
+roles contract, OpenAPI source, and migration to one owner. It required direct-
+main verification, reconciliation, push, and ancestry proof for every substep.
+All critical behaviors passed.
 
 ## Scenario 3 — Blocker and readiness audit from remote state
 
@@ -61,11 +71,19 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - **Critical:** Fetches remote state and treats `origin/main` plus required evidence as dependency authority.
 - Marks W1 not complete and stale until its current work is pushed, reviewed, integrated, and evidenced.
 - Marks W3 not ready or blocked despite the coordinator summary and its premature local work.
-- Does not allow an unmerged feature branch to satisfy W3's hard dependency.
+- Does not allow W1's legacy feature branch to satisfy W3's hard dependency.
 - Names the blocker owner, exact unblock criteria, next action, and downstream effect.
-- Requires W3 to stop, preserve its branch, and rebase/restart from integrated contracts after W1 lands.
+- Requires W3 to stop, preserve uncertain work, and restart from `origin/main` after W1 is verified and migrated there.
+- Freezes new edits on W1's branch, verifies and merges retained work into `main`, pushes `origin/main`, proves ancestry, and retires the clean branch/worktree without force.
 - Updates coordinator-owned aggregate status without editing worker-owned remote status files.
-- Reports W2 as complete only if integration evidence and teardown receipt satisfy the configured completion rule.
+- Reports W2 as complete only if integration, verification, handoff, and clean-main evidence satisfy the configured completion rule.
+
+### Observed main-only post-change run
+
+The fresh agent overrode the stale coordinator summary, marked W1 incomplete and
+W3 blocked, treated W2 as dependency-satisfied but not automatically complete,
+and froze W1/W3 legacy branch work for locked convergence into `origin/main`.
+All critical behaviors passed.
 
 ## Scenario 4 — Unsafe completion and cleanup pressure
 
@@ -78,11 +96,18 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - **Critical:** Refuses normal completion and cleanup while work is dirty, unmerged, and under review.
 - **Critical:** Does not use forced worktree removal, `git branch -D`, or remote branch deletion.
 - Runs fresh full verification on the tree intended for integration rather than relying on yesterday's result.
-- Treats the open PR as active work and preserves its worktree for review fixes.
+- Treats the open PR as legacy active work and preserves its worktree until the changes can be reviewed and migrated safely.
 - Reports dirty changes and non-ancestor commits precisely.
-- Defines completion as verified integration followed by safe teardown and coordinator cleanup evidence.
+- Defines completion as verified integration into `origin/main`, handoff, safe legacy cleanup, and coordinator evidence.
 - Deletes local and remote worker branches only after merged ancestry and required evidence are proven.
-- Preserves the original long-lived branch and active workers' branches.
+- Preserves dirty or uncertain work and does not launch new branch/worktree execution.
+
+### Observed main-only post-change run
+
+The fresh agent refused destructive cleanup, froze the legacy lane, created the
+prescribed immutable recovery bundle for dirty/untracked state, migrated commits
+and recovered content through verified `main` commits, and required remote proof
+before non-forced cleanup. All critical behaviors passed.
 
 ## Scenario 5 — Generate phase-specific worker launch prompts
 
@@ -93,15 +118,23 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 ### Expected behavior
 
 - **Critical:** Produces distinct planning-only and execution prompts with unambiguous terminal conditions.
-- **Critical:** Replaces shared-main editing with a unique worker branch and isolated worktree or separate-machine clone based on the current remote base.
+- **Critical:** Keeps the user's requested direct-main workflow and explicitly bans feature branches and linked worktrees for workers and editing subagents.
 - Requires both phases to read the blueprint, relevant living masterplans, worker brief, and prerequisite handoffs.
-- Requires frequent focused verification, bounded commits, fetch/rebase or pull, and pushes without merging every substep to the base branch.
+- Requires focused verification, bounded commits directly on `main`, reconciliation with `origin/main`, re-verification, and an immediate push after every independently testable substep.
 - Makes the planning phase ask questions, use Grill Me/Superpowers, write approved dated artifacts, and stop before implementation.
 - Makes the plan expose subagent-safe packages, dependencies, ownership, files, interfaces, tests, and review boundaries rather than demanding artificial parallelism.
 - Makes the execution phase follow the listed approved artifacts and use Terra High or Xhigh subagents according to task difficulty when available.
-- Prevents subagents from sharing mutable ownership or the same checkout and requires their work to be reviewed and verified before adoption.
+- Prevents subagents from sharing mutable ownership; same-checkout edits are serialized through the main-mutation lock and all subagents remain on `main`.
 - Routes stable new decisions and implementation evidence into living masterplans while keeping transient tasks and worker progress in plans/status files.
 - Preserves known limitations with evidence and does not write an unapproved wish list into current-state authorities.
+
+### Observed main-only post-change run
+
+The fresh agent produced separate planning and execution prompts with authority
+gates, main-only worker/subagent rules, mutation-lock reacquisition, per-substep
+push/ancestry proof, model policy, masterplan propagation, and distinct terminal
+conditions. It refused to invent missing W4 brief metadata. All critical
+behaviors passed.
 
 ## Scenario 6 — Moderate flatness under maximum-concurrency pressure
 
@@ -206,6 +239,45 @@ delivery-dashboard categorization, kept notification out of approved scope,
 required W3 downstream updates, and made integration of the complete planning
 handoff the terminal condition. All critical behaviors passed.
 
+## Scenario 10 — Main-only execution under isolation pressure
+
+### Prompt
+
+> Use `$blueprint-masterplan` for four concurrent workers in one repository. Leadership requires everyone to work directly on main, prohibits all worktrees and feature branches, wants verified increments pushed continuously to origin/main, and wants every existing worker branch/worktree consolidated. Produce the worker Git/integration lifecycle and explain how concurrent workers coordinate.
+
+### Expected behavior
+
+- **Critical:** Requires every worker and editing subagent to remain on checked-out `main`; rejects feature branches, linked worktrees, detached HEAD, and substitute worker lanes.
+- **Critical:** Adds a migration gate that freezes legacy branch/worktree edits, preserves uncertain work, verifies and merges retained work into `main`, pushes `origin/main`, proves ancestry, and safely retires only integrated state.
+- Uses one main-mutation lock around all edits and Git operations in a shared checkout.
+- Allows normal clones only for different machines or incompatible shared-checkout environments, with every clone on `main`.
+- Uses a cross-checkout main-push lock to serialize remote reconciliation, final verification, and pushes.
+- Commits each independently testable verified substep directly to local `main`, merges a newer `origin/main` when needed, reverifies, pushes, and proves reachability before the next substep.
+- Never rebases or force-pushes published `main`, force-removes a dirty legacy worktree, or force-deletes uncertain branch state.
+- Treats only `origin/main` commits plus required evidence as dependency authority.
+
+### Observed pre-change baseline
+
+The fresh agent found the current skill noncompliant because it mandated feature
+branches, linked worktrees or isolated workspaces, feature-branch verification,
+branch-to-main merges, branch-specific status fields, and branch/worktree
+teardown. It proposed a main-only exception with private clones and lock-protected
+pushes, but the skill had no explicit direct-main lifecycle or gate for draining
+existing worker branches/worktrees.
+
+### Observed post-change run
+
+The fresh agent kept all workers and editing subagents on `main`, prohibited
+feature branches, linked worktrees, detached HEAD, and substitute worker lanes,
+and allowed normal clones only when every clone remained on `main`. It required
+one mutation lock per shared checkout and one repository-wide main-push lock,
+then committed, reconciled, reverified, pushed, and proved each substep on
+`origin/main` before continuing. It also made legacy convergence a hard launch
+gate: freeze old branch/worktree edits, preserve uncertain state, verify and
+merge retained commits into `main`, prove ancestry, and retire only clean,
+fully integrated branches/worktrees without force. All critical behaviors
+passed.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -218,12 +290,13 @@ handoff the terminal condition. All critical behaviors passed.
 | One owner prevents false parallelism | `SKILL.md` — Map foundations and mutable surfaces |
 | One dated specs/plans folder per blueprint | `SKILL.md` — Name the blueprint and its artifact roots |
 | Coordinator briefs; worker-authored specs/plans | `SKILL.md` — Write worker briefs, not worker plans |
-| Same-machine worktree isolation | `SKILL.md` — Require the worker execution lifecycle |
+| Main-only worker and subagent execution | `SKILL.md` — Ban branches and worktrees; Require the worker execution lifecycle |
+| Existing branch/worktree convergence | `SKILL.md` — Converge existing branch/worktree work before new execution |
 | Phase-specific worker launch prompts | `SKILL.md` — Generate worker launch prompts; `references/worker-prompt-templates.md` |
-| Per-substep fetch/rebase/push | `SKILL.md` — Require the worker execution lifecycle |
+| Per-substep direct-main reconcile/verify/push | `SKILL.md` — Require the worker execution lifecycle |
 | Remote merge determines readiness | `SKILL.md` — Require remote-evidenced readiness |
 | Per-worker and coordinator status ownership | `SKILL.md` — Require remote-evidenced readiness; bundled status templates |
-| Safe integration and teardown | `SKILL.md` — Integrate and tear down safely |
-| No force deletion of dirty or unmerged work | `SKILL.md` — Integrate and tear down safely; Stop conditions |
+| Safe integration and cleanup | `SKILL.md` — Complete and clean up safely |
+| No force deletion of dirty or unpushed work | `SKILL.md` — Converge existing branch/worktree work before new execution; Complete and clean up safely; Stop conditions |
 | Worker task specifications synchronize affected product specifications | `SKILL.md` — Write worker briefs, not worker plans; Require the worker execution lifecycle; `references/worker-prompt-templates.md` — Planning-only worker prompt |
 | Product specifications remain unified and end-to-end | `SKILL.md` — Write worker briefs, not worker plans; `references/worker-prompt-templates.md` — Planning-only worker prompt |

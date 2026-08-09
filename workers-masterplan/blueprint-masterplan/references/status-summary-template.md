@@ -1,6 +1,6 @@
 # Coordinator Status Summary Template
 
-Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and fetching any active worker branches that contain unintegrated work.
+Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and checking every declared main-only checkout for dirty or unpushed work.
 
 ```markdown
 # <Blueprint> Coordination Status
@@ -10,7 +10,7 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 | Blueprint | `<relative path>` |
 | Integration authority | `origin/main` |
 | `origin/main` commit inspected | `<commit>` |
-| Remote branches fetched | `<timestamp and timezone>` |
+| Main-only checkouts inspected | `<paths/machines, timestamp, and timezone>` |
 | Coordinator | <role or named owner> |
 | Snapshot status | Current / Stale / Blocked |
 
@@ -41,13 +41,13 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 | Worker/gate | Written prerequisites | Integrated prerequisites | Effective state | Reason |
 | --- | --- | --- | --- | --- |
-| <ID> | <IDs> | <IDs verified on origin/main> | not-ready / ready / active / review / complete | <concise evidence> |
+| <ID> | <IDs> | <IDs verified on origin/main> | not-ready / ready / in-progress / blocked / review / complete | <concise evidence> |
 
 ## Verification and remote-state gaps
 
-| Worker | Gap | Latest integrated `origin/main` commit | Last `main` pull | Required action |
+| Worker | Gap | Latest integrated `origin/main` commit | Last `main` reconciliation | Required action |
 | --- | --- | --- | --- | --- |
-| <ID> | Stale branch / Missing tests / Open review / Non-ancestor commit | <commit> | <commit/date> | <action> |
+| <ID> | Wrong branch / Linked worktree / Dirty main / Unpushed main commit / Missing tests / Open review | <commit> | <commit/date> | <action> |
 
 ## Living-authority downstream propagation
 
@@ -69,11 +69,11 @@ Any affected worker remains blocked or not-ready while a required document updat
 | --- | --- | --- |
 | <ID> | <commit, gate, or approval> | <action> |
 
-## Completion and cleanup receipts
+## Completion receipts
 
-| Worker | Integrated commit reachable | Integrated verification | Worktree removed | Local branch deleted | Remote branch deleted | Recorded complete |
-| --- | --- | --- | --- | --- | --- | --- |
-| <ID> | Yes / No | <evidence> | Yes / No / Host-managed | Yes / No | Yes / No | <timestamp or pending> |
+| Worker | Final main commit reachable | Integrated verification | Main-only checkout clean | Handoff preserved | Recorded complete |
+| --- | --- | --- | --- | --- | --- |
+| <ID> | Yes / No | <evidence> | Yes / No | Yes / No | <timestamp or pending> |
 
 ## Coordinator next actions
 
@@ -85,11 +85,11 @@ Any affected worker remains blocked or not-ready while a required document updat
 ## Aggregation rules
 
 - Pull `origin/main` before calculating; never trust a cached local branch list.
-- Read each worker's latest completed-substep status from `origin/main`; inspect its feature branch only for explicitly unintegrated work.
+- Read each worker's latest completed-substep status from `origin/main`; inspect declared main-only checkouts only for dirty or unpushed work.
 - Recompute hard-dependency readiness from `origin/main` ancestry and gate evidence.
 - Recompute living-authority downstream impact and require every relevant downstream document update before clearing blockers.
-- Treat a worker's `complete` claim as advisory until integration and cleanup checks pass.
+- Treat a worker's `complete` claim as advisory until integration, verification, handoff, and clean-main checks pass.
 - Keep coordinator conclusions out of worker-owned status files.
 - Mark the entire snapshot stale if the `origin/main` pull fails.
 - Report “no blocker” only after checking dependency, review, verification, conflict, and external-decision state.
-- Active worker branches may remain between substeps even though completed work is integrated. Delete only branches for verified fully integrated workers.
+- Treat any worker branch or linked worktree as a policy violation and migration blocker. Preserve uncertain work; retire it only after verified integration into `origin/main`.
