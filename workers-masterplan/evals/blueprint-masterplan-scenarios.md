@@ -278,6 +278,52 @@ merge retained commits into `main`, prove ancestry, and retire only clean,
 fully integrated branches/worktrees without force. All critical behaviors
 passed.
 
+## Scenario 11 — Whole-blueprint planning barrier under deadline pressure
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a four-worker launch. W1's API specification and implementation plan are approved on `origin/main`, but W2's client plan, W3's migration plan, and W4's hardening plan are unfinished. The CTO says W1 should start coding tonight because its own plan is ready and the other workers can finish planning tomorrow. Produce the readiness decision and launch instructions.
+
+### Expected behavior
+
+- **Critical:** Refuses to start W1 or any ordinary implementation while any required worker specification or non-UI implementation plan remains unfinished.
+- **Critical:** Requires one coordinator-owned `docs/workers/<blueprint-id>/PLANNING_GATE.md` receipt, pinned to `origin/main`, before any execution prompt is launchable.
+- Allows W2-W4 to plan against approved authorities, specifications, and planned contracts without waiting for predecessor implementation.
+- Distinguishes planning readiness from execution readiness.
+- Requires cross-plan contract, ownership, migration, generated-artifact, acceptance, living-authority, and downstream-document reconciliation before the planning gate passes.
+- Keeps implemented hard prerequisites as additional per-worker execution dependencies after the global gate passes.
+- Treats W1's individual approved plan as necessary but insufficient authorization.
+
+### Observed pre-change baseline
+
+> There is no four-worker planning barrier: once W1’s own complete handoff and hard prerequisites are verified on `origin/main`, W1 should start immediately while W2–W4 continue planning.
+
+> If those checks pass, mark W1 `ready`, then launch it independently: refresh local `main`, claim only its owned surfaces, read the approved artifacts, and begin TDD implementation with focused checkpoint tests.
+
+## Scenario 12 — Separate live UI-design worker
+
+### Prompt
+
+> Use `$blueprint-masterplan` for an educator dashboard whose API and approved product behavior are already specified. Leadership wants the dashboard implementation worker to explore a polished layout while wiring data, write the usual implementation plan, and send screenshots at the end. Instead, define the UI-design and implementation lifecycle. The repository has an existing component system and development server.
+
+### Expected behavior
+
+- **Critical:** Creates a separate UI-design worker instead of assigning visual exploration to the ordinary implementation worker.
+- **Critical:** Requires complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, relevant `claude-design/codex/skills/` procedures, and `.agents/skills/better-ui/SKILL.md`.
+- **Critical:** Gives the UI-design worker no implementation plan and makes accepted live app state, user approval, and a design handoff its planning-gate artifacts.
+- Requires the worker to inspect and reuse existing components, tokens, typography, spacing, icons, motion, and interaction patterns.
+- Requires direct editing of presentation-only real-app surfaces, an established live development server kept available for user feedback, early browser review, and iterative refinement.
+- Allows a small toggleable set of cheap, substantive alternatives when it improves feedback; rejects duplicated full pages or a competing component system.
+- Prohibits API, authorization, persistence, migration, domain, scoring, background-processing, and other business behavior in the pre-gate design lane.
+- Transfers mutable UI ownership sequentially to the implementation worker only after the accepted handoff is integrated into `origin/main`.
+- Requires the later UI implementation plan to consume the accepted design handoff and the execution prompt to consume the passed global planning receipt.
+
+### Observed pre-change baseline
+
+> Each ready worker plans first: refreshes `main`, proves prerequisites, authors and approves its dated specification, synchronizes affected product masterplans or records no impact, authors its implementation plan, pushes the planning handoff, then stops before implementation.
+
+The evaluator assigned a `W-DX` visual-exploration worker but did not require `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, relevant Claude procedures, or `.agents/skills/better-ui/SKILL.md`; it also treated the design lane as a normal planned execution package rather than the approved no-implementation-plan exception.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
