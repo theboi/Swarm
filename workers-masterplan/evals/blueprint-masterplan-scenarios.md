@@ -10,6 +10,7 @@
 | Fresh-agent rewritten-skill run | Complete on 8 August 2026: scenarios 6-8 passed in independent fresh-agent runs; Scenario 9 passed on 9 August 2026 |
 | Fresh-agent main-only pre-change baseline | Complete on 9 August 2026: current skill required feature branches/worktrees and had no convergence gate |
 | Fresh-agent main-only post-change run | Complete on 9 August 2026: Scenarios 2–5 and 10 passed in independent fresh-agent runs |
+| Plan-first/live-UI RED checkpoint | Reachable from `origin/main` at commit `f5afc824` |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -322,7 +323,9 @@ passed.
 
 > Each ready worker plans first: refreshes `main`, proves prerequisites, authors and approves its dated specification, synchronizes affected product masterplans or records no impact, authors its implementation plan, pushes the planning handoff, then stops before implementation.
 
-The evaluator assigned a `W-DX` visual-exploration worker but did not require `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, relevant Claude procedures, or `.agents/skills/better-ui/SKILL.md`; it also treated the design lane as a normal planned execution package rather than the approved no-implementation-plan exception.
+> Every worker planning phase: `superpowers:brainstorming`, then `superpowers:writing-plans`; update affected product specification masterplans in the same planning substep or record evidence-backed no impact.
+
+> Every worker execution phase: applicable TDD, review, and verification skills. Use focused tests at meaningful checkpoints and one full-suite run only after that worker finishes all owned tasks.
 
 ## Static contract coverage
 
