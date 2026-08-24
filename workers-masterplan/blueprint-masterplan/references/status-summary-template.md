@@ -1,6 +1,6 @@
 # Coordinator Status Summary Template
 
-Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after pulling `origin/main` and checking declared worker lanes for dirty or unpushed work. This summary and worker-owned artifacts replace worker-to-worker Codex chat.
+Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this file after inspecting a named `origin/main` commit and checking the named per-worker status contracts. This summary and worker-owned artifacts replace worker-to-worker Codex chat. Preserve and report unrelated dirt; do not remove it to make a status or baseline look clean.
 
 ```markdown
 # <Blueprint> Coordination Status
@@ -10,9 +10,19 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 | Blueprint | `<relative path>` |
 | Integration authority | `origin/main` |
 | `origin/main` commit inspected | `<commit>` |
+| Initial readiness snapshot at inspected commit | `<timestamp and timezone>` |
 | Worker lanes inspected | `<paths/machines, timestamp, and timezone>` |
 | Coordinator | <role or named owner> |
 | Snapshot status | Current / Stale / Blocked |
+
+## Authority-refresh record
+
+| Authority path | Inspected `origin/main` commit | Result | Evidence / blocked action |
+| --- | --- | --- | --- |
+| `<relative path>` | `<commit>` | current / updated / blocked | `<review evidence, update commit, or unblock criterion>` |
+
+Record every cited authority. A remote-uninspected authority or readiness result
+is `unverified`, not current, planning-ready, or execution-ready.
 
 ## Executive status
 
@@ -39,11 +49,11 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 The receipt is the only ordinary-execution authorization. A worker's approved
 planning artifacts are necessary but never sufficient on their own.
 
-## Complete worker planning manifest
+## Named worker-status contracts and complete planning manifest
 
-| Worker | Phase | Specification path and commit | Implementation plan or accepted UI artifacts | Planning state | Cross-plan reconciliation | Authority synchronization | Gate row |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| <ID> | planning / execution / ui-design | `<path, commit, or not applicable>` | `<path, commit, or accepted app commit + approval + handoff>` | pending / approved / reopened / not applicable | pending / complete / contradicted | current / missing / stale / no-impact with evidence | complete / incomplete |
+| Worker | Named worker-status contract | Phase | Specification path and commit | Implementation plan or accepted UI artifacts | Planning state | Cross-plan reconciliation | Authority synchronization | Gate row |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| <ID> | `docs/workers/<blueprint-id>/status/<worker-id>.md` | planning / execution / ui-design | `<path, commit, or not applicable>` | `<path, commit, or accepted app commit + approval + handoff>` | pending / approved / reopened / not applicable | pending / complete / contradicted | current / missing / stale / no-impact with evidence | complete / incomplete |
 
 List every execution worker and UI-design worker. `not applicable` is valid for
 an implementation plan only for a UI-design worker whose accepted app state,
@@ -84,13 +94,29 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 ## Dependency readiness
 
-| Worker/gate | Planning prerequisites | Planning state | Global planning-gate receipt | Implemented execution prerequisites | Execution readiness | Reason |
+| Worker/gate | Planning prerequisites and evidence | Planning state | Global planning-gate receipt | Implemented execution prerequisites and evidence | Execution readiness | Blocker / reason |
 | --- | --- | --- | --- | --- | --- |
-| <ID> | <approved authorities, brief, and planned contracts> | planning-blocked / planning-ready / planning-in-progress / planning-complete | open / passed / reopened at `<origin/main commit>` | <IDs and evidence verified on `origin/main`> | blocked / ready / in-progress / review / complete | <concise evidence> |
+| <ID> | <approved authorities, brief, planned contracts, and inspected remote evidence> | planning-blocked / planning-ready / planning-in-progress / planning-complete / unverified | open / passed / reopened at `<origin/main commit>` | <IDs and evidence verified on `origin/main`> | blocked / ready / in-progress / review / complete / unverified | <concise blocker or evidence> |
 
 Planning readiness does not require predecessor implementation. Execution
 readiness requires both a passed global receipt and the worker's implemented
 hard prerequisites; retain these two findings separately even when they differ.
+This is the initial readiness table at the inspected remote commit and must show
+evidence and blockers for both predicates. Remote-uninspected rows are
+`unverified`.
+
+## Main-integration lifecycle evidence
+
+| Worker | Checkout/clone mode | Required shared-checkout lock or cross-clone queue | Clean-baseline evidence | Last independently testable substep | Remote reachability proof |
+| --- | --- | --- | --- | --- | --- |
+| <ID> | genuinely shared checkout / independent normal clone | `<lock/queue name or not applicable>` | `<reconciled main; no owned dirt; unrelated dirt preserved/reported>` | `<coherent plan task/subtask; focused check; commit>` | `<origin/main commit and ancestry command/result>` |
+
+For a genuinely shared checkout, the exclusive main-mutation lock covers all
+filesystem edits and Git/index operations through remote proof; read-only
+planning may be parallel. Normal clones are allowed only on different machines
+or for an incompatible shared checkout. Their push queue covers reconciliation,
+affected verification, push, and remote-ancestry proof without imposing a global
+edit lock across clones.
 
 ## Verification and remote-state gaps
 
@@ -130,7 +156,7 @@ no-impact findings permit already-running unrelated execution to continue.
 
 ## Completion receipts
 
-| Worker | Final main commit reachable | Final full suite | Assigned lane clean | Handoff preserved | Recorded complete |
+| Worker | Final main commit reachable | Final full suite | No owned dirt; unrelated dirt preserved/reported | Handoff preserved | Recorded complete |
 | --- | --- | --- | --- | --- | --- |
 | <ID> | Yes / No | <evidence> | Yes / No | Yes / No | <timestamp or pending> |
 
@@ -151,4 +177,4 @@ no-impact findings permit already-running unrelated execution to continue.
 - Keep coordinator conclusions out of worker-owned status files.
 - Mark the entire snapshot stale if the `origin/main` pull fails.
 - Report “no blocker” only after checking dependency, review, verification, conflict, and external-decision state.
-- Never treat workers sharing `main` or a checkout as a blocker. Preserve concurrent changes, require explicit surface ownership, and retire only dedicated lanes after verified integration into `origin/main`.
+- In a genuinely shared checkout, wait for the required main-mutation lock before filesystem or Git/index mutation; read-only planning may continue. Across independent normal clones, require the push queue but never impose a global edit lock. Preserve concurrent and unrelated changes, require explicit surface ownership, and retire only dedicated lanes after verified integration into `origin/main`.
