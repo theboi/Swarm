@@ -765,6 +765,189 @@ git push origin main
 If no correction beyond evaluation observations was required, stage and commit
 only `workers-masterplan/evals/blueprint-masterplan-scenarios.md`.
 
+### Task 6R: Restore observed shared-main and frontier-shaping regressions
+
+**Reason:** The fresh Task 6 run found that Scenario 12 is GREEN after the
+canonical checklist guard, while pre-existing response shapes still miss strict
+main-only lifecycle evidence (Scenarios 1, 2, and 10) and accept an unjustified
+over-wide repeatable-adapter frontier (Scenario 6). A Sol High recovery review
+identified one softened shared-main policy and two output-salience gaps. This is
+an evidence-driven extension, not a new product or fixture requirement.
+
+**Files:**
+- Modify: `workers-masterplan/blueprint-masterplan/SKILL.md`
+- Modify: `workers-masterplan/blueprint-masterplan/references/blueprint-masterplan-template.md`
+- Modify: `workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md`
+- Modify: `workers-masterplan/blueprint-masterplan/references/status-summary-template.md`
+- Modify: `workers-masterplan/evals/blueprint-masterplan-scenarios.md`
+
+- [ ] **Step 1: Restore a conditional, non-destructive shared-main lifecycle**
+
+Require an exclusive main-mutation lock for filesystem edits and Git/index
+operations in one genuinely shared checkout; read-only planning may continue in
+parallel. If that lock cannot exist, require normal clones on `main` instead;
+normal clones are allowed only for different machines or an incompatible shared
+checkout. Across clones, require a push lock or queue that covers reconciliation,
+focused verification, push, and remote-ancestry proof.
+
+Define an independently testable substep as a coherent plan task/subtask with
+its own focused verification. After each such substep, run focused verification,
+stage only owned paths, commit directly to `main`, fetch and merge newer
+`origin/main`, rerun affected checks, push, and prove reachability before the
+next substep. Preserve the one-full-suite-at-worker-completion rule and prohibit
+rebase or force-push of published `main`. A clean baseline requires reconciled
+local `main` and no owned dirty state; unrelated dirt is preserved and reported,
+never removed.
+
+- [ ] **Step 2: Require evidence-based grouping of over-wide repeatable work**
+
+Before accepting any substantive frontier wider than seven, explicitly test
+grouping by domain, protocol, risk, runtime, release boundary, and shared
+verification. Separate files, provider-specific acceptance evidence, independent
+ownership, and open execution slots do not alone justify an exception; preserve
+provider tests inside a coherent adapter bundle where safe. Require concrete
+incompatible ownership, security/isolation, runtime/toolchain, deployment/release,
+or verification evidence for any remaining exception. Never invent edges, group
+shared migrations/facades with adapter work, or force a group when documented
+constraints make it unsafe.
+
+- [ ] **Step 3: Make readiness, authority, and output evidence visible**
+
+Require an authority-refresh record (path, inspected `origin/main` commit, and
+current/updated/blocked result), a named per-worker status contract plus
+coordinator `STATUS.md`, and an initial table at the inspected remote commit
+that separates planning readiness from execution readiness with evidence and
+blockers. Remote-uninspected readiness is `unverified`.
+
+Before returning any Git lifecycle or worker prompt, mechanically check the six
+shared-main facts: checkout/clone mode; required lock or queue; explicit
+substep cadence; remote reachability proof; published-main no-rebase/no-force;
+and unrelated-dirt preservation. This check must remain conditional so it does
+not impose a global edit lock across independent normal clones.
+
+- [ ] **Step 4: Re-run the observed failures without weakening evaluation**
+
+Use five fresh guided samples for each repaired output shape, then rerun
+Scenarios 1, 2, 6, and 10. Require at least 18/20, 15/16, 13/14, and 15/16
+respectively, with no critical zero. Preserve Scenario 11 at 13/14 or better
+with no critical zero; preserve Scenario 12 at 18/18, including exactly one
+canonical checklist for each UI-design worker and none for ordinary workers;
+rerun 5, 8, and 9 as regressions. Record control results but do not relax any
+candidate threshold. Fixture behavior remains out of scope.
+
+- [ ] **Step 5: Independently review and publish recovery evidence**
+
+Review that the restored shared-main policy is conditional and preserves
+unrelated work, and that the grouping rule is evidence-based rather than a
+worker-count cap. Resolve every Critical/Important issue, then stage explicit
+owned paths, reconcile current `main`, commit, push, and record exact GREEN or
+remaining-blocked evidence.
+
+### Task 6F: Render operative lifecycle outputs without compression
+
+**Reason:** Task 6R restored the general policy and passed grouping/lock
+pressure variants, but fresh strict responses for Scenarios 2, 8, and 10 still
+compressed conditional clone/cadence safety or coordinator/worker phase
+responsibilities. A Sol High review confirmed the rubrics are reasonable and
+identified an output-only guard that does not change product, fixture, or core
+execution behavior.
+
+**Files:**
+- Modify: `workers-masterplan/blueprint-masterplan/SKILL.md`
+- Modify: `workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md`
+- Modify: `workers-masterplan/evals/blueprint-masterplan-scenarios.md`
+
+- [ ] **Step 1: Define operative-output conditions and canonical blocks**
+
+An output is operative only when it creates or recommends worker assignments,
+gives a Git/integration lifecycle, emits a launch packet/prompt, or resolves a
+coordinator-versus-worker authorship dispute while directing work. Audits,
+status reports, factual explanations, and direct answers that assign no work
+remain concise. Operative outputs must show required facts rather than saying
+only to follow the skill or template.
+
+For every operative Git/integration lifecycle or actual ordinary-worker launch
+packet, render once the canonical **Shared-main lifecycle** block with four
+visible rows: mode (including the exclusive shared-checkout mutation lock),
+conditional normal-clone fallback and bounded cross-clone push queue, coherent
+independently-testable-substep checkpoint cadence, and unrelated-dirt plus
+published-main no-rebase/no-force safety.
+
+For every operative multiworker-blueprint or coordinator-authorship answer,
+render once the canonical **Coordinator/worker phase contract** block: coordinator
+frozen blueprint/DAG/gates/contracts/briefs/reserved paths without worker plan
+authorship; each ordinary worker’s own dated specification/plan and integrated
+planning stop; the whole-blueprint passed receipt; and only then execution
+prompt consumption with implemented prerequisites. UI-design exceptions retain
+their existing dedicated conditional workflow.
+
+- [ ] **Step 2: Make prompt assembly render the shared-main block**
+
+Replace the abstract six-fact output audit in `worker-prompt-templates.md` with
+a direct requirement to render the canonical shared-main block once in an
+operative prompt, filled with exact values. Preserve existing detailed planning
+and execution wording; no third template or clone-wide edit lock is added.
+
+- [ ] **Step 3: Preserve and test concise non-operative answers**
+
+Rerun S2, S8, and S10 in fresh hidden-rubric contexts at 90 percent or better
+with no Critical zero; run five shared-main operative pressure variants and five
+coordinator-authorship variants requiring all four canonical rows; run three
+non-operative controls to confirm no block dumping. Re-run S1, S5, S6, S9, S11,
+and S12 and preserve the exact-one/zero UI checklist cardinality behavior. Do
+not weaken evaluation thresholds or modify fixture behavior.
+
+- [ ] **Step 4: Review, publish, and record exact evidence**
+
+Independently review the conditional scopes, canonical block text, and no-UI
+regression. Resolve every Critical/Important issue, stage only owned paths,
+reconcile current `main`, commit, push, and keep both earlier failures and final
+fresh results in the evaluator record.
+
+### Task 6P: Front-load the coordinator-phase contract once
+
+**Reason:** Task 6F produced 5/5 shared-main blocks and 0/3 concise control
+dumps, but only 4/5 coordinator-authorship variants rendered the phase block.
+Sol High advises one final preregistered output-placement guard, not repeated
+sampling or a weaker rubric. If that batch remains below 5/5, record the
+evidence and stop; a deterministic caller-side renderer/linter would then be a
+new authority decision outside this skill-only request.
+
+**Files:**
+- Modify: `workers-masterplan/blueprint-masterplan/SKILL.md`
+- Modify: `workers-masterplan/evals/blueprint-masterplan-scenarios.md`
+
+- [ ] **Step 1: Move the phase block to a mandatory response-shape preflight**
+
+Immediately after `GLOBAL PLANNING BARRIER`, define operative multiworker or
+coordinator-authorship output. Before any graph, worker table, readiness,
+assignment, or launch instruction—and after at most one outcome sentence—it
+must render exactly one verbatim **Coordinator/worker phase contract** block.
+Gate-correct prose is insufficient. Non-operative and UI-exception-only answers
+render zero phase blocks. If a shared-main block independently applies, it
+appears exactly once immediately after the phase block; never merge or duplicate
+them. Move, rather than copy, the existing canonical table and replace its old
+location with a pointer.
+
+- [ ] **Step 2: Add a position-aware mechanical return check**
+
+`phase_required` is true exactly for operative multiworker/coordinator-authorship
+answers. When true, require one heading and each of the four canonical rows
+before every graph, worker table, readiness decision, assignment, or launch
+instruction; otherwise require zero heading/rows. Count shared-main and UI
+checklist blocks independently.
+
+- [ ] **Step 3: Run one preregistered final batch**
+
+Use isolated rubric-hidden contexts that may read only current skill/references:
+five coordinator-authority variants must be 5/5 exact-one/prefix-position;
+five shared-main variants must be 5/5 without a phase block unless separately
+applicable; three guided non-operative controls must show zero phase/shared
+blocks. Rerun original Scenarios 1–12 once each, retaining their thresholds and
+Scenario 12 checklist cardinality. Record raw outputs, context IDs, mechanical
+counts, and scores. If the 5/5 coordinator batch fails, record it and stop—do
+not tune wording again or weaken a rubric.
+
 ### Task 7: Validate, review, and publish completion evidence
 
 **Files:**

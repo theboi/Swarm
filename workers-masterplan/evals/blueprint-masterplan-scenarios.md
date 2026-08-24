@@ -11,6 +11,8 @@
 | Fresh-agent main-only pre-change baseline | Complete on 9 August 2026: current skill required feature branches/worktrees and had no convergence gate |
 | Fresh-agent main-only post-change run | Complete on 9 August 2026: Scenarios 2–5 and 10 passed in independent fresh-agent runs |
 | Plan-first/live-UI RED checkpoint | Reachable from `origin/main` at commit `f5afc824` |
+| Plan-first/live-UI UI REFACTOR diagnostic | 24 August 2026: five fresh guided samples kept the separate live design lane but named all four mandatory source reads 0/5; generic collective labels did not satisfy Scenario 12's Critical source-loading behavior |
+| Plan-first/live-UI canonical checklist GREEN checkpoint | 24 August 2026: commit `64753e8b`; five fresh guided UI samples emitted exactly one literal four-row pre-edit checklist, five controls omitted it, and the full Scenario 12 evaluator passed |
 | Static contract coverage | Recorded after skill authoring |
 
 Use each prompt in a fresh repository context. Keep the rubric hidden until the response and artifacts are complete.
@@ -307,6 +309,21 @@ passed.
 
 > If those checks pass, mark W1 `ready`, then launch it independently: refresh local `main`, claim only its owned surfaces, read the approved artifacts, and begin TDD implementation with focused checkpoint tests.
 
+### Observed post-change GREEN run — 24 August 2026
+
+An actual fresh evaluator context read the current skill and its required
+references without this rubric. It said: “**do not authorize W1 to code
+tonight**,” classified W1 as “`planning-complete / execution-blocked`,” kept
+`docs/workers/<blueprint-id>/PLANNING_GATE.md` open, permitted W2–W4 planning
+without W1 implementation, and required the passed pinned receipt plus each
+worker's implemented hard prerequisites before editing.
+
+Manual score: **13/14 (92.9%)**, with no Critical zero. The cross-plan
+reconciliation list was partial because it did not explicitly name generated
+artifacts and acceptance evidence; it still named contract agreement, mutable
+ownership, migration ordering, living-authority currency, downstream documents,
+and unresolved contradictions.
+
 ## Scenario 12 — Separate live UI-design worker
 
 ### Prompt
@@ -316,7 +333,7 @@ passed.
 ### Expected behavior
 
 - **Critical:** Creates a separate UI-design worker instead of assigning visual exploration to the ordinary implementation worker.
-- **Critical:** Requires complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, relevant `claude-design/codex/skills/` procedures, and `.agents/skills/better-ui/SKILL.md`.
+- **Critical:** Requires complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, relevant `claude-design/codex/skills/` procedures, and `.agents/skills/better-ui/SKILL.md`. A collective label such as “required design sources,” “Claude Design sources,” or “`better-ui` guidance” is partial and scores `1`, not `2`; the answer must name all four requirements.
 - **Critical:** Gives the UI-design worker no implementation plan and makes accepted live app state, user approval, and a design handoff its planning-gate artifacts.
 - Requires the worker to inspect and reuse existing components, tokens, typography, spacing, icons, motion, and interaction patterns.
 - Requires direct editing of presentation-only real-app surfaces, an established live development server kept available for user feedback, early browser review, and iterative refinement.
@@ -342,6 +359,153 @@ requirements. The ordinary “Each ready worker plans first” lifecycle therefo
 planned `W-DX` conventionally with a dated specification and implementation
 plan. They omit the mandatory Claude Design and `better-ui` reads and reserve
 production UI for `W-DF`, which is the observed RED failure.
+
+### Pre-GREEN REFACTOR diagnostic — 24 August 2026
+
+Five actual fresh guided evaluator contexts read the revised skill and required
+references before responding. All five created the separate live,
+presentation-only UI-design lane with no implementation plan, live feedback,
+and sequential ownership transfer. They nevertheless named all four mandatory
+source reads `0/5`: examples compressed them to “the required Claude Design
+sources and `.agents/skills/better-ui/SKILL.md`,” “the required design sources,”
+or “the mandatory design sources, including the Claude Design instructions and
+`better-ui` guidance.” Two of five mentioned optional temporary shared-component
+alternatives. This is a structural output-shape omission, not evidence to weaken
+the Critical rubric. The corrective policy must make generated UI-design launch
+instructions name the four source reads literally before a new GREEN run.
+
+### Observed canonical-checklist GREEN run — 24 August 2026
+
+The first literal-path correction did not converge: its five fresh guided
+samples named all four required reads `3/5`, while two still summarized them as
+generic sources. The canonical-checklist correction at `64753e8b` then used five
+new actual fresh guided evaluator contexts. All five emitted **exactly one**
+verbatim four-row `Mandatory pre-edit source-read checklist` before editing
+instructions, and each named all four required literals. Five new no-guidance
+controls emitted zero checklist blocks and instead proposed a conventional
+single implementation/design flow with an implementation plan and end-state
+screenshots.
+
+The guided samples also retained the separate UI-design worker, no-plan
+exception, real-app presentation-only edits, live server and iterative approval,
+optional temporary shared-component comparison surface, functional exclusions,
+and sequential ownership transfer. A separate no-trigger evaluation explicitly
+returned an ordinary implementation worker and emitted no UI-design worker or
+checklist when the accepted visual hierarchy, layout, component treatment,
+responsive behavior, motion, interaction states, and copy were unchanged.
+
+The full new evaluator run scored **18/18 (100%)** with no Critical zero. Its
+UI-design output contained the canonical checklist, direct real-app live review,
+functional exclusions, no implementation plan, accepted handoff, and only then
+the implementation worker's planning and global-gate-controlled execution.
+
+### Fresh regression rerun — 24 August 2026
+
+All results below are actual fresh evaluator contexts, manually scored against
+the existing hidden rubrics after the response was complete. They are retained
+as diagnostics; no expected behavior was weakened to make an output pass.
+
+| Scenario | Manual result | Result |
+| --- | --- | --- |
+| 1 — Parallel MVP | 17/20; authority refresh, detailed status contract, and remote-derived ready-state reporting were ambiguous | Does not clear 90% |
+| 2 — False parallelism | 9/16; correctly rejected branches/worktrees and assigned one role/migration/OpenAPI owner, but omitted mutation lock, clone condition, direct-main cadence, and no-rebase/no-force rule | Does not clear 90% |
+| 5 — Phase-specific prompts | 21/22; immediate post-substep push was the only partial cadence detail | Pass |
+| 6 — Moderate flatness | 10/14; created twelve individual adapter workers and a 12-wide execution frontier, causing a Critical zero | Fails Critical |
+| 8 — Worker-authored plans | 13/14; exact reserved paths were partial | Pass |
+| 9 — Product specification synchronization | 14/14 | Pass |
+| 10 — Main-only execution | 13/16; lock and per-substep cadence details were partial/omitted | Does not clear 90% |
+
+The Scenario 1, 2, 6, and 10 findings predate no behavior-rubric relaxation and
+remain open for focused policy correction. They do not invalidate the passed
+Scenario 11 planning barrier or Scenario 12 live UI-design behavior.
+
+### Task6R recovery rerun — 24 August 2026
+
+Fresh guided recovery evidence at `aaa836e2` corrected the substantive
+Scenario 1 and Scenario 6 outcomes: S1 explicitly inspected authorities before
+freezing, named the shared-checkout lock, status contracts, `unverified` state,
+and remote-derived readiness; S6 created six two-provider bundles with a peak
+execution-ready width of seven. The safe/unsafe grouping and shared-checkout
+pressure variants also behaved as intended: safe providers grouped, audited
+incompatible providers retained a documented 12-wide exception, unrelated dirty
+work was preserved under the mutation lock, a missing lock forced normal-clone
+fallback, and independent clones used a push queue without a global edit lock.
+
+The strict recovery run still leaves output-shape failures. S2 correctly
+rejected branches and used the exclusive mutation lock, but omitted the normal
+clone fallback, direct-main independently-testable-substep cadence, and explicit
+no-rebase/no-force rule. S10 likewise covered shared-checkout locking and
+legacy-lane preservation but omitted the normal-clone/cross-clone branch of the
+lifecycle. S8 correctly rejected coordinator-authored worker plans and required
+the passed global receipt, but omitted enough required lifecycle details to
+clear its complete rubric. S5 and S9 gave complete pass-shaped prompts.
+
+| Recovery evaluation | Result |
+| --- | --- |
+| S1 | Pass-shaped fresh output; no Critical zero observed |
+| S2 | Does not clear strict full rubric — required clone/cadence/no-rebase output omitted |
+| S5 | Pass-shaped fresh output |
+| S6 | Pass-shaped fresh output; no Critical zero observed |
+| S8 | Does not clear strict complete rubric — concise output omitted planning/execution lifecycle fields |
+| S9 | Pass-shaped fresh output |
+| S10 | Does not clear strict full rubric — clone/cross-clone path omitted |
+| Safe grouping / unsafe grouping / dirty shared checkout / no shared lock / independent clones | All pass-shaped fresh outputs |
+
+Scenario 11 remains **13/14** and Scenario 12 remains **18/18**; no recovery
+change touched their output contracts. These remaining strict failures are
+recorded rather than normalized away.
+
+### Task6F render-guard rerun — 24 August 2026
+
+Fresh original-prompt runs at `73688f33` rendered the previously omitted
+operative contract. S2 now explicitly includes the shared-main lock, normal
+clone fallback, cross-clone queue, independently-testable-substep cadence, and
+no-rebase/no-force rule. S8 now renders the coordinator/worker phase contract;
+S10 renders the shared-main lifecycle, clone fallback, queue, cadence, and
+legacy-lane recovery. The first two fresh shared-checkout pressure variants also
+preserved unrelated dirt, allowed parallel read-only planning, and required the
+exclusive lock before a spec edit or Git/index operation.
+
+The requested five-plus-five-plus-three variant matrix was not completed before
+this evaluator handoff. Therefore **all Task6F thresholds are not yet proven**;
+no rubric was relaxed and no fixture behavior was edited.
+
+### Task6F completed fresh matrix — 24 August 2026
+
+An isolated fresh evaluator completed the remaining non-rubric-aware matrix.
+Shared-main operative variants were **5/5**: all emitted the complete four-row
+lock/reconcile/verify/push/reachability lifecycle. Coordinator-authorship
+variants were **4/5**: one response correctly blocked implementation behind the
+gate but omitted the canonical four-row coordinator/worker phase contract.
+No-guidance controls were **0/3** canonical blocks (including a feature-worktree
+and an individually-ready implementation recommendation). Thus the shared-main
+threshold passed, but the coordinator-authorship **5/5** threshold remains open.
+The isolated evaluator could not rerun S1/S5/S6/S9/S11/S12 without reading the
+hidden evaluation prompts; their prior recorded fresh results remain evidence,
+not a substituted rerun.
+
+### Task6P preregistered final batch — 24 August 2026
+
+Five fresh rubric-hidden coordinator-authorship contexts read only the current
+skill and references. Mechanical score is six required facts per response:
+one `Coordinator/worker phase contract` heading, its four literal phase rows,
+and prefix position before operative guidance.
+
+| Isolated context | Prompt pressure | Heading | Four rows | Prefix | Score | Audit excerpt |
+| --- | --- | --- | --- | --- | --- | --- |
+| `p_coord_1` | Six-worker payment deadline | 1 | 4 | pass | 6/6 | “the coordinator freezes the release blueprint tonight but does not author the six workers’ detailed specifications or plans.” |
+| `p_coord_2` | CTO asks to author plans and start W1 early | 1 | 4 | pass | 6/6 | “the coordinator may launch W1’s planning immediately, but must not author W1–W4’s detailed plans or authorize W1 implementation early.” |
+| `p_coord_3` | Product manager writes plans under deadline | 1 | 4 | pass | 6/6 | “A deadline does not transfer worker-plan authorship to the product manager.” |
+| `p_coord_4` | Three-worker migration speed request | 1 | 4 | pass | 6/6 | “the coordinator may freeze briefs, ownership, contracts, artifact paths, and gates, but must not author their detailed specifications or implementation plans.” |
+| `p_coord_5` | Two engineers, six packages | 0 | 0 | fail | 0/6 | “No. The coordinator must reserve paths and reconcile the gate; each ordinary worker authors its own dated specification and detailed plan.” |
+
+The required **5/5** phase-block threshold therefore failed (4/5). Per the
+preregistered stop rule, no further Task6P samples or tuning were performed.
+The remaining planned matrix and original Scenario 1–12 rerun are unproven;
+existing evidence is preserved. A deterministic caller-side renderer or linter
+could address this output-shape problem, but it is outside the current
+skill-only authority and requires a new approved authority decision. No further
+prompt tuning or rubric weakening is authorized in this delivery.
 
 ## Implementation notes
 
@@ -388,4 +552,5 @@ provider, command, or environment.
 | Mandatory Claude Design and `better-ui` loading | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
 | Real-app presentation-only live feedback | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
 | Optional cheap toggleable alternatives | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
+| Canonical pre-edit UI source-read checklist | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; `references/blueprint-masterplan-template.md` |
 | Sequential UI ownership transfer | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; bundled status templates |
