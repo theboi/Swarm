@@ -245,6 +245,9 @@ Use [the worker status template](references/worker-status-template.md) for activ
 
 ## Reconcile through the coordinator-owned planning gate
 
+Before writing, passing, or reopening the receipt, read [the planning-gate
+template](references/planning-gate-template.md) completely.
+
 After the complete planning set is produced, the coordinator reconciles it
 together before ordinary execution. The coordinator writes
 `docs/workers/<blueprint-id>/PLANNING_GATE.md`, pins one inspected
