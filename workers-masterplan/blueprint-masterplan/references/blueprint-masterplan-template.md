@@ -33,6 +33,7 @@ Adapt vocabulary and paths to the project. Preserve every section responsibility
 | Worker specification root | `docs/superpowers/specs/<blueprint-id>/` |
 | Worker implementation-plan root | `docs/superpowers/plans/<blueprint-id>/` |
 | Coordination root | `docs/workers/<blueprint-id>/` |
+| Planning-gate receipt | `docs/workers/<blueprint-id>/PLANNING_GATE.md` |
 
 ## 1. How to use this document
 
@@ -47,7 +48,7 @@ Every worker receives:
 5. the assigned normal checkout or clone on `main`; and
 6. the pull/push retry mechanism and reserved artifact/status paths.
 
-Workers never communicate with one another through Codex chats. They coordinate through `origin/main`, owned status/handoff artifacts, and coordinator-owned summaries. No worker depends on private conversation history, off-main work, or an unpushed local commit. Each worker authors its own detailed specification and implementation plan after its prerequisites are integrated. Feature branches and linked Git worktrees are prohibited; several workers using `main` is normal and is not a blocker.
+Workers never communicate with one another through Codex chats. They coordinate through `origin/main`, owned status/handoff artifacts, and coordinator-owned summaries. No worker depends on private conversation history, off-main work, or an unpushed local commit. Ordinary execution workers become planning-ready from approved authorities, briefs, and planned contracts; they do not wait for predecessor implementation. They become execution-ready only after the whole-blueprint planning gate passes and their hard implemented prerequisites are integrated. Feature branches and linked Git worktrees are prohibited; several workers using `main` is normal and is not a blocker.
 
 ## 2. Outcome and delivery gates
 
@@ -75,11 +76,51 @@ List the approved product, architecture, security, integration, data, and operat
 | --- | --- | --- | --- |
 | <contract, migration sequence, generated output, central file> | <worker ID> | <IDs> | <merge/evidence required before use> |
 
-## 5. Execution graph
+## 5. Pre-execution planning and authorization
+
+### 5.1 Conditional live UI design
+
+Add a separate UI-design worker only when its package introduces or changes
+visual hierarchy, layout, component treatment, responsive behavior, motion,
+interaction states, or interface copy. That worker owns only named presentation
+surfaces, edits the real app, uses the conditional live-design prompt, has no
+implementation plan, and transfers mutable UI ownership only after its accepted
+handoff is integrated. Do not add a UI-design worker when this observable trigger
+is absent.
+
+### 5.2 Complete planning set and planning gate
+
+Before ordinary execution, every ordinary execution worker must be
+planning-ready and must publish its approved dated specification, non-UI
+implementation plan, authority synchronization, downstream propagation, and
+planned-contract inputs. Planning dependencies consume approved authorities,
+briefs, and planned contracts; they do not require predecessor implementation.
+
+The coordinator reconciles the complete planning set, including each required
+UI-design handoff, at one pinned `origin/main` commit. It then owns and writes
+`docs/workers/<blueprint-id>/PLANNING_GATE.md` using
+`references/planning-gate-template.md`. The gate passes only when every required
+row is approved/reconciled, every affected UI implementation plan consumes its
+accepted UI-design handoff, and no material contradiction remains. An individual
+planning handoff never authorizes execution.
+
+### 5.3 Execution-ready predicate
+
+An ordinary worker is execution-ready only when the planning-gate receipt is
+passed at its named `origin/main` commit *and* every hard implementation
+prerequisite and required execution evidence for that worker is integrated there.
+The gate is a hard prerequisite for every ordinary execution node; it does not
+replace the node's existing implemented DAG edges.
+
+## 6. Execution graph
 
 ```mermaid
 flowchart TD
     ROOT["Living authorities approved"] --> F0["F0 - Foundation contract"]
+    ROOT --> PG["PG - Whole-blueprint planning gate"]
+    PG --> W1["W1 - Independent trade A"]
+    PG --> W2["W2 - Independent trade B"]
+    PG --> W3["W3 - Independent trade C"]
     F0 --> W1["W1 - Independent trade A"]
     F0 --> W2["W2 - Independent trade B"]
     F0 --> W3["W3 - Independent trade C"]
@@ -90,9 +131,12 @@ flowchart TD
     G1 --> DONE["OBJECTIVE COMPLETE"]
 ```
 
-Every arrow is a hard prerequisite satisfied only by remote integration and required evidence. Describe coordination-only relationships outside the graph.
+Every ordinary execution node has the planning-gate edge plus its existing
+implemented-prerequisite edges. Every arrow is a hard prerequisite satisfied
+only by remote integration and required evidence. Describe planning-only and
+other coordination relationships outside the graph.
 
-### 5.1 Graph-shape evidence
+### 6.1 Graph-shape evidence
 
 | Metric | Value | Explanation |
 | --- | --- | --- |
@@ -105,29 +149,32 @@ Every arrow is a hard prerequisite satisfied only by remote integration and requ
 
 For a multi-worker objective, target three to seven concurrently ready workers in each substantive post-foundation trade layer. Do not force roots, joins, gates, closeout, or small objectives into the band. Group related micro-surfaces rather than inventing dependencies.
 
-### 5.2 Dependency and unblock parity
+### 6.2 Dependency and unblock parity
 
 | ID | Depends on | Unblocks |
 | --- | --- | --- |
 | <ID> | <IDs or approved authorities> | <IDs and supplied contract/evidence> |
 
-## 6. Readiness and blocker rules
+## 7. Readiness and blocker rules
 
-- `not-ready`: at least one hard prerequisite is not integrated into `origin/main`.
-- `ready`: every hard prerequisite and required contract is integrated into `origin/main`.
-- `in-progress`: the worker claimed its owned scope on `main`, refreshed from `origin/main`, and is producing coherent checkpoints.
+- `planning-blocked`: a required frozen authority, brief, or approved planned contract is unavailable.
+- `planning-ready`: the frozen blueprint, brief, relevant living authorities, and approved planned contracts needed to make task decisions are available; implemented predecessor code is not required.
+- `planning-in-progress`: the worker is producing required ordinary planning artifacts or a UI-design handoff.
+- `planning-complete / execution-blocked`: the worker's artifacts are reconciled, but the global planning gate is open or an implemented hard prerequisite is absent.
+- `execution-ready`: the passed planning-gate receipt is pinned to the named `origin/main` commit and every hard implemented prerequisite/evidence is integrated there.
+- `in-progress`: an execution-ready worker claimed its owned scope on `main`, refreshed from `origin/main`, and is producing coherent checkpoints.
 - `blocked`: a named dependency, decision, conflict, or external condition prevents progress.
 - `review`: work exists but required review, evidence, or integration is open.
 - `complete`: the coordinator verified integration, handoff, evidence, and cleanup.
 
-`origin/main` is authoritative. An off-main commit, unpushed local `main` commit, stash, working-tree change, or local “done” claim does not unblock a dependant or complete a dependency handoff.
+`origin/main` is authoritative. An off-main commit, unpushed local `main` commit, stash, working-tree change, or local “done” claim does not satisfy a planned contract, hard execution prerequisite, planning-gate row, or dependency handoff.
 
-## 7. Mandatory lifecycle for every worker
+## 8. Mandatory lifecycle by worker role
 
-### 7.1 Worker-authored Superpowers planning
+### 8.1 Worker-authored Superpowers planning
 
 1. Enter the assigned normal checkout or clone and prove it is on `main` and is not a linked worktree.
-2. Inspect live shared-checkout state, pull `origin/main` when safe, prove prerequisites and evidence are integrated there, and inspect the relevant baseline without running the full suite.
+2. Inspect live shared-checkout state, pull `origin/main` when safe, prove planning-ready authorities, briefs, and planned-contract inputs are integrated there, and inspect the relevant baseline without running the full suite.
 3. Read this blueprint, relevant living authorities, the worker brief, and prerequisite handoffs.
 4. Use Superpowers brainstorming for task-local decisions.
 5. Write and obtain approval for `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`.
@@ -138,24 +185,51 @@ For a multi-worker objective, target three to seven concurrently ready workers i
 7. Use `superpowers:writing-plans` to write `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`.
 8. Update affected non-product living authorities with stable approved decisions.
 9. Hand off the dated specification, product specification updates or no-impact
-   findings, approved plan, and required downstream propagation together; then
-   stop before implementation.
+   findings, approved plan, authority synchronization, cross-plan reconciliation
+   inputs, and required downstream propagation together; then stop before
+   implementation.
 
 Repeat step 6 whenever the dated specification changes. Do not complete planning
 or unblock implementation while an affected product specification masterplan is
 stale.
 
 The coordinator reserves these paths but does not author their detailed contents.
+This worker's planning handoff is complete only when its approved specification,
+non-UI implementation plan, authority synchronization, downstream propagation,
+and cross-plan inputs are reachable from `origin/main`. This handoff does not
+authorize execution. Ordinary implementation remains prohibited until the
+coordinator publishes a passed whole-blueprint planning-gate receipt.
 
-### 7.2 Execution
+### 8.2 Conditional live UI-design lifecycle
 
-1. Read the worker-authored approved specification and implementation plan.
-2. Implement only owned surfaces with TDD where applicable.
-3. Run the relevant focused test segment at meaningful implementation checkpoints and address review.
-4. If work runs long, commit coherent progress, refresh local and remote `main`, reconcile, and push a checkpoint to limit drift.
-5. After every owned task is finished, refresh again, run the full suite once, integrate/push final evidence, and leave the assigned main checkout clean.
+When the observable UI-design trigger applies, use
+`references/ui-design-worker-prompt-template.md` for the separate design worker.
+It edits only named presentation surfaces in the actual app, has no
+implementation plan, and supplies accepted app state, user approval, and its
+design handoff to the coordinator before ownership transfers to the named
+implementation worker.
 
-### 7.3 Main-only execution
+### 8.3 Coordinator planning-gate reconciliation
+
+The coordinator reviews all ordinary planning handoffs and required UI-design
+handoffs together, verifies their planned interfaces and ownership/ordering
+decisions agree, and writes the passed receipt at one pinned `origin/main`
+commit. No ordinary worker may start product implementation before that receipt
+exists and contains its complete row.
+
+### 8.4 Execution
+
+1. Read the worker-authored approved specification and implementation plan,
+   the passed `PLANNING_GATE.md` receipt, and its pinned `origin/main` commit.
+2. Before editing, verify the receipt is passed, current, contains the worker's
+   complete row, and is pinned to the named commit. Stop if it is open,
+   reopened, stale, missing the worker row, or pinned to a different commit.
+3. Implement only owned surfaces with TDD where applicable.
+4. Run the relevant focused test segment at meaningful implementation checkpoints and address review.
+5. If work runs long, commit coherent progress, refresh local and remote `main`, reconcile, and push a checkpoint to limit drift.
+6. After every owned task is finished, refresh again, run the full suite once, integrate/push final evidence, and leave the assigned main checkout clean.
+
+### 8.5 Main-only execution
 
 All new planning, implementation, review fixes, conflict resolution, and documentation updates happen on checked-out `main`. Do not create, switch to, or continue on feature, worker, review, rescue, integration, or temporary branches. Do not create or use linked Git worktrees, detached HEAD, stash queues, patch queues, or hidden refs as substitute worker lanes.
 
@@ -163,7 +237,7 @@ A separate normal clone is allowed only for a different machine or when workers 
 
 Inventory legacy worker branches/worktrees without blocking unrelated owned work. Preserve dirty or uncertain state; integrate coherent committed work into current `main`, run affected focused checks, push `origin/main`, and prove ancestry. Retire only fully integrated dedicated lanes, never a shared or uncertain lane.
 
-### 7.4 Verification and Git synchronization cadence
+### 8.6 Verification and Git synchronization cadence
 
 1. Before work, inspect live state, fetch `origin/main`, pull it into clean local `main`, and confirm prerequisites.
 2. During work, prioritize writing code and tests. Run only the narrow affected test segment after a coherent chunk, before publishing a checkpoint, or while diagnosing a failure—not after every edit.
@@ -173,7 +247,7 @@ Inventory legacy worker branches/worktrees without blocking unrelated owned work
 
 If another checkout wins the push race, preserve all work, fetch and merge the new `origin/main`, rerun affected focused checks, and retry. Never rebase or force-push published `main`. Do not contact another worker through Codex chat; repository evidence and coordinator-owned artifacts are the coordination mechanism.
 
-### 7.5 Living-authority downstream propagation
+### 8.7 Living-authority downstream propagation
 
 Whenever a worker changes a living business, product/specification, architecture, implementation, operations, security, release, or custom masterplan:
 
@@ -186,11 +260,17 @@ Whenever a worker changes a living business, product/specification, architecture
 
 If frozen blueprint scope, ownership, dependencies, gates, or completion semantics change, require an approved blueprint revision before affected work continues.
 
-## 8. Worker packages
+## 9. Worker packages
 
 ### Worker <ID> — <task and outcome>
 
 **Depends on:** <worker/gate IDs or approved living authorities>.
+
+**Role:** ordinary execution / conditional UI design.
+
+**Planning prerequisites:** <approved authorities, briefs, and planned contracts>.
+
+**Hard execution prerequisites:** <implemented worker/gate IDs and evidence, plus planning gate>.
 
 **Owns:** <paths, contracts, records, migrations, generated artifacts, tests, status>.
 
@@ -206,8 +286,11 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 
 **Reserved worker artifacts:**
 
-- Specification: `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`
-- Implementation plan: `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`
+- Ordinary execution worker — Specification: `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`
+- Ordinary execution worker — Implementation plan: `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`
+- UI-design worker — Accepted app state, approval evidence, and handoff: `<path>`; implementation plan: not applicable.
+
+**UI-design ownership transfer:** <not applicable, or named presentation surfaces, accepted handoff, and implementation worker that receives them>.
 
 **Acceptance evidence:**
 
@@ -220,25 +303,30 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 
 Repeat for every worker. Keep one coherent outcome per package. Do not place the worker's step-by-step specification or implementation plan here.
 
-### 8.1 Phase-specific launch prompts
+### 9.1 Phase-specific launch prompts
 
 When planning and execution may run in separate sessions or a launch packet is requested, create:
 
 - `docs/workers/<blueprint-id>/prompts/<worker-id>-planning.md`; and
 - `docs/workers/<blueprint-id>/prompts/<worker-id>-execution.md`.
 
-The planning prompt makes the worker author its own reserved specification/plan,
-synchronize every affected product specification masterplan in the same planning
-substep, and stop before product implementation. The execution prompt consumes
-those approved files and continues through integrated evidence and a clean main checkout.
+The ordinary planning prompt makes the worker author its own reserved
+specification/plan, synchronize every affected product specification masterplan
+in the same planning substep, and stop before product implementation. The
+ordinary execution prompt names the passed planning-gate receipt and pinned
+commit, verifies execution readiness, then consumes those approved files and
+continues through integrated evidence and a clean main checkout.
 
-## 9. Shared integration contracts
+Only for a worker with the observable UI-design trigger, create a separate
+live-design prompt from `references/ui-design-worker-prompt-template.md`.
+
+## 10. Shared integration contracts
 
 | Contract | Owner and authority | Consumers | Compatibility/validation | Merge/escalation |
 | --- | --- | --- | --- | --- |
 | <contract> | <worker and path/schema> | <IDs> | <rules/evidence> | <owner/process> |
 
-## 10. Integration gates
+## 11. Integration gates
 
 ### Gate <ID> — <name>
 
@@ -257,14 +345,14 @@ those approved files and continues through integrated evidence and a clean main 
 
 **Unlocks:** <worker/gate/release IDs>.
 
-## 11. Coordination status
+## 12. Coordination status
 
 - An active worker owns `docs/workers/<blueprint-id>/status/<worker-id>.md`; publish it with coherent progress checkpoints and the final handoff.
 - The coordinator alone owns `docs/workers/<blueprint-id>/STATUS.md` when aggregate status is needed.
 - The coordinator pulls `origin/main` before reporting readiness or blockers and records any main-only checkout with unpushed or dirty work as an integration gap.
 - Ready-but-unscheduled workers remain `ready` when execution slots are full.
 
-## 12. Main integration and conflict policy
+## 13. Main integration and conflict policy
 
 - Require every editing worker to operate directly on checked-out `main`; prohibit feature branches and linked worktrees.
 - Treat `origin/main` as the only integration authority.
@@ -280,7 +368,7 @@ those approved files and continues through integrated evidence and a clean main 
 - Never force-push `main`.
 - Never reset, overwrite, or discard another worker's change to make integration pass.
 
-## 13. Completion, handoff, and cleanup
+## 14. Completion, handoff, and cleanup
 
 A worker handoff includes its ID, final local `main` commit/reachable `origin/main`
 commit, worker-authored spec/plan, affected product specification masterplan
@@ -292,13 +380,22 @@ After all worker-owned tasks finish: refresh local and remote `main`, run the fu
 
 Preserve dirty, unpushed, failing, under-review, or uncertain work. Never reset, overwrite, force-push, or force-clean it.
 
-## 14. Explicit exclusions
+## 15. Explicit exclusions
 
 List adjacent products, deferred capabilities, speculative infrastructure, and future gates that must not delay the bounded objective.
 
-## 15. Revision policy
+## 16. Revision policy
 
-Ordinary progress updates status, not this frozen blueprint. When approved stable information changes scope, ownership, dependencies, gates, or completion:
+Ordinary progress updates status, not this frozen blueprint. A material approved
+change to scope, ownership, dependencies, contracts, acceptance, security/privacy
+behavior, accepted UI design, or an implementation plan reopens the planning
+gate: no new execution begins, directly affected execution pauses safely, every
+affected artifact/authority is updated, the complete planning set is reconciled,
+and the coordinator publishes a new passed receipt pinned to current
+`origin/main`. Already-running unrelated work may continue only with an
+evidence-backed no-impact finding in the reopened receipt.
+
+When approved stable information changes scope, ownership, dependencies, gates, or completion:
 
 1. update affected living authorities and consolidate changes from every changed
    worker specification into its affected product specification masterplans, or

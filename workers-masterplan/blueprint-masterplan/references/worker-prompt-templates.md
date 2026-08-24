@@ -2,7 +2,7 @@
 
 ## Assembly checklist
 
-Create separate prompts when planning and execution may occur in different sessions or the user requests a launch packet:
+Create separate ordinary-worker prompts when planning and execution may occur in different sessions or the user requests a launch packet:
 
 ```text
 docs/workers/<blueprint-id>/prompts/<worker-id>-planning.md
@@ -23,6 +23,8 @@ Before handing off a prompt:
 10. Remove every feature-branch, worktree, detached-HEAD, and branch-finishing instruction; every editing worker must stay on `main`.
 11. Ban worker-to-worker Codex chat; use commits, owned status/handoff artifacts, and coordinator summaries.
 12. Require focused affected tests during implementation and one full-suite run only after all worker-owned tasks finish.
+13. For an execution prompt, name the passed coordinator-owned planning-gate receipt and its pinned `origin/main` commit.
+14. For a visual-design package, do not adapt either ordinary prompt; use `ui-design-worker-prompt-template.md` instead.
 
 ## Planning-only worker prompt
 
@@ -41,7 +43,7 @@ You are `<WORKER_ID>`, responsible for planning `<BOUNDED_OUTCOME>` and authorin
 
 Both paths must be inside the `<BLUEPRINT_ID>` folder. The coordinator reserved these paths but did not author their contents.
 
-Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and inspect only the relevant baseline.
+Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, and prove that the frozen blueprint, relevant authorities, brief, and approved planned-contract inputs needed for planning are integrated there. Distinguish those planning-contract inputs from `<PREREQUISITE_IDS>`: they are later hard implemented prerequisites to verify at execution readiness, not predecessor implementation required before planning. Inspect only the relevant baseline.
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
 
@@ -69,13 +71,15 @@ During planning:
 
 Prioritize authoring the specification and plan. At meaningful planning checkpoints—or when the task is taking long enough to risk drift—update only owned documents and `<STATUS_PATH>`, review and stage the exact owned diff, commit coherent progress, fetch/pull current `origin/main`, reconcile concurrent changes, and push. Use `<MAIN_MUTATION_LOCK>` / `<MAIN_PUSH_LOCK>` when available; otherwise use safe optimistic retry. If a push is rejected, preserve all work, fetch and merge the new `origin/main`, rerun only affected checks, and retry. Never rebase or force-push published `main`.
 
-Planning is complete only when the worker-authored specification, affected
-product specification masterplan updates or evidence-backed no-impact findings,
-and plan are approved, committed, integrated into `origin/main`, linked from
-status, and affected non-product living authorities plus required downstream
-documents contain stable current decisions. Hand off exact commits, verification,
-propagation evidence, unresolved questions, known limitations, and execution
-inputs. Then stop before implementation.
+This worker's planning handoff is complete only when its approved specification,
+non-UI implementation plan, authority synchronization, downstream propagation,
+and cross-plan inputs are reachable from `origin/main`. This handoff does not
+authorize execution. Ordinary implementation remains prohibited until the
+coordinator publishes a passed whole-blueprint planning-gate receipt.
+
+Hand off exact commits, verification, propagation evidence, unresolved
+questions, known limitations, and execution inputs. Then stop before
+implementation.
 ```
 
 ## Execution worker prompt
@@ -86,11 +90,11 @@ Read `<BLUEPRINT_PATH>` and these relevant living masterplans:
 - `<LIVING_MASTERPLAN_PATH>`
 - `<LIVING_MASTERPLAN_PATH>`
 
-Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-authored approved specification `<SPEC_PATH>`, and worker-authored approved implementation plan `<PLAN_PATH>`. Do not rely on private conversation history.
+Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-authored approved specification `<SPEC_PATH>`, worker-authored approved implementation plan `<PLAN_PATH>`, passed planning-gate receipt `<PLANNING_GATE_PATH>`, and pinned receipt commit `<PLANNING_GATE_COMMIT>`. Do not rely on private conversation history.
 
 You are `<WORKER_ID>`, responsible for executing `<BOUNDED_OUTCOME>` to its defined acceptance evidence.
 
-Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and inspect only the relevant baseline without running the full suite.
+Before editing, verify that `<PLANNING_GATE_PATH>` is passed, contains a complete row for `<WORKER_ID>`, and is pinned to reachable `origin/main` commit `<PLANNING_GATE_COMMIT>`. Stop if the receipt is open, reopened, stale, missing the worker row, or pinned to a different commit. Then work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`. Feature branches and linked Git worktrees are prohibited. Several workers using this branch or checkout is normal and is not a blocker. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. Inspect live state, preserve unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, and inspect only the relevant baseline without running the full suite.
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
 
@@ -147,3 +151,4 @@ Model strength does not change ownership, review, testing, or integration respon
 - Route stable decisions/evidence through `living-masterplan`; keep transient work in plans/status.
 - State the fallback when requested model settings are unavailable.
 - Never use Codex chat for worker-to-worker coordination; use repository state and coordinator-owned artifacts.
+- An ordinary execution prompt must name and verify a passed planning-gate receipt and pinned `origin/main` commit before editing. Route UI-design work to `ui-design-worker-prompt-template.md`, never this ordinary implementation prompt.
