@@ -9,7 +9,13 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 | --- | --- |
 | Blueprint | `<relative path>` |
 | Worker | `<worker-id>` |
+| Phase | `ui-design` / `planning` / `execution` |
 | State | not-ready / ready / in-progress / blocked / review |
+| Worker planning state | pending / approved / reopened / not applicable |
+| Global planning gate | open / passed / reopened; `<receipt path>`; pinned `origin/main` commit `<commit>` |
+| Execution readiness | not assessed / blocked / ready; `<implemented-prerequisite evidence>` |
+| UI-design live review | Not applicable — ordinary worker, or `<server command>`; `<reviewed URL>`; last reviewed app commit `<commit>`; user approval `<evidence or pending>`; handoff `<path or pending>` |
+| Mutable ownership transfer | current owner `<worker-id>`; next owner `<worker-id or none>`; handoff commit `<commit or pending>`; state pending / integrated / transferred / not applicable |
 | Checked-out branch | `main` |
 | Main checkout or clone | `<absolute path or machine identifier>` |
 | Linked worktree check | `No` |
@@ -28,6 +34,36 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 **Completed:** <last coherent checkpoint, local main commit, and reachable origin/main commit>.
 
 **Next:** <one concrete next action>.
+
+## Planning and gate evidence
+
+| Evidence | Path or commit | State | Verifier / next action |
+| --- | --- | --- | --- |
+| Worker specification | `<relative path and origin/main commit>` | pending / approved / reopened / not applicable | <owner or coordinator> |
+| Implementation plan | `<relative path and origin/main commit>` | pending / approved / reopened / not applicable | <owner or coordinator> |
+| Global planning-gate receipt | `docs/workers/<blueprint-id>/PLANNING_GATE.md` at `<origin/main commit>` | open / passed / reopened | <coordinator> |
+| Cross-plan and authority reconciliation | `<receipt row or review artifact>` | pending / complete / reopened | <coordinator> |
+
+Planning completion is not execution readiness. An ordinary worker remains
+execution-blocked until the named global receipt is passed and its implemented
+hard prerequisites are reachable from `origin/main`.
+
+## UI-design review and ownership transfer
+
+Complete this section for `Phase: ui-design`; mark every row `Not applicable — ordinary worker` otherwise.
+
+| Evidence | Value | State / verifier |
+| --- | --- | --- |
+| Live development server | `<exact command>` | running / stopped; <owner> |
+| Reviewed URL | `<URL>` | last reviewed `<timestamp>` |
+| Last reviewed app state | `<origin/main-reachable commit>` | browser-verified / pending |
+| User approval | `<approval evidence>` | approved / pending / superseded |
+| Design handoff | `<relative path>` | pending / integrated / accepted |
+| Mutable ownership | current `<worker-id>` → next `<implementation-worker-id>` | pending / integrated / transferred |
+
+Record only accepted presentation work here. A material UI, scope, ownership,
+contract, acceptance, dependency, or plan change reopens the global planning
+gate and requires the coordinator to record its impact before execution resumes.
 
 ## Verification evidence
 
@@ -65,8 +101,10 @@ Mark affected downstream work blocked or not-ready until every required document
 
 Complete before final handoff:
 
-- Task specification: `<relative path>`
-- Implementation plan: `<relative path>`
+- Task specification: `<relative path>` for an ordinary worker; or `not applicable — UI-design worker` only when the accepted app-state commit, user approval evidence, and design handoff path are all present above
+- Implementation plan: `<relative path>`; or `not applicable — UI-design worker` only when the accepted app-state commit, user approval evidence, and design handoff path are all present above
+- Global planning-gate receipt: `docs/workers/<blueprint-id>/PLANNING_GATE.md`, state `<passed/reopened/open>`, pinned `origin/main` commit `<commit>`
+- UI-design live review and ownership transfer: `<server command, reviewed URL, accepted app commit, approval evidence, handoff path, current → next owner, transfer state; or not applicable — ordinary worker>`
 - Living-authority updates: `<relative paths and commits>`
 - Final local `main` commit and reachable `origin/main` commit: `<commits>`
 - Final full-suite run after all owned tasks: `<command and result>`

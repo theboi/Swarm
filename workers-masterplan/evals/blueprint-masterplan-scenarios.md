@@ -33,6 +33,8 @@ Score each expected behavior as `0` (missing or contradicted), `1` (partial or a
 - Defines measurable UI Demo and MVP gates with evidence and downstream consequences.
 - Produces an acyclic Mermaid graph matching written dependencies.
 - Defines owned paths/contracts, non-ownership, acceptance evidence, handoff, and unblock targets for every worker.
+- Requires a separate UI-design worker for the portal's visual design, with a sequential presentation-ownership handoff to implementation.
+- **Critical:** Requires the passed coordinator-owned whole-blueprint planning gate before any ordinary portal implementation starts.
 - Creates per-worker status contracts and coordinator readiness/blocker reporting.
 - Reports initial ready workers from `origin/main` prerequisites rather than optimistic local state.
 
@@ -123,6 +125,7 @@ before non-forced cleanup. All critical behaviors passed.
 - Requires both phases to read the blueprint, relevant living masterplans, worker brief, and prerequisite handoffs.
 - Requires focused verification, bounded commits directly on `main`, reconciliation with `origin/main`, re-verification, and an immediate push after every independently testable substep.
 - Makes the planning phase ask questions, use Grill Me/Superpowers, write approved dated artifacts, and stop before implementation.
+- Makes every ordinary execution prompt name and verify the passed whole-blueprint planning-gate receipt; the planning prompt still stops at its own handoff and cannot authorize execution.
 - Makes the plan expose subagent-safe packages, dependencies, ownership, files, interfaces, tests, and review boundaries rather than demanding artificial parallelism.
 - Makes the execution phase follow the listed approved artifacts and use Terra High or Xhigh subagents according to task difficulty when available.
 - Prevents subagents from sharing mutable ownership; same-checkout edits are serialized through the main-mutation lock and all subagents remain on `main`.
@@ -149,6 +152,7 @@ behaviors passed.
 - **Critical:** Does not invent dependency edges merely to narrow the picture.
 - Targets three to seven ready workers in the substantive adapter layer, or records a structural reason why coherent grouping is unsafe.
 - Keeps the migration and generated facade under single ownership.
+- Separates visual UI design from later implementation, records their sequential handoff, and reports the UI-design lane separately from ordinary execution-DAG width.
 - Reports worker count, hard-edge count, layer widths, peak ready width, and active execution slots separately.
 - Preserves an acyclic graph and remote-integration readiness.
 
@@ -194,7 +198,8 @@ The fresh agent used `2026-08-08-billing-recovery` for the coordination, specifi
 - **Critical:** Each assigned worker authors its own detailed specification and implementation plan during its planning phase.
 - The coordinator reserves exact blueprint-scoped paths but does not pre-author their contents.
 - Planning prompts stop after the worker-authored approved artifacts and authority updates.
-- Execution prompts consume those artifacts only after the planning handoff is integrated.
+- No ordinary execution launch occurs until all six workers' required planning artifacts, any required UI-design handoffs, and cross-plan reconciliation are recorded in the passed whole-blueprint receipt.
+- Execution prompts consume those artifacts only after the planning handoff is integrated and the whole-blueprint receipt passes.
 - Urgency and authority pressure do not blur the authorship boundary.
 
 ### Observed pre-rewrite baseline
@@ -219,6 +224,7 @@ The fresh agent rejected coordinator-authored worker plans. It assigned the coor
 - Rejects availability/future/deferred, worker, and delivery-history organization in the Product Spec Masterplan.
 - Requires W2 to assess direct and transitive downstream effects and update W3’s documents or record an evidence-backed no-impact finding.
 - Requires the dated specification, Product Spec Masterplan update, and downstream propagation to be verified and integrated together into `origin/main` before W3 is ready.
+- Keeps W3 execution-blocked until every required blueprint planning artifact is reconciled and the whole-blueprint planning gate passes, even if W2's own handoff is integrated.
 
 ### Observed pre-change baseline
 
@@ -337,6 +343,21 @@ planned `W-DX` conventionally with a dated specification and implementation
 plan. They omit the mandatory Claude Design and `better-ui` reads and reserve
 production UI for `W-DF`, which is the observed RED failure.
 
+## Implementation notes
+
+### Authority synchronization and fixture no-impact
+
+The existing same-substep product-specification synchronization contract remains
+required. An accepted UI-design handoff changes an affected Product Specification
+Masterplan only when it changes approved product behavior or a product-level
+interaction contract; purely visual evidence does not become product behavior or
+delivery-status history. `living-masterplan` requires no edit for this
+skill-policy change.
+
+Fixture mode has no impact: this policy change neither changes nor routes any
+fixture behavior, fixture worker, fixture gate, fixture acceptance rule,
+provider, command, or environment.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -359,3 +380,12 @@ production UI for `W-DF`, which is the observed RED failure.
 | No force deletion of dirty or unpushed work | `SKILL.md` — Converge existing branch/worktree work before new execution; Complete and clean up safely; Stop conditions |
 | Worker task specifications synchronize affected product specifications | `SKILL.md` — Write worker briefs, not worker plans; Require the worker execution lifecycle; `references/worker-prompt-templates.md` — Planning-only worker prompt |
 | Product specifications remain unified and end-to-end | `SKILL.md` — Write worker briefs, not worker plans; `references/worker-prompt-templates.md` — Planning-only worker prompt |
+| Whole-blueprint planning barrier | `SKILL.md` — Global planning barrier; Produce the complete planning set; Reconcile through the coordinator-owned planning gate |
+| Coordinator-owned planning-gate receipt | `SKILL.md` — Reconcile through the coordinator-owned planning gate; `references/planning-gate-template.md` |
+| Planning versus execution dependency semantics | `SKILL.md` — Planning readiness and execution readiness; Build a moderately flat DAG |
+| Material-change gate reopening | `SKILL.md` — Reopen the global planning gate for material changes; `references/planning-gate-template.md` |
+| Separate UI-design trigger and no-plan exception | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
+| Mandatory Claude Design and `better-ui` loading | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
+| Real-app presentation-only live feedback | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
+| Optional cheap toggleable alternatives | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
+| Sequential UI ownership transfer | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; bundled status templates |

@@ -25,6 +25,51 @@ Use at `docs/workers/<blueprint-id>/STATUS.md`. The coordinator alone edits this
 | Complete | <IDs or none> |
 | Stale or missing status | <IDs or none> |
 
+## Whole-blueprint planning gate
+
+| Field | Value |
+| --- | --- |
+| Receipt | `docs/workers/<blueprint-id>/PLANNING_GATE.md` |
+| State | open / passed / reopened |
+| Pinned `origin/main` commit | `<commit>` |
+| Coordinator | <role or named owner> |
+| Approval time | `<timestamp and timezone or pending>` |
+| Reauthorization required | Yes / No; `<reason or none>` |
+
+The receipt is the only ordinary-execution authorization. A worker's approved
+planning artifacts are necessary but never sufficient on their own.
+
+## Complete worker planning manifest
+
+| Worker | Phase | Specification path and commit | Implementation plan or accepted UI artifacts | Planning state | Cross-plan reconciliation | Authority synchronization | Gate row |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| <ID> | planning / execution / ui-design | `<path, commit, or not applicable>` | `<path, commit, or accepted app commit + approval + handoff>` | pending / approved / reopened / not applicable | pending / complete / contradicted | current / missing / stale / no-impact with evidence | complete / incomplete |
+
+List every execution worker and UI-design worker. `not applicable` is valid for
+an implementation plan only for a UI-design worker whose accepted app state,
+approval evidence, and handoff are all recorded.
+
+## UI-design acceptance and ownership transfer
+
+| UI-design worker | Affected presentation surfaces | Live server command and reviewed URL | Accepted app commit | User approval | Design handoff | Current → next mutable owner | Transfer state |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| <ID> | <paths> | `<command>`; `<URL>` | `<origin/main-reachable commit>` | `<evidence or pending>` | `<path>` | `<design worker> → <implementation worker>` | pending / integrated / transferred |
+
+## Unresolved cross-plan contradictions
+
+| Contradiction | Affected workers or gate | Owner | Unblock criterion | Receipt state |
+| --- | --- | --- | --- | --- |
+| <scope, contract, ownership, dependency, acceptance, or UI-design conflict> | <IDs> | <owner> | <observable resolution> | open / reopened |
+
+Use `None` only after complete-plan reconciliation confirms that no material
+contradiction remains.
+
+## Authority synchronization gaps
+
+| Authority or downstream artifact | State | Affected workers/gates | Owner | Required action |
+| --- | --- | --- | --- | --- |
+| <path> | current / missing / stale / no-impact with evidence | <IDs> | <owner> | <approved update, reconciliation, or none with evidence> |
+
 ## Critical path
 
 `<worker/gate ID> → <worker/gate ID> → <objective>`
@@ -39,9 +84,13 @@ Explain the first unresolved edge and the shortest observable action that advanc
 
 ## Dependency readiness
 
-| Worker/gate | Written prerequisites | Integrated prerequisites | Effective state | Reason |
-| --- | --- | --- | --- | --- |
-| <ID> | <IDs> | <IDs verified on origin/main> | not-ready / ready / in-progress / blocked / review / complete | <concise evidence> |
+| Worker/gate | Planning prerequisites | Planning state | Global planning-gate receipt | Implemented execution prerequisites | Execution readiness | Reason |
+| --- | --- | --- | --- | --- | --- |
+| <ID> | <approved authorities, brief, and planned contracts> | planning-blocked / planning-ready / planning-in-progress / planning-complete | open / passed / reopened at `<origin/main commit>` | <IDs and evidence verified on `origin/main`> | blocked / ready / in-progress / review / complete | <concise evidence> |
+
+Planning readiness does not require predecessor implementation. Execution
+readiness requires both a passed global receipt and the worker's implemented
+hard prerequisites; retain these two findings separately even when they differ.
 
 ## Verification and remote-state gaps
 
@@ -62,6 +111,16 @@ Any affected worker remains blocked or not-ready while a required document updat
 | Gate | State | Satisfied evidence | Missing evidence | Verifier | Unlocks |
 | --- | --- | --- | --- | --- | --- |
 | <ID> | blocked / ready-for-validation / passed / failed | <artifacts> | <artifacts> | <owner> | <IDs> |
+
+## Gate reopening evidence
+
+| Reopening cause | Affected workers / execution state | Updated artifacts and authorities | No-impact findings for unrelated work | Reauthorization required |
+| --- | --- | --- | --- | --- |
+| <material scope, ownership, dependency, contract, acceptance, security/privacy, accepted UI-design, or plan change> | <IDs; paused at safe checkpoint / no new execution> | <paths and owners> | <evidence or none> | updated receipt, complete reconciliation, and a new passed `origin/main`-pinned gate |
+
+When a material change occurs, set the receipt to `reopened`; no new ordinary
+execution begins. Directly affected execution pauses safely. Only evidence-backed
+no-impact findings permit already-running unrelated execution to continue.
 
 ## Newly unblocked since prior snapshot
 

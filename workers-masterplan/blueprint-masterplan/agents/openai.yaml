@@ -1,4 +1,4 @@
 interface:
   display_name: "Blueprint Masterplan"
-  short_description: "Plan flat, low-drift worker execution"
-  default_prompt: "Use $blueprint-masterplan to build a moderately flat, low-drift execution DAG with coordinator briefs and worker-authored plans."
+  short_description: "Plan-first worker DAGs with live UI design"
+  default_prompt: "Use $blueprint-masterplan to build a whole-blueprint planning gate and a collision-safe execution DAG, with a separate live UI-design worker when visual design is in scope."
