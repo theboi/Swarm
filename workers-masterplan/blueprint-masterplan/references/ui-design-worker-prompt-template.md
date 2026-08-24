@@ -13,6 +13,9 @@ ordinary implementation prompt.
 4. Name the implementation worker that receives ownership after the accepted handoff.
 5. Keep the worker's scope presentation-only; return a discovered functional decision to planning.
 6. Preserve the canonical four-row source-read checklist below unabridged.
+7. Set `<CHECKOUT_OR_CLONE_MODE>`, `<MAIN_MUTATION_LOCK>`, and
+   `<MAIN_PUSH_LOCK_OR_QUEUE>` to exact repository values; retain the dedicated
+   UI-design shared-main lifecycle below.
 
 ## UI-design worker prompt
 
@@ -39,13 +42,41 @@ Read any linked supporting references these sources require. Inventory the
 existing components, tokens, typography, spacing, icons, motion, and nearby
 interaction patterns before changing the app.
 
-Work directly on `main` in `<MAIN_CHECKOUT_PATH>`. Your owned presentation
-surfaces are `<OWNED_PRESENTATION_SURFACES>`. You do not own
+Work directly on `main` in `<MAIN_CHECKOUT_PATH>` using checkout/clone mode
+`<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are
+prohibited. Your owned presentation surfaces are
+`<OWNED_PRESENTATION_SURFACES>`. You do not own
 `<EXCLUDED_FUNCTIONAL_SURFACES>`. Preserve unrelated changes and stage only
 owned paths. Do not create or change APIs, authorization, persistence,
 migrations, domain rules, scoring, background processing, or other business
 behavior. If the design needs any functional change, record the named decision
 in `<STATUS_PATH>` and return it to ordinary specification and planning.
+
+## UI-design shared-main lifecycle
+
+- Before any edit, acquire `<MAIN_MUTATION_LOCK>` for a genuinely shared
+  checkout or identify `<MAIN_PUSH_LOCK_OR_QUEUE>` for a normal clone; fetch
+  `origin/main`, safely reconcile local `main`, preserve and report unrelated
+  dirt, and record the initial inspected `origin/main` commit and baseline proof
+  in `<STATUS_PATH>`.
+- In a genuinely shared checkout, read-only design review may proceed in
+  parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem or
+  Git/index mutation. Hold it through reconciliation, browser or focused
+  verification, staging, commit, push, and remote-reachability proof.
+- If that lock is unavailable, use only a normal clone on a different machine or
+  because the shared checkout is documented incompatible. Use
+  `<MAIN_PUSH_LOCK_OR_QUEUE>` for reconciliation → affected verification → push
+  → remote-ancestry proof. Do not impose a global edit lock across independent
+  normal clones.
+- Preserve and report unrelated dirt. A clean baseline is reconciled local
+  `main` with no owned dirty state; unrelated dirt remains preserved and
+  reported.
+- After each independently testable design substep—a coherent presentation
+  change plus browser or focused verification—stage only owned paths, commit
+  directly to `main`, fetch and merge newer `origin/main`, reverify affected
+  states, push, and prove remote reachability before the next substep.
+- Never rebase or force-push published `main`, or reset, overwrite, clean, or
+  stash unsafe work.
 
 Edit the actual application, reusing its established components and tokens;
 do not create a competing component library or token system. Run
