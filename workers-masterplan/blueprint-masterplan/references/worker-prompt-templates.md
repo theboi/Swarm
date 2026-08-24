@@ -25,7 +25,16 @@ Before handing off a prompt:
 12. Require focused affected tests during implementation and one full-suite run only after all worker-owned tasks finish.
 13. For an execution prompt, name the passed coordinator-owned planning-gate receipt and its pinned `origin/main` commit.
 14. For a visual-design package, do not adapt either ordinary prompt; use `ui-design-worker-prompt-template.md` instead.
-15. Before returning any Git lifecycle or worker prompt, mechanically confirm all six facts are visible: checkout/clone mode; required lock or queue; independently-testable-substep cadence; remote reachability proof; published-main no-rebase/no-force; and unrelated-dirt preservation. This is conditional: do not require a global edit lock across independent normal clones.
+15. For every operative Git/integration lifecycle or actual ordinary-worker launch prompt, render the canonical **Shared-main lifecycle** block below exactly once, with every angle-bracket field replaced by its exact value. Do not render it for factual explanations, status reports, or direct answers that assign no work.
+
+### Shared-main lifecycle
+
+| Field | Exact substituted value |
+| --- | --- |
+| Mode | `<CHECKOUT_OR_CLONE_MODE>` in `<MAIN_CHECKOUT_OR_CLONE_PATH>`; in a genuinely shared checkout, read-only planning may proceed in parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem edit or Git/index operation and hold it through remote-reachability proof. |
+| Fallback | If that lock cannot exist, use a normal clone only on a different machine or because the shared checkout is documented incompatible; `<MAIN_PUSH_LOCK_OR_QUEUE>` covers reconciliation, affected focused verification, push, and remote-ancestry proof. Do not impose a global edit lock across independent normal clones. |
+| Checkpoint cadence | After each independently testable substep—a coherent plan task or subtask with focused verification—run the affected focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep. |
+| Safety | Preserve and report unrelated dirt; a clean baseline is reconciled local `main` with no owned dirty state. Never reset, overwrite, clean, stash, rebase, or force-push published `main`. |
 
 ## Planning-only worker prompt
 

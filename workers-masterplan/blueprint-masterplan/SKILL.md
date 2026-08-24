@@ -258,6 +258,50 @@ receipt and its pinned `origin/main` commit, requires execution-readiness
 verification before editing, and then covers implementation, review,
 integration evidence, handoff, and clean-main completion.
 
+### Render operative lifecycle outputs without compression
+
+An output is operative only when it creates or recommends worker assignments,
+gives a Git/integration lifecycle, emits a launch packet/prompt, or resolves a
+coordinator-versus-worker authorship dispute while directing work. Audits,
+status reports, factual explanations, and direct answers that assign no work
+remain concise. Operative outputs must show required facts rather than saying
+only to follow this skill or a template.
+
+For every operative Git/integration lifecycle or actual ordinary-worker launch
+packet, render exactly once this canonical Markdown block with all four visible
+rows:
+
+**Shared-main lifecycle**
+
+| Item | Required fact |
+| --- | --- |
+| Mode | In a genuinely shared checkout, read-only planning may run in parallel; the exclusive shared-checkout main-mutation lock covers every filesystem edit and Git/index operation through remote-reachability proof. |
+| Fallback | Only when that lock cannot exist, use normal clones on `main` for different machines or a documented incompatible shared checkout. A cross-clone push lock or queue covers only reconciliation → affected focused verification → push → remote-ancestry proof; it does not impose a global edit lock across clones. |
+| Checkpoint cadence | After every independently testable substep—a coherent plan task or subtask with its own focused verification—run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep. |
+| Safety | Preserve and report unrelated dirt; never clean, stash, reset, overwrite, or remove it. Never rebase or force-push published `main`. |
+
+For every operative multiworker-blueprint or coordinator-authorship answer,
+render exactly once this canonical Markdown block with all four visible rows:
+
+**Coordinator/worker phase contract**
+
+| Phase | Required fact |
+| --- | --- |
+| Coordinator | Freeze the blueprint, DAG, gates, contracts, briefs, and reserved paths; do not author a worker's detailed specification or implementation plan. |
+| Worker planning | Each ordinary worker authors its own dated specification and detailed plan, integrates its planning handoff into `origin/main`, and stops before ordinary execution. |
+| Whole-blueprint gate | The coordinator passes the receipt only after the complete planning set is reconciled and reachable from `origin/main`; one worker's approved plan never authorizes execution. |
+| Worker execution | Only after that passed receipt does the ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. |
+
+UI-design exceptions retain their existing dedicated conditional workflow; do
+not emit either ordinary-worker block solely because the observable UI-design
+trigger applies. Before returning, mechanically classify the output and check
+scope and cardinality: an applicable Git/integration or ordinary-launch output
+has exactly one **Shared-main lifecycle** block with all four rows; an
+applicable multiworker-blueprint or coordinator-authorship output has exactly
+one **Coordinator/worker phase contract** block with all four rows; and a
+non-operative output has neither block. Do not return until every applicable
+block is complete and every inapplicable block is absent.
+
 Only when the observable UI-design trigger is true, read [the UI-design worker
 prompt template](references/ui-design-worker-prompt-template.md) completely and
 generate that separate prompt. It is incomplete without the canonical pre-edit
