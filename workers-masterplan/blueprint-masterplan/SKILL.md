@@ -139,7 +139,7 @@ Each masterplan brief contains:
 - stable worker/task ID and bounded outcome;
 - planning prerequisites, hard execution prerequisites, and the immediate planning-start rule;
 - owned and excluded surfaces;
-- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, and mandatory complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every relevant procedure under `claude-design/codex/skills/`, and `.agents/skills/better-ui/SKILL.md`;
+- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, mandatory complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every relevant procedure under `claude-design/codex/skills/`, and `.agents/skills/better-ui/SKILL.md`, and the canonical pre-edit source-read checklist below before editing instructions;
 - coordination relationships that are not hard dependencies;
 - work outcomes, not step-by-step implementation instructions;
 - exact acceptance evidence;
@@ -194,7 +194,35 @@ planning gate passes and its implemented hard prerequisites exist.
 
 UI design exists when work introduces or changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy. Create a separate UI-design worker for each coherent affected surface. Pure implementation of an already accepted design is ordinary implementation and does not create another design worker.
 
-The UI-design worker MUST read `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every relevant procedure under `claude-design/codex/skills/`, and `.agents/skills/better-ui/SKILL.md` completely before editing. It reads any linked supporting references required by those sources. It has no implementation plan. Its accepted real-app presentation state, user approval evidence, and design handoff replace that artifact in the planning-gate receipt.
+Whenever an output instantiates a UI-design worker—a brief, worker package,
+lifecycle, or launch prompt—it MUST include exactly one verbatim copy of the
+following canonical Markdown checklist per design worker, before any editing
+instructions. An ordinary worker output contains no copy of this checklist:
+
+**Mandatory pre-edit source-read checklist** — do not abbreviate:
+- [ ] Completely read `claude-design/codex/AGENTS.md`.
+- [ ] Completely read `claude-design/codex/system-prompt.md`.
+- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
+- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
+
+The instantiating output is incomplete if it has fewer or more than one such
+block per UI-design worker, if an ordinary worker output contains the block, or
+if any checklist row or literal is absent. Emit this block only when the
+observable UI-design trigger applies; never emit it for ordinary implementation
+of an accepted design or unrelated UI discussion. Generic shorthand for the
+mandatory source reads is allowed only after the block.
+
+Before returning an output that instantiates UI-design workers, mechanically
+check every worker: its output must contain exactly one verbatim canonical
+four-row checklist block, with four distinct rows and the four literal source
+requirements above. Mechanically confirm that ordinary worker outputs contain
+zero such blocks. Do not return the output until those per-worker cardinality
+checks pass.
+
+The UI-design worker MUST complete the canonical checklist before editing and
+read linked supporting references required by those sources. It has no
+implementation plan. Its accepted real-app presentation state, user approval
+evidence, and design handoff replace that artifact in the planning-gate receipt.
 
 The UI-design worker is the only pre-gate app-edit exception. It may edit composition, hierarchy, spacing, responsive arrangement, visual component variants, motion, interface copy, and interaction-state presentation in the actual application. It may not create or change API calls, authorization, persistence, migrations, domain rules, scoring, background processing, or other business behavior. A discovered functional need returns to ordinary specification and planning.
 
@@ -221,13 +249,12 @@ integration evidence, handoff, and clean-main completion.
 
 Only when the observable UI-design trigger is true, read [the UI-design worker
 prompt template](references/ui-design-worker-prompt-template.md) completely and
-generate that separate prompt. It must retain and name the mandatory complete
-reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`,
-every relevant procedure under `claude-design/codex/skills/`, and
-`.agents/skills/better-ui/SKILL.md`, rather than summarize them as generic
-design sources. It must also require the presentation-only real-app boundary,
-live-server feedback loop, approval evidence, no-plan handoff, and sequential
-ownership transfer.
+generate that separate prompt. It is incomplete without the canonical pre-edit
+source-read checklist exactly once per UI-design worker before editing
+instructions; only after that block may it use generic source-read shorthand.
+It must also require the presentation-only real-app boundary, live-server
+feedback loop, approval evidence, no-plan handoff, and sequential ownership
+transfer.
 
 ## Require remote-evidenced readiness
 

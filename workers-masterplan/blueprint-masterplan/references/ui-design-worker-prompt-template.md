@@ -12,6 +12,7 @@ ordinary implementation prompt.
 3. Set the established repository development-server command and design handoff path.
 4. Name the implementation worker that receives ownership after the accepted handoff.
 5. Keep the worker's scope presentation-only; return a discovered functional decision to planning.
+6. Preserve the canonical four-row source-read checklist below unabridged.
 
 ## UI-design worker prompt
 
@@ -27,12 +28,12 @@ and its existing design system. Do not rely on private conversation history.
 You are `<DESIGN_WORKER_ID>`, responsible only for the live, presentation-only
 design of `<BOUNDED_UI_SURFACE>`.
 
-Before editing, completely read the mandatory design sources:
+**Mandatory pre-edit source-read checklist** — do not abbreviate:
 
-- `claude-design/codex/AGENTS.md`;
-- `claude-design/codex/system-prompt.md`;
-- every relevant procedure under `claude-design/codex/skills/`; and
-- `.agents/skills/better-ui/SKILL.md`.
+- [ ] Completely read `claude-design/codex/AGENTS.md`.
+- [ ] Completely read `claude-design/codex/system-prompt.md`.
+- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
+- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
 
 Read any linked supporting references these sources require. Inventory the
 existing components, tokens, typography, spacing, icons, motion, and nearby
