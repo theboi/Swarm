@@ -321,11 +321,21 @@ passed.
 
 ### Observed pre-change baseline
 
+> | `W-DX` | Approved small set of visual variants running inside the real app | Dev-only dashboard-lab variants, preview entry/registry, comparison fixtures consuming `C0`, live-server process/environment record, variant screenshots and focused UI tests | Production dashboard route/components, backend implementation | Every variant is reachable at a stable live URL from an `origin/main` commit; server health, screenshots, viewport evidence, and known limitations are recorded; unlocks `G-SELECT` |
+
+> After `G-SELECT`, its variants become read-only inputs to `W-DF`.
+
 > Each ready worker plans first: refreshes `main`, proves prerequisites, authors and approves its dated specification, synchronizes affected product masterplans or records no impact, authors its implementation plan, pushes the planning handoff, then stops before implementation.
 
 > Every worker planning phase: `superpowers:brainstorming`, then `superpowers:writing-plans`; update affected product specification masterplans in the same planning substep or record evidence-backed no impact.
 
 > Every worker execution phase: applicable TDD, review, and verification skills. Use focused tests at meaningful checkpoints and one full-suite run only after that worker finishes all owned tasks.
+
+These are the evaluator's complete UI ownership, artifact, and skill
+requirements. The ordinary “Each ready worker plans first” lifecycle therefore
+planned `W-DX` conventionally with a dated specification and implementation
+plan. They omit the mandatory Claude Design and `better-ui` reads and reserve
+production UI for `W-DF`, which is the observed RED failure.
 
 ## Static contract coverage
 
