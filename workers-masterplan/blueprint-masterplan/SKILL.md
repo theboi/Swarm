@@ -13,6 +13,43 @@ Turn current living authorities into a frozen execution contract: establish foun
 
 **GLOBAL PLANNING BARRIER:** Complete planning for the whole frozen blueprint before ordinary execution. No execution worker may begin product implementation until every execution worker's dated specification and every non-UI implementation plan, every required UI-design handoff, affected living-authority updates, and cross-plan reconciliation are approved, reachable from `origin/main`, and recorded in the coordinator-owned planning-gate receipt. A worker's own approved plan is necessary but never sufficient to start execution.
 
+## Mandatory response-shape preflight
+
+An output is operative only when it creates or recommends worker assignments,
+gives a Git/integration lifecycle, emits a launch packet/prompt, or resolves a
+coordinator-versus-worker authorship dispute while directing work. Audits,
+status reports, factual explanations, and direct answers that assign no work
+remain concise. Operative outputs must show required facts rather than saying
+only to follow this skill or a template.
+
+`phase_required` is true exactly for an operative multiworker-blueprint or
+coordinator-authorship answer. When `phase_required` is true, the first
+structured output, after at most one outcome sentence, MUST be exactly one
+verbatim **Coordinator/worker phase contract** block before every graph, worker
+table, readiness decision, assignment, or launch instruction. Gate-correct
+prose is insufficient.
+
+**Coordinator/worker phase contract**
+
+| Phase | Required fact |
+| --- | --- |
+| Coordinator | Freeze the blueprint, DAG, gates, contracts, briefs, and reserved paths; do not author a worker's detailed specification or implementation plan. |
+| Worker planning | Each ordinary worker authors its own dated specification and detailed plan, integrates its planning handoff into `origin/main`, and stops before ordinary execution. |
+| Whole-blueprint gate | The coordinator passes the receipt only after the complete planning set is reconciled and reachable from `origin/main`; one worker's approved plan never authorizes execution. |
+| Worker execution | Only after that passed receipt does the ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. |
+
+When `phase_required` is false—including non-operative, UI-only, and
+UI-exception-only answers—render zero phase blocks. If a **Shared-main lifecycle** block
+independently applies, render it exactly once immediately after the phase block;
+never merge or duplicate the blocks.
+
+Before returning, mechanically set `phase_required` and check count and
+position. When true, require one phase heading and each of the four canonical
+rows before every graph, worker table, readiness decision, assignment, or launch
+instruction, with no more than one outcome sentence before the block. Otherwise
+require zero phase headings and rows. Count **Shared-main lifecycle** and
+UI-design checklist blocks independently; do not return until these checks pass.
+
 Use `docs/plans/EdenMind_Implementation_Masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
 
 ## Required companion skills
@@ -260,12 +297,9 @@ integration evidence, handoff, and clean-main completion.
 
 ### Render operative lifecycle outputs without compression
 
-An output is operative only when it creates or recommends worker assignments,
-gives a Git/integration lifecycle, emits a launch packet/prompt, or resolves a
-coordinator-versus-worker authorship dispute while directing work. Audits,
-status reports, factual explanations, and direct answers that assign no work
-remain concise. Operative outputs must show required facts rather than saying
-only to follow this skill or a template.
+Apply the operative-output classification and the **Coordinator/worker phase
+contract** from [Mandatory response-shape preflight](#mandatory-response-shape-preflight).
+Do not redefine, move, merge, or duplicate that canonical block here.
 
 For every operative Git/integration lifecycle or actual ordinary-worker launch
 packet, render exactly once this canonical Markdown block with all four visible
@@ -280,27 +314,9 @@ rows:
 | Checkpoint cadence | After every independently testable substep—a coherent plan task or subtask with its own focused verification—run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep. |
 | Safety | Preserve and report unrelated dirt; never clean, stash, reset, overwrite, or remove it. Never rebase or force-push published `main`. |
 
-For every operative multiworker-blueprint or coordinator-authorship answer,
-render exactly once this canonical Markdown block with all four visible rows:
-
-**Coordinator/worker phase contract**
-
-| Phase | Required fact |
-| --- | --- |
-| Coordinator | Freeze the blueprint, DAG, gates, contracts, briefs, and reserved paths; do not author a worker's detailed specification or implementation plan. |
-| Worker planning | Each ordinary worker authors its own dated specification and detailed plan, integrates its planning handoff into `origin/main`, and stops before ordinary execution. |
-| Whole-blueprint gate | The coordinator passes the receipt only after the complete planning set is reconciled and reachable from `origin/main`; one worker's approved plan never authorizes execution. |
-| Worker execution | Only after that passed receipt does the ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. |
-
-UI-design exceptions retain their existing dedicated conditional workflow; do
-not emit either ordinary-worker block solely because the observable UI-design
-trigger applies. Before returning, mechanically classify the output and check
-scope and cardinality: an applicable Git/integration or ordinary-launch output
-has exactly one **Shared-main lifecycle** block with all four rows; an
-applicable multiworker-blueprint or coordinator-authorship output has exactly
-one **Coordinator/worker phase contract** block with all four rows; and a
-non-operative output has neither block. Do not return until every applicable
-block is complete and every inapplicable block is absent.
+The phase block is defined only in the mandatory preflight. UI-design exceptions
+retain their existing dedicated conditional workflow; do not emit either
+ordinary-worker block solely because the observable UI-design trigger applies.
 
 Only when the observable UI-design trigger is true, read [the UI-design worker
 prompt template](references/ui-design-worker-prompt-template.md) completely and
