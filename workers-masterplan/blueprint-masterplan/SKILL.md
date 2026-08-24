@@ -139,7 +139,7 @@ Each masterplan brief contains:
 - stable worker/task ID and bounded outcome;
 - planning prerequisites, hard execution prerequisites, and the immediate planning-start rule;
 - owned and excluded surfaces;
-- whether the observable UI-design trigger applies and, when it does, the named presentation files and sequential ownership-transfer target;
+- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, and mandatory complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every relevant procedure under `claude-design/codex/skills/`, and `.agents/skills/better-ui/SKILL.md`;
 - coordination relationships that are not hard dependencies;
 - work outcomes, not step-by-step implementation instructions;
 - exact acceptance evidence;
@@ -221,9 +221,13 @@ integration evidence, handoff, and clean-main completion.
 
 Only when the observable UI-design trigger is true, read [the UI-design worker
 prompt template](references/ui-design-worker-prompt-template.md) completely and
-generate that separate prompt. It must require the mandatory Claude Design and
-`better-ui` reads, presentation-only real-app boundary, live-server feedback
-loop, approval evidence, no-plan handoff, and sequential ownership transfer.
+generate that separate prompt. It must retain and name the mandatory complete
+reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`,
+every relevant procedure under `claude-design/codex/skills/`, and
+`.agents/skills/better-ui/SKILL.md`, rather than summarize them as generic
+design sources. It must also require the presentation-only real-app boundary,
+live-server feedback loop, approval evidence, no-plan handoff, and sequential
+ownership transfer.
 
 ## Require remote-evidenced readiness
 

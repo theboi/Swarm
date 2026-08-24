@@ -268,6 +268,11 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 
 **Role:** ordinary execution / conditional UI design.
 
+**Mandatory UI-design source reads:** not applicable, or
+`claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every
+relevant procedure under `claude-design/codex/skills/`, and
+`.agents/skills/better-ui/SKILL.md`.
+
 **Planning prerequisites:** <approved authorities, briefs, and planned contracts>.
 
 **Hard execution prerequisites:** <implemented worker/gate IDs and evidence, plus planning gate>.
