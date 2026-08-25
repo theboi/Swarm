@@ -77,7 +77,7 @@ Expected: valid frontmatter/templates; evaluators group an over-wide adapter fro
 ### Task 3: Rewrite the MVP2 implementation authority
 
 **Files:**
-- Modify: `docs/plans/EdenMind_MVP2_Implementation_Masterplan.md`
+- Modify: `docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md`
 - Move: `docs/superpowers/specs/2026-08-07-mvp2-design.md` to `docs/superpowers/specs/2026-08-07-mvp2/2026-08-07-mvp2-design.md`
 - Modify: directly affected links in `docs/plans/*.md`
 
@@ -100,7 +100,7 @@ Remove the flat-graph design as an architecture authority and identify the rewri
 ### Task 4: Run the mandatory pre-deletion integrity review
 
 **Files:**
-- Review: `docs/plans/EdenMind_MVP2_Implementation_Masterplan.md`
+- Review: `docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md`
 - Review: `docs/superpowers/specs/2026-08-07-mvp2/2026-08-07-mvp2-design.md`
 - Review: all files in the approved deletion set
 

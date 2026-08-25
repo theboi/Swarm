@@ -7,7 +7,7 @@
 | Status | Implemented and structurally validated; fresh-agent pressure evaluation pending |
 | Date | 6 August 2026 |
 | Skill collection | `workers-masterplan` |
-| Source-project design reference | `docs/plans/EdenMind_Implementation_Masterplan.md` (not a runtime dependency) |
+| Source-project design reference | `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md` (not a runtime dependency) |
 | External workflows | Superpowers and Grill Me |
 
 ## 1. Purpose

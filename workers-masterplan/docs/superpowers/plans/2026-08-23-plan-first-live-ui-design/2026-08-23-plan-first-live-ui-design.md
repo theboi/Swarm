@@ -89,7 +89,7 @@ paths are clean; unrelated user changes, if any, remain preserved and unstaged.
 | `workers-masterplan/blueprint-masterplan/references/worker-status-template.md` | Worker phase, planning evidence, global gate, UI review, and ownership-transfer status |
 | `workers-masterplan/blueprint-masterplan/references/status-summary-template.md` | Coordinator planning manifest, gate state, contradictions, and reopening status |
 | `workers-masterplan/blueprint-masterplan/agents/openai.yaml` | UI-facing description and default invocation aligned with the revised skill |
-| `docs/plans/EdenMind_MVP2_Implementation_Masterplan.md` | Historical limitation note for the closed per-worker execution sequence |
+| `docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md` | Historical limitation note for the closed per-worker execution sequence |
 | current Product specification masterplan | Removes a conflicting prototype-only UI delivery rule if it remains current after concurrent authority consolidation |
 
 ### Task 1: Record the failing planning-barrier and UI-design scenarios
@@ -603,7 +603,7 @@ git push origin main
 ### Task 5: Synchronize the affected project authorities
 
 **Files:**
-- Modify: `docs/plans/EdenMind_MVP2_Implementation_Masterplan.md`
+- Modify: `docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md`
 - Modify when the conflicting paragraph remains current: the current Product specification masterplan selected from repository state
 - Verify only: `docs/plans/EdenMind_Business_Masterplan.md`
 - Verify only: the Product 2 scope in the current Product specification authority
@@ -654,9 +654,9 @@ delivery history.
 Run:
 
 ```bash
-rg -n "historical|reusable workflow|whole planning set|live real application|docs/design/claude" docs/plans/EdenMind_MVP2_Implementation_Masterplan.md docs/plans/EdenMind_Product*_Masterplan.md
+rg -n "historical|reusable workflow|whole planning set|live real application|docs/design/claude" docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md docs/plans/EdenMind_Product*_Masterplan.md
 git diff --check -- docs/plans
-git diff -- docs/plans/EdenMind_MVP2_Implementation_Masterplan.md docs/plans/EdenMind_Product*_Masterplan.md
+git diff -- docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md docs/plans/EdenMind_Product*_Masterplan.md
 ```
 
 Expected: the closed MVP2 history is preserved; no current Product authority

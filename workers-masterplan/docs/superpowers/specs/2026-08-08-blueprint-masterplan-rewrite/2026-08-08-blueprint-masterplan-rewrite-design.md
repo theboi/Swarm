@@ -6,13 +6,13 @@
 
 ## 1. Outcomes
 
-1. `blueprint-masterplan` follows the organization and authority boundary demonstrated by `docs/plans/EdenMind_Implementation_Masterplan.md`.
+1. `blueprint-masterplan` follows the organization and authority boundary demonstrated by `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md`.
 2. A coordinator writes the frozen execution blueprint, graph, gates, shared contracts, worker briefs, prompts when needed, and coordination contract. Each worker writes and owns its own dated Superpowers specification and implementation plan.
 3. Superpowers artifacts are grouped by the blueprint start identifier `YYYY-MM-DD-<slug>`:
    - `docs/superpowers/specs/<blueprint-id>/...`
    - `docs/superpowers/plans/<blueprint-id>/...`
 4. Multi-worker graphs normally expose three to seven concurrently ready workers in each substantive post-foundation layer. Narrow foundations, joins, gates, and genuinely small objectives remain valid; wider layers require structural justification.
-5. `docs/plans/EdenMind_MVP2_Implementation_Masterplan.md` becomes the sole execution authority for a coherent 15-worker graph with layer widths `3 -> 7 -> 1 -> 3 -> 1`.
+5. `docs/superpowers/plans/2026-08-07-mvp2/2026-08-07-mvp2-implementation-masterplan.md` becomes the sole execution authority for a coherent 15-worker graph with layer widths `3 -> 7 -> 1 -> 3 -> 1`.
 6. The approved cohesive MVP2 product design remains authoritative and moves into `docs/superpowers/specs/2026-08-07-mvp2/`.
 7. The superseded 28-worker graph design, coordinator-authored task plans, and stale prompt/status packets are deleted only after a preservation review proves the new masterplan retains every approved responsibility and product boundary.
 

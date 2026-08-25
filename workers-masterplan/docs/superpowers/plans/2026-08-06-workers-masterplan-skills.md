@@ -30,7 +30,7 @@
 - Existing: `workers-masterplan/docs/superpowers/plans/2026-08-06-workers-masterplan-skills.md`
 
 **Interfaces:**
-- Consumes: the user-approved design and EdenMind's source-project reference at `docs/plans/EdenMind_Implementation_Masterplan.md`.
+- Consumes: the user-approved design and EdenMind's source-project reference at `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md`.
 - Produces: extraction-ready design and plan records whose runtime file references resolve within `workers-masterplan/`.
 
 - [x] **Step 1: Move the approved design into the collection**

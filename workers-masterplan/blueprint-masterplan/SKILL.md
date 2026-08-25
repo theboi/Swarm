@@ -50,7 +50,7 @@ instruction, with no more than one outcome sentence before the block. Otherwise
 require zero phase headings and rows. Count **Shared-main lifecycle** and
 UI-design checklist blocks independently; do not return until these checks pass.
 
-Use `docs/plans/EdenMind_Implementation_Masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
+Use `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
 
 ## Required companion skills
 
