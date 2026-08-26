@@ -7,7 +7,7 @@ import { evaluateTaskReadiness, loadBlueprintEvidence } from "../../src/server/t
 import { loadManifest } from "../../src/server/tasks/manifestLoader.js";
 import { hashPassword } from "../../scripts/hash-password.js";
 import { createTotpProvisioningUri, generateTotpSecret } from "../../scripts/generate-totp-secret.js";
-import { redactSmokeOutput, resolveSmokeEnvironment } from "../../scripts/smoke-app-server.js";
+import { redactSmokeOutput, repositoryIsUnchanged, resolveSmokeEnvironment } from "../../scripts/smoke-app-server.js";
 
 describe("operator tools", () => {
   it("creates a scrypt value that the coordinator can verify", async () => {
@@ -55,6 +55,11 @@ describe("operator tools", () => {
     expect(run).toMatchObject({ kind: "run", account: "bot3", startTurn: false });
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3", BOT3_PASSWORD: "test-local-password", SWARM_SMOKE_START_TURN: "true" })).toMatchObject({ kind: "run", startTurn: true });
     expect(redactSmokeOutput("Authorization: Bearer test-local-password", ["test-local-password"])).toBe("Authorization: Bearer [REDACTED]");
+  });
+
+  it("requires the opt-in smoke turn to preserve the bot clone status", () => {
+    expect(repositoryIsUnchanged(" M src/client/App.tsx\n", " M src/client/App.tsx\n")).toBe(true);
+    expect(repositoryIsUnchanged("", " M src/client/App.tsx\n")).toBe(false);
   });
 
   it("keeps the committed MVP3 seed blocked with no launchable workers", async () => {

@@ -65,6 +65,44 @@ export function manualLoginCommand(account: AccountId, codexBin: string): string
   return `/usr/bin/su - ${account} -c ${quoteForShell(`${codexBin} login`)}`;
 }
 
+export function repositoryIsUnchanged(before: string, after: string): boolean {
+  return before === after;
+}
+
+async function readAccountGitStatus(account: AccountId, password: string): Promise<string> {
+  const command = `${quoteForShell("/usr/bin/git")} -C ${quoteForShell(clonePath(account))} status --porcelain`;
+  const child = spawn("/usr/bin/script", ["-q", "/dev/null", "/usr/bin/su", "-", account, "-c", command], { stdio: ["pipe", "pipe", "pipe"] });
+  let output = "";
+  let prompted = false;
+  return new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("Timed out reading the bot repository status"));
+    }, 30_000);
+    timeout.unref();
+    const receive = (chunk: Buffer | string) => {
+      const text = String(chunk);
+      output = `${output}${text}`.slice(-16_384);
+      if (!prompted && /(?:^|[\r\n])Password:\s*$/.test(output)) {
+        prompted = true;
+        child.stdin?.write(`${password}\n`);
+      }
+    };
+    child.stdout?.on("data", receive);
+    child.stderr?.on("data", receive);
+    child.once("error", () => {
+      clearTimeout(timeout);
+      reject(new Error("Unable to read the bot repository status"));
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) return reject(new Error("Unable to read the bot repository status"));
+      const withoutPrompt = output.replace(/(?:^|[\r\n])Password:\s*/g, "");
+      resolve(redactSmokeOutput(withoutPrompt, [password]));
+    });
+  });
+}
+
 async function findUnusedPort(): Promise<PortLease> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
@@ -234,7 +272,12 @@ export async function runSmoke(env: NodeJS.ProcessEnv = process.env): Promise<nu
     if (!accountAuthenticated(account)) throw new SmokeError("ACCOUNT_AUTH_REQUIRED");
     const rateLimits = await rpc.request("account/rateLimits/read");
     const threads = await listAllThreads(rpc);
-    if (settings.startTurn) await runDisposableTurn(rpc, settings.account);
+    if (settings.startTurn) {
+      const before = await readAccountGitStatus(settings.account, settings.password);
+      await runDisposableTurn(rpc, settings.account);
+      const after = await readAccountGitStatus(settings.account, settings.password);
+      if (!repositoryIsUnchanged(before, after)) throw new SmokeError("SMOKE_TURN_FAILED");
+    }
     const bucketCount = rateLimits && typeof rateLimits === "object" ? Object.keys(rateLimits as Record<string, unknown>).length : 0;
     process.stdout.write(`SMOKE_METADATA_OK account=${settings.account} rateLimitFields=${bucketCount} threads=${threads.length} startTurn=${settings.startTurn}\n`);
     return 0;
