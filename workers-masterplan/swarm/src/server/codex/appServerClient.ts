@@ -2,6 +2,14 @@ import type { AccountId, RateLimitWindow } from "../../shared/contracts.js";
 import type { ApprovalRouter } from "./approvalRouter.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
 import { clonePath, safeThreadSettings, safeTurnSettings } from "./protocol.js";
+import {
+  hydrateTranscript,
+  initialTranscriptState,
+  reduceTranscriptEvent,
+  transcriptRecoveryState,
+  type RawThreadTurn,
+  type TranscriptState,
+} from "./transcriptReducer.js";
 
 export interface AppServerClientOptions {
   account: AccountId;
@@ -39,11 +47,16 @@ export class AppServerClient {
   readonly account: AccountId;
   readonly rpc: JsonRpcClient;
   accountInfo: AccountReadResult | undefined;
+  private transcript = initialTranscriptState;
+  private readonly trackedThreadIds = new Set<string>();
+  private needsTranscriptRecovery = false;
 
   constructor(options: AppServerClientOptions) {
     this.account = options.account;
     this.rpc = options.rpc;
     this.rpc.installApprovalHandler(options.approvalRouter);
+    this.rpc.onDisconnect(() => this.markTrackedTranscriptsDisconnected());
+    this.rpc.onNotification((notification) => this.applyTranscriptNotification(notification));
   }
 
   async connect(): Promise<AccountReadResult> {
@@ -52,6 +65,7 @@ export class AppServerClient {
       const account = await this.rpc.initializeAndReadAccount<AccountReadResult>();
       if (!account.account || account.requiresOpenaiAuth) throw new Error("ACCOUNT_AUTH_REQUIRED");
       this.accountInfo = account;
+      await this.recoverTrackedTranscripts();
       return account;
     } catch (error) {
       await this.rpc.close().catch(() => undefined);
@@ -60,6 +74,7 @@ export class AppServerClient {
   }
 
   async reconnect(): Promise<AccountReadResult> {
+    this.markTrackedTranscriptsDisconnected();
     await this.rpc.close();
     this.accountInfo = undefined;
     return this.connect();
@@ -82,9 +97,12 @@ export class AppServerClient {
     return threads;
   }
 
-  readThread(threadId: string, options: { includeTurns: true }): Promise<{ thread: Record<string, unknown> }> {
+  async readThread(threadId: string, options: { includeTurns: true }): Promise<{ thread: Record<string, unknown> }> {
     this.requireReady();
-    return this.rpc.request("thread/read", { threadId, includeTurns: options.includeTurns });
+    this.trackedThreadIds.add(threadId);
+    const response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
+    this.hydrateThreadRead(threadId, response);
+    return response;
   }
 
   async startThread(): Promise<Record<string, unknown>> {
@@ -174,6 +192,14 @@ export class AppServerClient {
     return this.rpc.request("fs/readFile", { path });
   }
 
+  /** Snapshot is copied so UI consumers cannot mutate retained transcript state. */
+  transcriptSnapshot(): TranscriptState {
+    return {
+      items: this.transcript.items.map((item) => ({ ...item, payload: { ...item.payload } })),
+      recoveryByScope: new Map(this.transcript.recoveryByScope),
+    };
+  }
+
   private requireReady(): void {
     if (!this.accountInfo) throw new Error("App-server client is not initialized");
   }
@@ -192,5 +218,49 @@ export class AppServerClient {
     if (settings.cwd !== expected || settings.approvalPolicy !== "untrusted" || settings.approvalsReviewer !== "user" || !correctSandbox) {
       throw new Error("App-server returned an unsafe thread execution policy");
     }
+  }
+
+  private markTrackedTranscriptsDisconnected(): void {
+    if (this.trackedThreadIds.size === 0) return;
+    for (const threadId of this.trackedThreadIds) {
+      this.transcript = reduceTranscriptEvent(this.transcript, {
+        method: "transcript/disconnected",
+        params: { accountId: this.account, threadId },
+      });
+    }
+    this.needsTranscriptRecovery = true;
+  }
+
+  private async recoverTrackedTranscripts(): Promise<void> {
+    if (!this.needsTranscriptRecovery) return;
+    for (const threadId of this.trackedThreadIds) {
+      this.transcript = reduceTranscriptEvent(this.transcript, {
+        method: "transcript/recoveryStarted",
+        params: { accountId: this.account, threadId },
+      });
+    }
+    for (const threadId of this.trackedThreadIds) await this.readThread(threadId, { includeTurns: true });
+    this.needsTranscriptRecovery = [...this.trackedThreadIds].some((threadId) => transcriptRecoveryState(this.transcript, { accountId: this.account, threadId }) !== "complete");
+  }
+
+  private hydrateThreadRead(threadId: string, response: { thread: Record<string, unknown> }): void {
+    const thread = response.thread;
+    if (thread.id !== threadId || !Array.isArray(thread.turns)) return;
+    this.transcript = hydrateTranscript(this.transcript, {
+      accountId: this.account,
+      threadId,
+      turns: thread.turns as RawThreadTurn[],
+    });
+  }
+
+  private applyTranscriptNotification(notification: { method: string; params?: unknown }): void {
+    const params = notification.params;
+    if (params === null || typeof params !== "object" || Array.isArray(params)) return;
+    const threadId = (params as Record<string, unknown>).threadId;
+    if (typeof threadId !== "string" || !this.trackedThreadIds.has(threadId)) return;
+    this.transcript = reduceTranscriptEvent(this.transcript, {
+      method: notification.method,
+      params: { ...(params as Record<string, unknown>), accountId: this.account },
+    });
   }
 }
