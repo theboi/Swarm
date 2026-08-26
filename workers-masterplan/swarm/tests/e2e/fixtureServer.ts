@@ -23,6 +23,8 @@ export interface BrowserFixtureServer {
   close(): Promise<void>;
 }
 
+export type BrowserFixtureClient = "vite" | "production";
+
 type Resource = { http: Server; websocket: WebSocketServer };
 
 function listen(server: Server): Promise<number> {
@@ -264,13 +266,23 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
   });
 }
 
-export async function startBrowserFixtureServer(options: { port: number; manifest?: FixtureManifest } ): Promise<BrowserFixtureServer> {
+export async function startBrowserFixtureServer(options: { port: number; manifest?: FixtureManifest; client?: BrowserFixtureClient } ): Promise<BrowserFixtureServer> {
   const appServers = await startE2eFixtureServer({ manifest: options.manifest ?? "ready" });
   const app = express();
   attachFixtureApi(app, appServers.state);
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({ root: resolve(process.cwd()), appType: "spa", server: { hmr: false, middlewareMode: true } });
-  app.use(vite.middlewares);
+  const client = options.client ?? "vite";
+  const vite = client === "vite"
+    ? await (async () => {
+      const { createServer: createViteServer } = await import("vite");
+      return createViteServer({ root: resolve(process.cwd()), appType: "spa", server: { hmr: false, middlewareMode: true } });
+    })()
+    : undefined;
+  if (vite) app.use(vite.middlewares);
+  else {
+    const dist = resolve(process.cwd(), "dist");
+    app.use(express.static(dist));
+    app.use((_request, response) => response.sendFile(resolve(dist, "index.html")));
+  }
   const server = createHttpServer(app);
   await new Promise<void>((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
@@ -280,7 +292,7 @@ export async function startBrowserFixtureServer(options: { port: number; manifes
     port: options.port,
     async close() {
       await new Promise<void>((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
-      await vite.close();
+      await vite?.close();
       await appServers.close();
     },
   };
@@ -294,7 +306,7 @@ function commandLinePort(): number {
 }
 
 if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
-  const fixture = await startBrowserFixtureServer({ port: commandLinePort() });
+  const fixture = await startBrowserFixtureServer({ port: commandLinePort(), client: process.argv.includes("--production") ? "production" : "vite" });
   process.stdout.write(`Swarm E2E fixture listening on http://127.0.0.1:${fixture.port}\n`);
   const stop = () => { void fixture.close().finally(() => process.exit(0)); };
   process.once("SIGINT", stop);
