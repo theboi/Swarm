@@ -110,6 +110,19 @@ describe("ChatsPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Approval response sent.");
   });
 
+  it("sends the exact requested turn permissions only after an explicit grant choice", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const requestedPermissions = { network: { enabled: true } };
+    const approval = { ...chatSnapshot.pendingApprovals[0], method: "item/permissions/requestApproval", availableDecisions: ["grant_turn", "grant_turn_strict", "deny"], requestedPermissions };
+    const decideApproval = vi.fn(async () => ({ data: {} }));
+    render(<ChatsPage snapshot={{ ...chatSnapshot, pendingApprovals: [approval] }} api={{ ...api, decideApproval }} />);
+
+    await user.click(await screen.findByRole("button", { name: "Grant requested turn permissions" }));
+
+    expect(decideApproval).toHaveBeenCalledWith(approval, "grant_turn", requestedPermissions);
+  });
+
   it("reports an unavailable open-terminal clipboard action instead of claiming success", async () => {
     setViewport(1440);
     const writeText = vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied"));

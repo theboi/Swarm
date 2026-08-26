@@ -5,7 +5,18 @@ import type { ApprovalJournal, ApprovalJournalEntry } from "../codex/approvalRou
 
 function key(entry: ApprovalJournalEntry): string { return `${entry.pending.accountId}\u0000${entry.requestId}`; }
 function copy(entry: ApprovalJournalEntry): ApprovalJournalEntry {
-  return { ...entry, pending: { ...entry.pending, availableDecisions: [...entry.pending.availableDecisions] }, classification: { ...entry.classification, targets: [...entry.classification.targets] }, normalizedTargets: [...entry.normalizedTargets], offeredChoices: [...entry.offeredChoices], ...(entry.chosenResponse ? { chosenResponse: { ...entry.chosenResponse } } : {}) };
+  return {
+    ...entry,
+    pending: {
+      ...entry.pending,
+      availableDecisions: [...entry.pending.availableDecisions],
+      ...(entry.pending.requestedPermissions ? { requestedPermissions: structuredClone(entry.pending.requestedPermissions) } : {}),
+    },
+    classification: { ...entry.classification, targets: [...entry.classification.targets] },
+    normalizedTargets: [...entry.normalizedTargets],
+    offeredChoices: [...entry.offeredChoices],
+    ...(entry.chosenResponse ? { chosenResponse: { ...entry.chosenResponse } } : {}),
+  };
 }
 
 /** Durable metadata journal; only resolver-held entries represent a live app-server request. */

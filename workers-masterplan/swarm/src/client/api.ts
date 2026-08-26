@@ -32,7 +32,7 @@ export interface CoordinatorApi {
   interruptTurn(accountId: string, threadId: string, turnId: string): Promise<ApiResult<unknown>>;
   readTranscript(accountId: string, threadId: string): Promise<ApiResult<TranscriptItem[]>>;
   readMarkdown(accountId: string, path: string): Promise<ApiResult<MarkdownDocument>>;
-  decideApproval(approval: PendingApproval, decision: string): Promise<ApiResult<unknown>>;
+  decideApproval(approval: PendingApproval, decision: string, permissions?: Record<string, unknown>): Promise<ApiResult<unknown>>;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
@@ -67,6 +67,6 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     interruptTurn: (accountId, threadId, turnId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/interrupt`, { method: "POST", body: JSON.stringify({ turnId }) }),
     readTranscript: (accountId, threadId) => request<TranscriptItem[]>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}`),
     readMarkdown: (accountId, path) => request<MarkdownDocument>(`/accounts/${encodeURIComponent(accountId)}/files/read`, { method: "POST", body: JSON.stringify({ path }) }),
-    decideApproval: (approval, decision) => request<unknown>(`/approvals/${encodeURIComponent(approval.id)}`, { method: "POST", body: JSON.stringify({ decision }) }),
+    decideApproval: (approval, decision, permissions) => request<unknown>(`/approvals/${encodeURIComponent(approval.id)}`, { method: "POST", body: JSON.stringify({ decision, ...(permissions ? { permissions } : {}) }) }),
   };
 }

@@ -117,6 +117,7 @@ export class ApprovalRouter {
     const turnId = asString(params.turnId);
     const itemId = asString(params.itemId);
     const requestId = String(request.id);
+    const requestedPermissions = method === "item/permissions/requestApproval" ? record(params.permissions) : {};
     const pending: PendingApproval = {
       id: asString(params.approvalId) ?? requestId,
       accountId: this.options.context.account,
@@ -126,6 +127,7 @@ export class ApprovalRouter {
       method,
       summary: `${method}: ${classification.reason}`.slice(0, 512),
       availableDecisions: protocolChoices(method),
+      ...(Object.keys(requestedPermissions).length > 0 ? { requestedPermissions } : {}),
       createdAt: this.now(),
     };
     return {

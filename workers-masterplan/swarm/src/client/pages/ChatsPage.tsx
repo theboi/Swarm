@@ -25,6 +25,22 @@ function useCompactPicker(): boolean {
   return compact;
 }
 
+function isPermissionGrant(decision: string): boolean {
+  return decision === "grant_turn" || decision === "grant_turn_strict";
+}
+
+function approvalLabel(decision: string): string {
+  switch (decision) {
+    case "grant_turn": return "Grant requested turn permissions";
+    case "grant_turn_strict": return "Grant requested turn permissions strictly";
+    case "accept": return "Accept approval";
+    case "decline": return "Decline approval";
+    case "cancel": return "Cancel approval";
+    case "deny": return "Deny approval";
+    default: return `${decision} approval`;
+  }
+}
+
 export function ChatsPage({ snapshot, api, initialThreadId, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; onRefresh?: () => Promise<void> }) {
   const [accountId, setAccountId] = useState<AccountId | null>(() => initialAccount(snapshot, initialThreadId));
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -124,7 +140,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, onRefresh = async ()
         {!compact || pickerOpen ? <aside className="thread-picker" aria-label="Chats for selected account">{threads.map((thread) => <button key={thread.id} type="button" aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}>{thread.name ?? "Unnamed chat"}</button>)}</aside> : null}
         <section className="chat-panel" aria-label="Selected chat">
           <header className="chat-panel__header"><h2>{selectedThread?.name ?? "No chat selected"}</h2><div><button type="button" disabled={!accountId} onClick={() => accountId && void run(() => api.startThread(accountId), "New chat created.", (thread) => setThreadId(thread.id))}>New chat</button><button type="button" disabled={!selectedThread?.capabilities.canArchive || !accountId} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.")}>Archive chat</button>{terminalCommand ? <button type="button" onClick={() => void copyTerminalCommand()}>Copy open-terminal command</button> : null}</div></header>
-          {approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p><div>{approval.availableDecisions.map((decision) => <button key={decision} type="button" onClick={() => void run(() => api.decideApproval(approval, decision), "Approval response sent.")}>{`${decision.charAt(0).toUpperCase()}${decision.slice(1)} approval`}</button>)}</div></section>)}
+          {approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p><div>{approval.availableDecisions.map((decision) => {
+            const permissions = isPermissionGrant(decision) ? approval.requestedPermissions : undefined;
+            const missingPermissions = isPermissionGrant(decision) && (!permissions || Object.keys(permissions).length === 0);
+            return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
+          })}</div></section>)}
           <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef}>{items.map((item) => <TranscriptItemView item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />)}</div>
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); if (selectedThread && accountId && draft.trim()) void run(() => api.startTurn(accountId, selectedThread.id, draft), "Message sent."); }}>
             <label htmlFor="message">Message</label><textarea id="message" value={draft} onChange={(event) => setDraft(event.target.value)} />

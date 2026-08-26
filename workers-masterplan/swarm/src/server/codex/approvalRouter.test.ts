@@ -54,4 +54,24 @@ describe("ApprovalRouter", () => {
       actor: "timeout",
     }));
   });
+
+  it("preserves the requested v2 turn permissions for an explicit operator grant", async () => {
+    const append = vi.fn(async () => undefined);
+    const router = new ApprovalRouter({
+      context: createApprovalContext("bot1"),
+      journal: { append, waitForDecision: async () => ({ kind: "deny" }) },
+      filesystem: mappedFilesystem(),
+    });
+    const requestedPermissions = { network: { enabled: true } };
+
+    await expect(router.handle({
+      id: "approval-3",
+      method: "item/permissions/requestApproval",
+      params: { threadId: "thread-3", permissions: requestedPermissions },
+    })).resolves.toEqual({ permissions: {}, scope: "turn" });
+
+    expect(append).toHaveBeenCalledWith(expect.objectContaining({
+      pending: expect.objectContaining({ requestedPermissions }),
+    }));
+  });
 });

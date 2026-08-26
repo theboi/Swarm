@@ -155,6 +155,8 @@ export interface PendingApproval {
   method: string;
   summary: string;
   availableDecisions: string[];
+  /** Exact permissions requested by the app server; grants are disabled when absent. */
+  requestedPermissions?: Record<string, unknown>;
   createdAt: number;
 }
 
