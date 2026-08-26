@@ -62,17 +62,22 @@ describe("operator tools", () => {
     expect(repositoryIsUnchanged("", " M src/client/App.tsx\n")).toBe(false);
   });
 
-  it("keeps the committed MVP3 seed blocked with no launchable workers", async () => {
+  it("loads the committed MVP3 planning projection with only F0 ready", async () => {
     const repositoryRoot = resolve(process.cwd(), "../..");
     const manifest = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
     const evidence = await loadBlueprintEvidence(manifest, {
       fetch: async () => "abcdef012345",
-      readRemote: async (path) => readFile(resolve(repositoryRoot, path), "utf8"),
+      readRemote: async (path) => readFile(resolve(repositoryRoot, path), "utf8").catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      }),
     });
+    const readiness = evaluateTaskReadiness(manifest, evidence);
 
-    expect(manifest.tasks).toEqual([]);
-    expect(evidence.code).toBe("MASTERPLAN_NOT_READY");
-    expect(evaluateTaskReadiness(manifest, evidence)).toEqual([]);
+    expect(manifest.tasks).toHaveLength(26);
+    expect(evidence.code).toBeUndefined();
+    expect(readiness.filter((task) => task.state === "ready").map((task) => task.taskId)).toEqual(["F0"]);
+    expect(readiness.filter((task) => task.state === "blocked")).toHaveLength(25);
   });
 
   it("uses the ready manifest only with its explicit fixture authority", async () => {
