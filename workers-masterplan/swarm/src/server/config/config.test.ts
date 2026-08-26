@@ -15,6 +15,21 @@ describe("loadConfig", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
+  it("accepts process-supplied configuration when the optional default .env does not exist", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "swarm-config-missing-"));
+    const missingEnvFile = join(directory, ".env");
+    const config = await loadConfig({
+      SWARM_ENV_FILE: missingEnvFile,
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+    });
+
+    expect(config.loginEmail).toBe("claudio@example.com");
+    await rm(directory, { recursive: true, force: true });
+  });
+
   it("reads bot credentials only from named SWARM_USER slots and keeps passwords out of its public view", async () => {
     const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`SWARM_USER${index + 1}`, `bot${index + 1}:local-password-${index + 1}`]));
     const config = await loadConfig({

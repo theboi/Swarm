@@ -44,8 +44,12 @@ export function swarmUserPassword(env: NodeJS.ProcessEnv, index: number): string
 export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<SwarmConfig> {
   if (env.SWARM_ENV_FILE) {
     const file = resolve(env.SWARM_ENV_FILE);
-    const mode = (await stat(file)).mode & 0o777;
-    if ((mode & 0o077) !== 0) throw new Error(`Secrets file ${file} must be chmod 600`);
+    try {
+      const mode = (await stat(file)).mode & 0o777;
+      if ((mode & 0o077) !== 0) throw new Error(`Secrets file ${file} must be chmod 600`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
   const accountPasswords = {} as SwarmConfig["accountPasswords"];
   for (let index = 1; index <= 8; index += 1) {
