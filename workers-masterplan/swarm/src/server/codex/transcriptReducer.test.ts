@@ -35,7 +35,7 @@ describe("transcriptReducer", () => {
     expect(state.items.at(-1)).toMatchObject({ id: "future", type: "opaque", payload: { originalType: "futureItem" } });
   });
 
-  it("hydrates complete thread history in turn order and makes sparse item deltas idempotent", () => {
+  it("hydrates complete thread history in turn order and reconciles replayed real-v2 deltas without a deltaId", () => {
     let state = hydrateTranscript(initialTranscriptState, {
       ...scope,
       turns: [
@@ -43,8 +43,10 @@ describe("transcriptReducer", () => {
         { id: "turn-1", startedAt: 10, items: [{ type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "inProgress", aggregatedOutput: "first", commandActions: [] }] },
       ],
     });
-    state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second", deltaId: "delta-1" } });
-    state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second", deltaId: "delta-1" } });
+    // The generated v2 envelope is only threadId, turnId, itemId, and delta.
+    state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second" } });
+    state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second" } });
+    expect(state.items[0]?.payload.aggregatedOutput).toBe("first second");
     state = reduceTranscriptEvent(state, { method: "item/completed", params: { ...scope, turnId: "turn-1", completedAtMs: 30_000, item: { type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "completed", aggregatedOutput: "first second", commandActions: [], exitCode: 0 } } });
     const replayed = reduceTranscriptEvent(state, { method: "item/completed", params: { ...scope, turnId: "turn-1", completedAtMs: 30_000, item: { type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "completed", aggregatedOutput: "first second", commandActions: [], exitCode: 0 } } });
 

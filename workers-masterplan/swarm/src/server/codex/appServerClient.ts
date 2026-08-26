@@ -1,10 +1,12 @@
 import type { AccountId, RateLimitWindow } from "../../shared/contracts.js";
+import type { ApprovalRouter } from "./approvalRouter.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
 import { clonePath, safeThreadSettings, safeTurnSettings } from "./protocol.js";
 
 export interface AppServerClientOptions {
   account: AccountId;
   rpc: JsonRpcClient;
+  approvalRouter: ApprovalRouter;
 }
 
 export interface AccountReadResult {
@@ -27,7 +29,6 @@ export interface SteerTurnInput {
 
 type ThreadSettingsEcho = {
   cwd?: unknown;
-  runtimeWorkspaceRoots?: unknown;
   approvalPolicy?: unknown;
   approvalsReviewer?: unknown;
   sandbox?: unknown;
@@ -42,17 +43,20 @@ export class AppServerClient {
   constructor(options: AppServerClientOptions) {
     this.account = options.account;
     this.rpc = options.rpc;
+    this.rpc.installApprovalHandler(options.approvalRouter);
   }
 
   async connect(): Promise<AccountReadResult> {
-    await this.rpc.connect();
-    const account = await this.rpc.initializeAndReadAccount<AccountReadResult>();
-    if (!account.account || account.requiresOpenaiAuth) {
-      await this.rpc.close();
-      throw new Error("ACCOUNT_AUTH_REQUIRED");
+    try {
+      await this.rpc.connect();
+      const account = await this.rpc.initializeAndReadAccount<AccountReadResult>();
+      if (!account.account || account.requiresOpenaiAuth) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      this.accountInfo = account;
+      return account;
+    } catch (error) {
+      await this.rpc.close().catch(() => undefined);
+      throw error;
     }
-    this.accountInfo = account;
-    return account;
   }
 
   async reconnect(): Promise<AccountReadResult> {
@@ -178,9 +182,6 @@ export class AppServerClient {
     const expected = clonePath(this.account);
     const settings = response as ThreadSettingsEcho;
     const sandbox = settings.sandbox as Record<string, unknown> | undefined;
-    const correctRoots = Array.isArray(settings.runtimeWorkspaceRoots)
-      && settings.runtimeWorkspaceRoots.length === 1
-      && settings.runtimeWorkspaceRoots[0] === expected;
     const correctSandbox = sandbox?.type === "workspaceWrite"
       && Array.isArray(sandbox.writableRoots)
       && sandbox.writableRoots.length === 1
@@ -188,7 +189,7 @@ export class AppServerClient {
       && sandbox.networkAccess === true
       && sandbox.excludeTmpdirEnvVar === true
       && sandbox.excludeSlashTmp === true;
-    if (settings.cwd !== expected || !correctRoots || settings.approvalPolicy !== "untrusted" || settings.approvalsReviewer !== "user" || !correctSandbox) {
+    if (settings.cwd !== expected || settings.approvalPolicy !== "untrusted" || settings.approvalsReviewer !== "user" || !correctSandbox) {
       throw new Error("App-server returned an unsafe thread execution policy");
     }
   }

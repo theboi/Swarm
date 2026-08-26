@@ -1,9 +1,9 @@
 import WebSocket from "ws";
-import { isJsonRpcRequest, isJsonRpcResponse, type JsonRpcId, type JsonRpcInbound, type JsonRpcNotification, type JsonRpcRequest, type JsonRpcResponse } from "./protocol.js";
+import type { LaunchHandle } from "./suLauncher.js";
+import { APP_SERVER_NOTIFICATION_METHODS, isApprovalMethod, isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse, safeApprovalDecline, type JsonRpcId, type JsonRpcNotification, type JsonRpcRequest, type JsonRpcResponse } from "./protocol.js";
 
 export interface JsonRpcClientOptions {
-  url: string;
-  capabilityToken: string;
+  launch: Pick<LaunchHandle, "endpoint" | "capabilityToken">;
   requestTimeoutMs?: number;
   webSocketFactory?: (url: string, options: { headers: { Authorization: string } }) => WebSocket;
 }
@@ -17,6 +17,9 @@ type PendingRequest = {
 
 export type ServerRequestHandler = (request: JsonRpcRequest) => Promise<unknown | undefined> | unknown | undefined;
 export type NotificationHandler = (notification: JsonRpcNotification) => void;
+export interface ApprovalRequestHandler {
+  handle(request: JsonRpcRequest): Promise<Record<string, unknown>>;
+}
 
 /** JSON-RPC 2.0 transport that holds the only plaintext loopback capability token. */
 export class JsonRpcClient {
@@ -24,6 +27,7 @@ export class JsonRpcClient {
   private readonly notificationHandlers = new Set<NotificationHandler>();
   private readonly serverRequestHandlers = new Set<ServerRequestHandler>();
   private readonly diagnostics: JsonRpcNotification[] = [];
+  private approvalHandler: ApprovalRequestHandler | undefined;
   private socket: WebSocket | undefined;
   private nextId = 1;
   private closing = false;
@@ -32,10 +36,12 @@ export class JsonRpcClient {
 
   async connect(): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) return;
-    if (!this.options.capabilityToken) throw new Error("Unauthorized app-server connection: missing capability token");
+    this.assertLoopbackEndpoint();
+    const capabilityToken = this.options.launch.capabilityToken;
+    if (!capabilityToken) throw new Error("Unauthorized app-server connection: missing capability token");
     this.closing = false;
     const factory = this.options.webSocketFactory ?? ((url, init) => new WebSocket(url, init));
-    const socket = factory(this.options.url, { headers: { Authorization: `Bearer ${this.options.capabilityToken}` } });
+    const socket = factory(this.options.launch.endpoint, { headers: { Authorization: `Bearer ${capabilityToken}` } });
     this.socket = socket;
 
     await new Promise<void>((resolve, reject) => {
@@ -75,6 +81,13 @@ export class JsonRpcClient {
     return () => this.serverRequestHandlers.delete(handler);
   }
 
+  /** Installs the only handler allowed to answer app-server approval methods. */
+  installApprovalHandler(handler: ApprovalRequestHandler): () => void {
+    if (this.approvalHandler) throw new Error("An approval policy handler is already installed");
+    this.approvalHandler = handler;
+    return () => { if (this.approvalHandler === handler) this.approvalHandler = undefined; };
+  }
+
   getDiagnostics(): JsonRpcNotification[] { return [...this.diagnostics]; }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
@@ -112,9 +125,9 @@ export class JsonRpcClient {
   }
 
   private receive(raw: string): void {
-    let message: JsonRpcInbound;
+    let message: unknown;
     try {
-      message = JSON.parse(raw) as JsonRpcInbound;
+      message = JSON.parse(raw);
     } catch {
       this.recordDiagnostic("protocol/invalidMessage", { raw: "[REDACTED]" });
       return;
@@ -127,8 +140,15 @@ export class JsonRpcClient {
       void this.receiveServerRequest(message);
       return;
     }
-    if (typeof message.method === "string") {
+    if (isJsonRpcNotification(message)) {
       const notification: JsonRpcNotification = { jsonrpc: "2.0", method: message.method, ...(message.params === undefined ? {} : { params: message.params }) };
+      if (!APP_SERVER_NOTIFICATION_METHODS.has(notification.method)) {
+        this.recordDiagnostic("protocol/unknownNotification", {
+          method: notification.method,
+          payloadShape: this.redactedShape(notification.params),
+        });
+        return;
+      }
       for (const handler of this.notificationHandlers) handler(notification);
       return;
     }
@@ -151,10 +171,28 @@ export class JsonRpcClient {
   }
 
   private async receiveServerRequest(request: JsonRpcRequest): Promise<void> {
+    if (isApprovalMethod(request.method)) {
+      try {
+        if (!this.approvalHandler) throw new Error("No approval policy handler is installed");
+        const result = await this.withDeadline(this.approvalHandler.handle(request), request.method);
+        this.sendResponse({ jsonrpc: "2.0", id: request.id, result });
+      } catch {
+        this.recordDiagnostic("protocol/serverRequestFailed", { method: request.method, id: request.id, outcome: "safe_decline" });
+        this.sendResponse({ jsonrpc: "2.0", id: request.id, result: safeApprovalDecline(request.method) });
+      }
+      return;
+    }
+
     let result: unknown | undefined;
-    for (const handler of this.serverRequestHandlers) {
-      result = await handler(request);
-      if (result !== undefined) break;
+    try {
+      for (const handler of this.serverRequestHandlers) {
+        result = await this.withDeadline(Promise.resolve(handler(request)), request.method);
+        if (result !== undefined) break;
+      }
+    } catch {
+      this.recordDiagnostic("protocol/serverRequestFailed", { method: request.method, id: request.id, outcome: "error" });
+      this.sendResponse({ jsonrpc: "2.0", id: request.id, error: { code: -32603, message: "Server request handler failed" } });
+      return;
     }
     if (result !== undefined) {
       this.sendResponse({ jsonrpc: "2.0", id: request.id, result });
@@ -181,5 +219,34 @@ export class JsonRpcClient {
       pending.reject(error);
       this.pending.delete(id);
     }
+  }
+
+  private assertLoopbackEndpoint(): void {
+    let endpoint: URL;
+    try { endpoint = new URL(this.options.launch.endpoint); }
+    catch { throw new Error("App-server endpoint must be a valid loopback ws URL"); }
+    if (endpoint.protocol !== "ws:" || endpoint.hostname !== "127.0.0.1" || !endpoint.port) {
+      throw new Error("App-server capability tokens may be sent only to the launch-derived loopback ws endpoint");
+    }
+  }
+
+  private redactedShape(value: unknown): { type: string; size: number } {
+    if (value === null) return { type: "null", size: 0 };
+    if (Array.isArray(value)) return { type: "array", size: value.length };
+    if (typeof value === "object") return { type: "object", size: Object.keys(value as Record<string, unknown>).length };
+    if (typeof value === "string") return { type: "string", size: value.length };
+    return { type: typeof value, size: 0 };
+  }
+
+  private withDeadline<T>(operation: Promise<T>, method: string): Promise<T> {
+    const timeoutMs = this.options.requestTimeoutMs ?? 15_000;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Server request ${method} timed out`)), timeoutMs);
+      timer.unref();
+      operation.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error instanceof Error ? error : new Error(String(error))); },
+      );
+    });
   }
 }

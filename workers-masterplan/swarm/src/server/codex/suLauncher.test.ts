@@ -16,15 +16,18 @@ function launcherFixture() {
   const release = vi.fn(async () => undefined);
   const kill = vi.fn();
   const waitForReady = vi.fn(async () => undefined);
+  const verifyCodexBinary = vi.fn(async (path: string) => path === "/opt/homebrew/bin/codex");
   const launcher = new SuLauncher({
     spawn,
     allocatePort: async () => ({ port: 45123, release }),
     pathExists: async (path) => path === "/opt/homebrew/bin/codex" || path === "/Users/bot1/.codex",
+    verifyCodexBinary,
     waitForReady,
     killProcessGroup: kill,
     log: () => undefined,
+    startupTimeoutMs: 250,
   });
-  return { launcher, child, spawn, release, kill, waitForReady };
+  return { launcher, child, spawn, release, kill, waitForReady, verifyCodexBinary };
 }
 
 async function waitForSpawn(spawn: ReturnType<typeof vi.fn>) {
@@ -33,7 +36,7 @@ async function waitForSpawn(spawn: ReturnType<typeof vi.fn>) {
 
 describe("SuLauncher", () => {
   it("runs only an allowlisted account through script and su, writing its password only after a prompt", async () => {
-    const { launcher, child, spawn, waitForReady } = launcherFixture();
+    const { launcher, child, spawn, waitForReady, verifyCodexBinary } = launcherFixture();
     const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
 
     await waitForSpawn(spawn);
@@ -47,10 +50,14 @@ describe("SuLauncher", () => {
     child.stdout.emit("data", Buffer.from("Password:"));
     const handle = await launching;
 
-    expect(child.writes).toEqual(["bot-password\n"]);
-    expect(waitForReady).toHaveBeenCalledWith(handle.endpoint, handle.capabilityToken);
-    expect(JSON.stringify(spawn.mock.calls)).not.toContain("bot-password");
-    await handle.stop();
+    try {
+      expect(verifyCodexBinary).toHaveBeenCalledWith("/opt/homebrew/bin/codex");
+      expect(child.writes).toEqual(["bot-password\n"]);
+      expect(waitForReady).toHaveBeenCalledWith(handle.endpoint, handle.capabilityToken);
+      expect(JSON.stringify(spawn.mock.calls)).not.toContain("bot-password");
+    } finally {
+      await handle.stop();
+    }
   });
 
   it("uses an OS-allocated loopback port and puts only a SHA-256 capability digest on the su command line", async () => {
@@ -68,6 +75,21 @@ describe("SuLauncher", () => {
     expect(command).not.toContain("bot-password");
     await handle.stop();
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("recognizes an exact su password prompt across PTY chunks without treating ordinary output as a credential prompt", async () => {
+    const { launcher, child, spawn } = launcherFixture();
+    const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    await waitForSpawn(spawn);
+
+    child.stdout.emit("data", Buffer.from("app output: password: is documentation\n"));
+    expect(child.writes).toEqual([]);
+    child.stderr.emit("data", Buffer.from("Pass"));
+    child.stderr.emit("data", Buffer.from("word:"));
+    const handle = await launching;
+
+    expect(child.writes).toEqual(["bot-password\n"]);
+    await handle.stop();
   });
 
   it("rejects non-bot accounts and launcher failures as account-auth-required without exposing credentials", async () => {
