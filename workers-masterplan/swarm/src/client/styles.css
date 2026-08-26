@@ -37,9 +37,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .home-page { display: grid; gap: 28px; max-width: 1120px; }
 .home-page h1, .home-page h2, .home-page h3 { margin-block: 0; }
 .metric-grid, .account-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.metric-grid > div, .account-card, .ready-task, .home-page article { border: 1px solid #313a3d; border-radius: 14px; background: #1c2224; padding: 16px; }
+.metric-grid > div, .account-card, .ready-task, .blocked-task, .home-page article { border: 1px solid #313a3d; border-radius: 14px; background: #1c2224; padding: 16px; }
 .metric-grid dt { color: #b9c5bc; font-size: .85rem; }.metric-grid dd { margin: 8px 0 0; font-size: 1.6rem; font-weight: 700; }
 .ready-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; }.ready-task button, .dialog-actions button { min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid #485457; background: #263034; color: #effff0; padding: 8px 12px; }
+.blocked-task { border-inline-start: 4px solid #cd6b5c; }.blocked-task p { color: #ffb4ab; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .account-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }.account-card { display: grid; gap: 12px; }.account-card p { margin: 0; text-transform: capitalize; color: #b9c5bc; }
 .rate-limit { display: grid; gap: 6px; }.rate-limit__label { display: flex; justify-content: space-between; gap: 12px; }.rate-limit__track { height: 8px; overflow: hidden; border-radius: 999px; background: #3a4446; }.rate-limit__fill { display: block; height: 100%; background: #3daa4b; }.rate-limit small { color: #b9c5bc; }
 .status-badge { display: inline-flex; border-radius: 999px; padding: 3px 8px; font-size: .75rem; font-weight: 700; text-transform: capitalize; }.status-badge--ready, .status-badge--complete { background: #294532; color: #b6f2be; }.status-badge--blocked, .status-badge--attention_required { background: #5a3028; color: #ffb4ab; }.status-badge--running { background: #273e56; color: #b8dcff; }.status-badge--unknown, .status-badge--not_ready { background: #3a4446; color: #d7dfda; }

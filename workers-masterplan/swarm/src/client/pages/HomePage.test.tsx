@@ -26,6 +26,10 @@ describe("HomePage", () => {
     expect(screen.getByRole("heading", { name: "Active work" })).toBeVisible();
     expect(screen.getByText("Task: T0 · Graph planning")).toBeVisible();
     expect(screen.getByText("Worker: Not reported")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Blocked work" })).toBeVisible();
+    expect(screen.getByText("I0 · Integration")).toBeVisible();
+    expect(screen.getByText("PLANNING_GATE")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Review launch for I0" })).not.toBeInTheDocument();
   });
 
   it("renders the normalized ngrok public URL only when the coordinator reports one", () => {
