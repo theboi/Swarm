@@ -295,6 +295,40 @@ receipt and its pinned `origin/main` commit, requires execution-readiness
 verification before editing, and then covers implementation, review,
 integration evidence, handoff, and clean-main completion.
 
+### EdenMind swarm coordinator launch packets (conditional)
+
+Use this adapter only when the frozen blueprint explicitly declares the
+EdenMind swarm coordinator. It does not change ordinary Blueprint Masterplan
+prompts or turn this generic skill into an application specification. Read [the
+coordinator launch-packet adapter](references/worker-prompt-templates.md#edenmind-swarm-coordinator-launch-packets)
+completely before rendering any coordinator packet.
+
+The coordinator renderer and this skill resolve each packet directly from the
+single canonical source under `workers-masterplan/swarm/templates`; never copy
+or independently maintain packet bodies in the reusable skill. Supply the
+selected macOS account, worker ID, model routing, coordinator chat name, and
+phase terminal condition as explicit launch metadata. The selected account is
+not a worker: an account may own unlimited chats, while the global active-turn
+default is `3`.
+
+For this conditional mode, use one loopback Codex app-server per selected macOS
+account through `su - <account>`; never launch Codex desktop for a bot account.
+The planning packet is terminal before execution, and the execution packet
+routes bounded implementation to Terra High, difficult implementation,
+integration, migrations, or debugging to Terra Xhigh, and Sol High only to
+unexpected planning required during execution. Continue to apply this skill's
+direct-main lifecycle and remote-reachability proof without weakening it for
+the coordinator.
+
+The coordinator may automatically approve an app-server request only after
+positive proof that every target is contained in the assigned account's
+EdenMind clone. Ambiguous, destructive, home/system, cross-account, glob,
+symlink-sensitive, or otherwise unproven requests fail closed to the exact
+method-compatible human decision; dangerous actions never receive a
+session-wide approval. Public ngrok access may run only from `10:00` until
+`00:00` in `Asia/Singapore`; local coordinator access remains available outside
+that public window.
+
 ### Render operative lifecycle outputs without compression
 
 Apply the operative-output classification and the **Coordinator/worker phase
