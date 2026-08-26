@@ -17,6 +17,7 @@ import { AppServerClient } from "./codex/appServerClient.js";
 import { JsonRpcClient } from "./codex/jsonRpcClient.js";
 import { readWorkspaceMarkdown } from "./codex/safeFileReader.js";
 import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
+import { normalizeThreadCapabilities } from "./codex/threadCapabilities.js";
 import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
@@ -31,6 +32,7 @@ import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
+import { executionLaunchMetadata } from "./tasks/launchMetadata.js";
 import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 
 type DurableState = {
@@ -48,7 +50,7 @@ function asThread(account: AccountId, source: Record<string, unknown>): ThreadSu
   const id = stringAt(source, "id");
   if (!id) throw new Error("App-server did not return a thread identifier");
   const updated = source.updatedAt;
-  return { id, accountId: account, name: typeof source.name === "string" ? source.name : null, archived: source.archived === true, updatedAt: typeof updated === "number" ? updated : Date.now(), capabilities: { canArchive: true, canInterrupt: true, canStartTurn: true, canSteer: true } };
+  return { id, accountId: account, name: typeof source.name === "string" ? source.name : null, archived: source.archived === true, updatedAt: typeof updated === "number" ? updated : Date.now(), capabilities: normalizeThreadCapabilities(source) };
 }
 function responseThread(value: unknown): Record<string, unknown> { const response = object(value); return response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? object(response.thread) : response; }
 
@@ -167,7 +169,10 @@ async function createRuntime(config: SwarmConfig) {
     if (url) { try { values.add(new URL(url).origin); } catch { /* sanitized controller prevents this */ } }
     return values;
   };
-  const createPrompt = async (task: TaskNode, id: AccountId) => renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at Claudio's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: `/Users/${id}/Dev/EdenMind`, ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+  const createPrompt = async (task: TaskNode, id: AccountId) => {
+    const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task) : {};
+    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at Claudio's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: `/Users/${id}/Dev/EdenMind`, ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+  };
   const suggested = (requested?: AccountId) => requested ?? rankAccounts(accountSnapshot(), Date.now())[0]?.id;
   const rateWaitTimers = new Map<string, NodeJS.Timeout>();
   const clearRateWait = (dispatchId: string) => { const timer = rateWaitTimers.get(dispatchId); if (timer) clearTimeout(timer); rateWaitTimers.delete(dispatchId); };

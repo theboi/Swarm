@@ -121,10 +121,10 @@ export function evaluateTaskReadiness(manifest: TaskManifest, source: BlueprintE
   return manifest.tasks.map((task) => {
     const dependencies = dependencyTerminal(task, taskById, source);
     const ownStatus = task.statusPath ? statusIsRemoteTerminal(source.records.get(task.statusPath), source.remoteCommit) : false;
-    const gatePassed = task.kind !== "execution" || task.dependsOn.some((id) => {
-      const gate = taskById.get(id);
-      return gate?.kind === "gate" && gateEvidenceIsComplete(gate, taskById, source);
-    });
+    const planningGate = task.kind === "execution"
+      ? task.dependsOn.map((id) => taskById.get(id)).find((candidate): candidate is TaskManifestTask => candidate?.kind === "gate")
+      : undefined;
+    const gatePassed = task.kind !== "execution" || Boolean(planningGate && gateEvidenceIsComplete(planningGate, taskById, source));
     const requiredPlanning = task.kind === "gate"
       ? gateEvidenceIsComplete(task, taskById, source)
       : task.kind === "planning" ? (ownStatus ? planningArtifactsAreRemote(task, source) : true) : true;
@@ -137,7 +137,7 @@ export function evaluateTaskReadiness(manifest: TaskManifest, source: BlueprintE
       state: terminal && ready ? "complete" : ready ? "ready" : "blocked",
       evidence: [
         evidence("REMOTE_PREREQUISITES", dependencies.satisfied, undefined, source.remoteCommit),
-        evidence("PLANNING_GATE", gatePassed, task.statusPath, source.remoteCommit),
+        evidence("PLANNING_GATE", gatePassed, planningGate?.statusPath ?? task.statusPath, source.remoteCommit),
         evidence("PLANNING_ARTIFACTS", requiredPlanning, task.specificationPath, source.remoteCommit),
       ],
       blockingCodes,
