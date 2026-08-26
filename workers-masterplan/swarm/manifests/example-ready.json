@@ -1,0 +1,37 @@
+{
+  "blueprintId": "fixture-example-ready",
+  "title": "Fixture-only ready manifest",
+  "masterplanPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/masterplan.md",
+  "coordinationRoot": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready",
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "Fixture planning",
+      "kind": "planning",
+      "dependsOn": [],
+      "statusPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/T0.status.md",
+      "specificationPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/T0.spec.md",
+      "implementationPlanPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/T0.plan.md",
+      "promptTemplate": "planning",
+      "preferredAccount": "bot3"
+    },
+    {
+      "id": "G0",
+      "title": "Fixture planning gate",
+      "kind": "gate",
+      "dependsOn": ["T0"],
+      "statusPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/G0.status.md",
+      "promptTemplate": "planning",
+      "preferredAccount": "bot3"
+    },
+    {
+      "id": "I0",
+      "title": "Fixture implementation",
+      "kind": "execution",
+      "dependsOn": ["G0"],
+      "statusPath": "workers-masterplan/swarm/tests/e2e/fixtures/example-ready/I0.status.md",
+      "promptTemplate": "execution",
+      "preferredAccount": "bot5"
+    }
+  ]
+}
