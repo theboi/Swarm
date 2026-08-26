@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { TaskManifest } from "../../shared/contracts.js";
 import { loadManifest } from "./manifestLoader.js";
@@ -14,6 +14,19 @@ const manifest: TaskManifest = { blueprintId: "mvp3", title: "MVP3", masterplanP
 ] };
 
 describe("task authority", () => {
+  it("loads the production MVP3 planning topology with six four-step paths", async () => {
+    const repositoryRoot = resolve(process.cwd(), "../..");
+    const production = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
+    const domainPaths = ["P", "C", "Q", "A", "E", "G"];
+
+    expect(production.blueprintId).toBe("2026-08-14-mvp3");
+    expect(production.tasks).toHaveLength(26);
+    expect(production.tasks.every((task) => task.kind === "planning")).toBe(true);
+    expect(domainPaths.map((pathId) => production.tasks.filter((task) => task.pathId === pathId).length)).toEqual([4, 4, 4, 4, 4, 4]);
+    expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
+    expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);
+  });
+
   it("loads manifests only when every path stays under the repository root", async () => {
     const root = await mkdtemp(join(tmpdir(), "swarm-manifest-"));
     const path = join(root, "manifest.json");

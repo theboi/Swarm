@@ -48,11 +48,19 @@ local `SWARM_SESSION_SECRET` and the required `BOT1_PASSWORD` through
 `BOT8_PASSWORD` values. These values never belong in Git, a URL, browser state,
 or a log.
 
-`manifests/mvp3.json` is the production default. It intentionally maps no
-workers until an authoritative MVP3 Blueprint Masterplan is imported, so the
-coordinator reports `MASTERPLAN_NOT_READY` and offers no launch control.
-`manifests/example-ready.json` is a fixture-only ready graph for tests; never
-select it as the production manifest.
+`manifests/mvp3.json` is the production default. It projects the approved MVP3
+Blueprint Masterplan as 26 planning workers across six four-step paths, with
+shared foundation and convergence nodes. Optional `pathId` and `pathStep`
+metadata control graph layout only; `dependsOn` remains the scheduling
+authority. Initially only `F0` is planning-ready. Execution and UI-design
+launches remain absent until the required worker plans, rolling receipts,
+implemented prerequisites, and accepted UI handoffs exist.
+
+Worker-owned specification and implementation-plan destinations may be absent
+before their planning chat authors them. The blueprint, coordination root, and
+worker status files must already exist, and all paths remain repository-
+contained. `manifests/example-ready.json` is a fixture-only graph for tests;
+never select it as the production manifest.
 
 ## Run and verify
 

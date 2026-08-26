@@ -225,6 +225,8 @@ type TaskManifest = {
     title: string;
     kind: "planning" | "execution" | "ui" | "gate";
     dependsOn: string[];
+    pathId?: string;
+    pathStep?: number;
     statusPath?: string;
     specificationPath?: string;
     implementationPlanPath?: string;
@@ -235,16 +237,22 @@ type TaskManifest = {
 ```
 
 The loader validates unique IDs, known dependencies, acyclicity, referenced
-paths, and gate semantics. Invalid manifests are displayed as blocking errors;
+paths, gate semantics, and unique paired `pathId`/non-negative integer
+`pathStep` coordinates. Path metadata controls graph presentation only and
+never creates a dependency or layer-wide barrier. Manifests without it retain
+the legacy index layout. Invalid manifests are displayed as blocking errors;
 the coordinator never guesses an execution order from malformed input.
 
 The manifest is a frozen projection of an authoritative Blueprint Masterplan,
 not a second planning authority. `masterplanPath`, `coordinationRoot`, every
 worker status path, and every gate receipt path must resolve inside the
-repository and match the blueprint ID. The readiness service parses the
-authoritative blueprint/status/receipt formats, fetches `origin/main`, and
-records the remote commit that supplies each piece of evidence. Local-only
-claims never satisfy a dependency.
+repository and match the blueprint ID. A planning worker's specification and
+implementation-plan destinations may be absent before that worker authors
+them, but their destination and nearest existing ancestor must remain inside
+the repository; non-planning referenced artifacts remain existence-required.
+The readiness service parses the authoritative blueprint/status/receipt
+formats, fetches `origin/main`, and records the remote commit that supplies each
+piece of evidence. Local-only claims never satisfy a dependency.
 
 Task readiness is derived from literal phase predicates:
 
@@ -255,12 +263,13 @@ Task readiness is derived from literal phase predicates:
   prerequisite named by the blueprint; and
 - completion requires terminal status and remote-reachability evidence.
 
-The repository currently has no frozen authoritative MVP3 Implementation
-Masterplan. The committed seed manifest therefore reports
-`MASTERPLAN_NOT_READY` and contains no launchable workers. The coordinator may
-preview this blocked state but must not invent the MVP3 graph, infer work from
-interim notes, or launch a worker until Claudio supplies the authoritative
-blueprint and a validated projection is imported.
+The approved MVP3 Implementation Masterplan is projected into the production
+manifest as 26 planning workers: shared `F0`, six paths of four workers, and
+shared `X0`. The initial projection makes only `F0` dependency-ready and omits
+execution and UI-design launch nodes. Those phases enter the manifest only
+after their worker-authored plans, rolling receipts, implemented prerequisites,
+and applicable accepted UI handoffs are remotely evidenced. The coordinator
+must not infer additional work or execution readiness from interim prose.
 
 ### 7.2 Prompt templates
 
@@ -554,8 +563,9 @@ The implementation is accepted when:
 8. Positively contained repository approvals continue automatically while
    ambiguous, destructive home/system, or cross-account actions wait for an
    exact method-compatible human response.
-9. Until the authoritative MVP3 blueprint exists, the UI and API show
-   `MASTERPLAN_NOT_READY` and expose zero launchable workers.
+9. The production MVP3 manifest exactly projects the approved planning graph,
+   shows path/layer metadata without treating layers as barriers, and exposes
+   no execution or UI-design launch before its remote evidence exists.
 9. The worker-masterplan skill mirror and launch templates pass their pressure
    scenarios and remain byte-identical between `workers-masterplan` and
    `.agents/skills`.
