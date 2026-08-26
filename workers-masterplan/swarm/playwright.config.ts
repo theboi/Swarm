@@ -1,10 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
-import { allocateLoopbackPort } from "./src/shared/e2ePort.js";
-
 const configuredPort = process.env.SWARM_E2E_PORT
   ? Number.parseInt(process.env.SWARM_E2E_PORT, 10)
   : undefined;
-const port = await allocateLoopbackPort(configuredPort);
+const port = configuredPort ?? 4311;
 
 export default defineConfig({
   testDir: "./tests/e2e",

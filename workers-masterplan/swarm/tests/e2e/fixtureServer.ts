@@ -1,4 +1,7 @@
-import { createServer, type Server } from "node:http";
+import { createServer as createHttpServer, type Server } from "node:http";
+import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import express, { type Express, type Request, type Response } from "express";
 import WebSocket, { WebSocketServer } from "ws";
 
 import type { AccountId, AccountSnapshot, ThreadSummary } from "../../src/shared/contracts.js";
@@ -12,6 +15,11 @@ export interface FixtureAppServerEndpoint {
 export interface E2eFixtureServer {
   state: FixtureState;
   accounts: Record<AccountId, FixtureAppServerEndpoint>;
+  close(): Promise<void>;
+}
+
+export interface BrowserFixtureServer {
+  port: number;
   close(): Promise<void>;
 }
 
@@ -113,7 +121,7 @@ function attachProtocol(socket: WebSocket, account: AccountId, state: FixtureSta
 async function startAccountServer(account: AccountId, state: FixtureState): Promise<{ endpoint: FixtureAppServerEndpoint; resource: Resource }> {
   const capabilityToken = `fixture-capability-${account}`;
   const websocket = new WebSocketServer({ noServer: true });
-  const http = createServer((_request, response) => {
+  const http = createHttpServer((_request, response) => {
     response.statusCode = 404;
     response.end();
   });
@@ -144,15 +152,140 @@ export async function startE2eFixtureServer(options: { manifest?: FixtureManifes
   };
 }
 
-function runtimeUnavailable(): never {
-  throw new Error("Task 5 HTTP/WebSocket runtime is required before browser E2E can start; fake app-server fixtures are available only through startE2eFixtureServer.");
+function fixtureSession(request: Request): boolean {
+  return request.headers.cookie?.split(";").some((part) => part.trim() === "swarm-fixture-session=authenticated") ?? false;
+}
+
+function sendData<T>(response: Response, data: T): void {
+  response.json({ data });
+}
+
+function sendError(response: Response, status: number, code: string, message = code): void {
+  response.status(status).json({ error: { code, message } });
+}
+
+function requireFixtureSession(request: Request, response: Response): boolean {
+  if (fixtureSession(request)) return true;
+  sendError(response, 401, "UNAUTHENTICATED");
+  return false;
+}
+
+function selectedThread(state: FixtureState, accountId: AccountId, threadId: string) {
+  return state.snapshot.threads.find((thread) => thread.accountId === accountId && thread.id === threadId);
+}
+
+function attachFixtureApi(app: Express, state: FixtureState): void {
+  app.use(express.json());
+  const challengeId = "fixture-login-challenge";
+
+  app.get("/api/v1/auth/session", (request, response) => sendData(response, { authenticated: fixtureSession(request) }));
+  app.post("/api/v1/auth/challenge", (request, response) => {
+    const { email, password } = request.body as { email?: unknown; password?: unknown };
+    if (email !== "operator@fixture.test" || password !== "fixture-only-password") return sendError(response, 401, "INVALID_CREDENTIALS");
+    sendData(response, { challengeId });
+  });
+  app.post("/api/v1/auth/complete", (request, response) => {
+    const { challengeId: suppliedChallenge, code } = request.body as { challengeId?: unknown; code?: unknown };
+    if (suppliedChallenge !== challengeId || code !== "123456") return sendError(response, 401, "INVALID_TOTP");
+    response.setHeader("Set-Cookie", "swarm-fixture-session=authenticated; HttpOnly; Path=/; SameSite=Lax");
+    sendData(response, { authenticated: true });
+  });
+
+  app.use("/api/v1", (request, response, next) => requireFixtureSession(request, response) ? next() : undefined);
+  app.get("/api/v1/snapshot", (_request, response) => sendData(response, state.snapshot));
+  app.post("/api/v1/tasks/:taskId/preview", (request, response) => {
+    const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);
+    if (!task || task.readiness.state !== "ready") return sendError(response, 409, task?.readiness.blockingCodes[0] ?? "MASTERPLAN_NOT_READY");
+    sendData(response, { task, accountId: task.readiness.suggestedAccount ?? "bot3", prompt: `Fixture ${task.promptTemplate} prompt for ${task.id}`, dependencies: task.dependsOn, concurrencyImpact: "1 / 3" });
+  });
+  app.post("/api/v1/tasks/:taskId/launch", (request, response) => {
+    const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);
+    const accountId = typeof request.body?.accountId === "string" ? request.body.accountId : task?.readiness.suggestedAccount;
+    if (!task || task.readiness.state !== "ready" || !accountId) return sendError(response, 409, "MASTERPLAN_NOT_READY");
+    sendData(response, { id: `dispatch-${randomUUID()}`, taskId: task.id, accountId });
+  });
+  app.get("/api/v1/accounts/:accountId/threads/:threadId", (request, response) => {
+    const accountId = request.params.accountId as AccountId;
+    if (!selectedThread(state, accountId, request.params.threadId)) return sendError(response, 404, "THREAD_NOT_FOUND");
+    sendData(response, state.transcripts.get(`${accountId}:${request.params.threadId}`) ?? []);
+  });
+  app.post("/api/v1/accounts/:accountId/threads", (request, response) => {
+    const accountId = request.params.accountId as AccountId;
+    const thread = { id: `thread-${state.snapshot.threads.length + 1}`, accountId, name: "New fixture chat", archived: false, updatedAt: Date.now(), capabilities: { canArchive: true, canInterrupt: false, canStartTurn: true, canSteer: false } };
+    state.snapshot.threads.push(thread);
+    state.transcripts.set(`${accountId}:${thread.id}`, []);
+    sendData(response, thread);
+  });
+  app.post("/api/v1/accounts/:accountId/threads/:threadId/archive", (request, response) => {
+    const thread = selectedThread(state, request.params.accountId as AccountId, request.params.threadId);
+    if (!thread || !thread.capabilities.canArchive) return sendError(response, 409, "ARCHIVE_NOT_AVAILABLE");
+    thread.archived = true;
+    sendData(response, {});
+  });
+  app.post("/api/v1/accounts/:accountId/threads/:threadId/turns", (request, response) => {
+    const accountId = request.params.accountId as AccountId;
+    const thread = selectedThread(state, accountId, request.params.threadId);
+    if (!thread || !thread.capabilities.canStartTurn) return sendError(response, 409, "TURN_NOT_AVAILABLE");
+    sendData(response, {});
+  });
+  app.post("/api/v1/accounts/:accountId/threads/:threadId/steer", (request, response) => {
+    const thread = selectedThread(state, request.params.accountId as AccountId, request.params.threadId);
+    if (!thread || !thread.capabilities.canSteer) return sendError(response, 409, "STEER_NOT_AVAILABLE");
+    sendData(response, {});
+  });
+  app.post("/api/v1/accounts/:accountId/threads/:threadId/interrupt", (request, response) => {
+    const thread = selectedThread(state, request.params.accountId as AccountId, request.params.threadId);
+    if (!thread || !thread.capabilities.canInterrupt) return sendError(response, 409, "INTERRUPT_NOT_AVAILABLE");
+    sendData(response, {});
+  });
+  app.post("/api/v1/accounts/:accountId/files/read", (request, response) => {
+    const path = typeof request.body?.path === "string" ? request.body.path : "";
+    const file = state.markdownFiles.get(`${request.params.accountId}:${path}`);
+    if (!file) return sendError(response, 404, "FILE_NOT_FOUND");
+    sendData(response, file);
+  });
+  app.post("/api/v1/approvals/:approvalId", (request, response) => {
+    const approval = state.snapshot.pendingApprovals.find((candidate) => candidate.id === request.params.approvalId);
+    const decision = typeof request.body?.decision === "string" ? request.body.decision : "";
+    if (!approval || !approval.availableDecisions.includes(decision)) return sendError(response, 409, "HUMAN_APPROVAL_REQUIRED");
+    state.snapshot.pendingApprovals = state.snapshot.pendingApprovals.filter((candidate) => candidate.id !== approval.id);
+    sendData(response, {});
+  });
+}
+
+export async function startBrowserFixtureServer(options: { port: number; manifest?: FixtureManifest } ): Promise<BrowserFixtureServer> {
+  const appServers = await startE2eFixtureServer({ manifest: options.manifest ?? "ready" });
+  const app = express();
+  attachFixtureApi(app, appServers.state);
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({ root: resolve(process.cwd()), appType: "spa", server: { hmr: false, middlewareMode: true } });
+  app.use(vite.middlewares);
+  const server = createHttpServer(app);
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(options.port, "127.0.0.1", () => resolveListen());
+  });
+  return {
+    port: options.port,
+    async close() {
+      await new Promise<void>((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
+      await vite.close();
+      await appServers.close();
+    },
+  };
+}
+
+function commandLinePort(): number {
+  const flag = process.argv.indexOf("--port");
+  const value = flag >= 0 ? Number(process.argv[flag + 1]) : Number.NaN;
+  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error("Fixture server requires a numeric --port argument");
+  return value;
 }
 
 if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
-  try {
-    runtimeUnavailable();
-  } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : "Browser E2E runtime unavailable"}\n`);
-    process.exitCode = 1;
-  }
+  const fixture = await startBrowserFixtureServer({ port: commandLinePort() });
+  process.stdout.write(`Swarm E2E fixture listening on http://127.0.0.1:${fixture.port}\n`);
+  const stop = () => { void fixture.close().finally(() => process.exit(0)); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
 }
