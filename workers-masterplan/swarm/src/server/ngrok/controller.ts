@@ -50,6 +50,13 @@ export class NgrokController {
     });
   }
 
+  shutdown(): Promise<void> {
+    this.stopHeartbeat();
+    return this.serial(async () => {
+      if (this.running) await this.stopManaged();
+    });
+  }
+
   notifyProcessExit(now = this.now()): Promise<void> {
     return this.serial(async () => {
       this.running = false;

@@ -237,7 +237,7 @@ async function createRuntime(config: SwarmConfig) {
     stopNgrokEarly: () => ngrok.stopEarly(),
     allowedOrigins,
   };
-  const coordinator = createCoordinatorApp({ services, flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); for (const id of rateWaitTimers.keys()) clearRateWait(id); ngrok.stopHeartbeat(); await accounts.shutdown(); await ngrok.stopEarly().catch(() => undefined); } });
+  const coordinator = createCoordinatorApp({ services, flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); for (const id of rateWaitTimers.keys()) clearRateWait(id); await accounts.shutdown(); await ngrok.shutdown().catch(() => undefined); } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
   accounts.onChange(() => coordinator.hub.publish("account", {} as Record<string, unknown>));
   return coordinator;
