@@ -47,6 +47,51 @@ describe("task authority", () => {
     await rm(outside, { recursive: true, force: true });
   });
 
+  it("allows contained future planning outputs while keeping authorities existence-required", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-future-planning-"));
+    const path = join(root, "manifest.json");
+    const planningManifest: TaskManifest = {
+      blueprintId: "mvp3",
+      title: "MVP3 planning",
+      masterplanPath: "docs/blueprint.md",
+      coordinationRoot: "docs/workers/mvp3",
+      tasks: [{
+        id: "F0",
+        title: "Foundation planning",
+        kind: "planning",
+        dependsOn: [],
+        promptTemplate: "planning",
+        statusPath: "docs/workers/mvp3/status/f0.md",
+        specificationPath: "docs/specs/f0.md",
+        implementationPlanPath: "docs/plans/f0.md",
+      }],
+    };
+    await mkdir(join(root, "docs", "workers", "mvp3", "status"), { recursive: true });
+    await Promise.all([
+      writeFile(join(root, "docs", "blueprint.md"), "# Blueprint"),
+      writeFile(join(root, "docs", "workers", "mvp3", "status", "f0.md"), "# F0"),
+    ]);
+    await writeFile(path, JSON.stringify(planningManifest));
+
+    await expect(loadManifest(path, root)).resolves.toMatchObject({ blueprintId: "mvp3" });
+
+    await writeFile(path, JSON.stringify({
+      ...planningManifest,
+      tasks: [{ ...planningManifest.tasks[0], specificationPath: "../outside.md" }],
+    }));
+    await expect(loadManifest(path, root)).rejects.toThrow("outside repository");
+
+    const outside = await mkdtemp(join(tmpdir(), "swarm-future-outside-"));
+    await symlink(outside, join(root, "docs", "linked"));
+    await writeFile(path, JSON.stringify({
+      ...planningManifest,
+      tasks: [{ ...planningManifest.tasks[0], specificationPath: "docs/linked/future.md" }],
+    }));
+    await expect(loadManifest(path, root)).rejects.toThrow("outside repository");
+    await rm(outside, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("uses remote authoritative evidence and blocks the unfrozen MVP3 seed", async () => {
     const remote = new Map<string, string>([
       ["docs/blueprint.md", "# Blueprint: mvp3\nIntegration authority: origin/main\n"],
