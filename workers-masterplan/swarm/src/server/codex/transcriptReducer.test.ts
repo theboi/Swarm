@@ -35,24 +35,86 @@ describe("transcriptReducer", () => {
     expect(state.items.at(-1)).toMatchObject({ id: "future", type: "opaque", payload: { originalType: "futureItem" } });
   });
 
-  it("hydrates complete thread history in turn order and reconciles replayed real-v2 deltas without a deltaId", () => {
+  it("preserves sequential equal live output deltas exactly", () => {
     let state = hydrateTranscript(initialTranscriptState, {
       ...scope,
       turns: [
-        { id: "turn-2", startedAt: 20, items: [{ type: "agentMessage", id: "item-2", text: "later", phase: null, memoryCitation: null }] },
-        { id: "turn-1", startedAt: 10, items: [{ type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "inProgress", aggregatedOutput: "first", commandActions: [] }] },
+        { id: "turn-2", startedAt: 20, itemsView: "full", items: [{ type: "agentMessage", id: "item-2", text: "later", phase: null, memoryCitation: null }] },
+        { id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "inProgress", aggregatedOutput: "first", commandActions: [] }] },
       ],
     });
-    // The generated v2 envelope is only threadId, turnId, itemId, and delta.
+    // The generated v2 envelope has no delta id. Equal adjacent deltas are
+    // still distinct bytes from the live stream and must both be retained.
     state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second" } });
     state = reduceTranscriptEvent(state, { method: "item/commandExecution/outputDelta", params: { ...scope, turnId: "turn-1", itemId: "command-1", delta: " second" } });
-    expect(state.items[0]?.payload.aggregatedOutput).toBe("first second");
+    expect(state.items[0]?.payload.aggregatedOutput).toBe("first second second");
+  });
+
+  it("marks a disconnect incomplete then replaces one scope from authoritative thread history", () => {
+    let state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "stale", text: "stale output" }] }],
+    });
+    state = reduceTranscriptEvent(state, { method: "transcript/disconnected", params: scope });
+
+    const key = `${scope.accountId}\u0000${scope.threadId}`;
+    expect((state as unknown as { recoveryByScope?: ReadonlyMap<string, string> }).recoveryByScope?.get(key)).toBe("disconnected");
+
+    state = reduceTranscriptEvent(state, { method: "transcript/recoveryStarted", params: scope });
+    expect((state as unknown as { recoveryByScope?: ReadonlyMap<string, string> }).recoveryByScope?.get(key)).toBe("recovering");
+    state = hydrateTranscript(state, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "fresh", text: "authoritative output" }] }],
+    });
+
+    expect(state.items.map((item) => item.id)).toEqual(["fresh"]);
+    expect((state as unknown as { recoveryByScope?: ReadonlyMap<string, string> }).recoveryByScope?.get(key)).toBe("complete");
+  });
+
+  it("keeps completed items idempotent after authoritative recovery", () => {
+    let state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "inProgress", aggregatedOutput: "first", commandActions: [] }] }],
+    });
     state = reduceTranscriptEvent(state, { method: "item/completed", params: { ...scope, turnId: "turn-1", completedAtMs: 30_000, item: { type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "completed", aggregatedOutput: "first second", commandActions: [], exitCode: 0 } } });
     const replayed = reduceTranscriptEvent(state, { method: "item/completed", params: { ...scope, turnId: "turn-1", completedAtMs: 30_000, item: { type: "commandExecution", id: "command-1", command: "git status", cwd: "/Users/bot1/Dev/EdenMind", status: "completed", aggregatedOutput: "first second", commandActions: [], exitCode: 0 } } });
 
-    expect(replayed.items.map((item) => item.id)).toEqual(["command-1", "item-2"]);
+    expect(replayed.items.map((item) => item.id)).toEqual(["command-1"]);
     expect(replayed.items[0]).toMatchObject({ turnId: "turn-1", status: "completed", payload: { aggregatedOutput: "first second", exitCode: 0 } });
     expect(replayed).toEqual(state);
+  });
+
+  it("leaves a scope untouched when thread/read does not prove every returned turn is full", () => {
+    const state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "kept", text: "known complete" }] }],
+    });
+    const partial = {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "summary", items: [{ type: "agentMessage", id: "replace-me", text: "partial" }] }],
+    };
+
+    expect(hydrateTranscript(state, partial as Parameters<typeof hydrateTranscript>[1])).toBe(state);
+  });
+
+  it("freezes every live item replay while a previously complete scope is disconnected or recovering", () => {
+    const complete = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "kept", text: "authoritative" }] }],
+    });
+    const disconnected = reduceTranscriptEvent(complete, { method: "transcript/disconnected", params: scope });
+    const completedReplay = reduceTranscriptEvent(disconnected, {
+      method: "item/completed",
+      params: { ...scope, turnId: "turn-1", completedAtMs: 20_000, item: { type: "agentMessage", id: "kept", text: "stale replay" } },
+    });
+    expect(completedReplay).toBe(disconnected);
+
+    const recovering = reduceTranscriptEvent(disconnected, { method: "transcript/recoveryStarted", params: scope });
+    const startedReplay = reduceTranscriptEvent(recovering, {
+      method: "item/started",
+      params: { ...scope, turnId: "turn-2", startedAtMs: 20_000, item: { type: "agentMessage", id: "new-stale", text: "stale replay" } },
+    });
+    expect(startedReplay).toBe(recovering);
   });
 
   it("retains exact command output and recognizes only Markdown file paths for safe viewer requests", () => {

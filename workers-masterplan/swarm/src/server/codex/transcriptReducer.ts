@@ -2,9 +2,15 @@ import type { AccountId, TranscriptItem } from "../../shared/contracts.js";
 
 export interface TranscriptState {
   items: TranscriptItem[];
-  /** Local replay fingerprints; v2 outputDelta notifications have no deltaId. */
-  appliedDeltaFingerprints: ReadonlySet<string>;
+  /**
+   * Connection coverage per account/thread. Live output is never guessed to be
+   * replay-safe: only a complete `thread/read(includeTurns: true)` history
+   * marks a scope complete after a reconnect.
+   */
+  recoveryByScope: ReadonlyMap<string, TranscriptRecoveryState>;
 }
+
+export type TranscriptRecoveryState = "incomplete" | "disconnected" | "recovering" | "complete";
 
 export interface TranscriptScope {
   accountId: AccountId;
@@ -14,6 +20,8 @@ export interface TranscriptScope {
 export interface RawThreadTurn {
   id: string;
   startedAt: number | null;
+  /** Installed app-server's explicit proof that this turn contains all items. */
+  itemsView: "full";
   items: Array<Record<string, unknown>>;
 }
 
@@ -23,7 +31,7 @@ const KNOWN_ITEM_TYPES = new Set([
   "enteredReviewMode", "exitedReviewMode", "contextCompaction",
 ]);
 
-export const initialTranscriptState: TranscriptState = { items: [], appliedDeltaFingerprints: new Set<string>() };
+export const initialTranscriptState: TranscriptState = { items: [], recoveryByScope: new Map<string, TranscriptRecoveryState>() };
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -65,6 +73,32 @@ function itemKey(item: Pick<TranscriptItem, "accountId" | "threadId" | "turnId" 
   return `${item.accountId}\u0000${item.threadId}\u0000${item.turnId ?? ""}\u0000${item.id}`;
 }
 
+function scopeKey(scope: TranscriptScope): string {
+  return `${scope.accountId}\u0000${scope.threadId}`;
+}
+
+function withRecoveryState(state: TranscriptState, scope: TranscriptScope, recovery: TranscriptRecoveryState): TranscriptState {
+  const recoveryByScope = new Map(state.recoveryByScope);
+  recoveryByScope.set(scopeKey(scope), recovery);
+  return { ...state, recoveryByScope };
+}
+
+export function transcriptRecoveryState(state: TranscriptState, scope: TranscriptScope): TranscriptRecoveryState {
+  return state.recoveryByScope.get(scopeKey(scope)) ?? "incomplete";
+}
+
+function isFullThreadHistory(history: TranscriptScope & { turns: RawThreadTurn[] }): boolean {
+  return Array.isArray(history.turns) && history.turns.every((turn) => {
+    const raw = turn as unknown;
+    return raw !== null
+      && typeof raw === "object"
+      && typeof (raw as Record<string, unknown>).id === "string"
+      && ((raw as Record<string, unknown>).startedAt === null || typeof (raw as Record<string, unknown>).startedAt === "number")
+      && (raw as Record<string, unknown>).itemsView === "full"
+      && Array.isArray((raw as Record<string, unknown>).items);
+  });
+}
+
 function upsert(state: TranscriptState, item: TranscriptItem): TranscriptState {
   const key = itemKey(item);
   const index = state.items.findIndex((candidate) => itemKey(candidate) === key);
@@ -75,15 +109,25 @@ function upsert(state: TranscriptState, item: TranscriptItem): TranscriptState {
   return { ...state, items };
 }
 
-export function hydrateTranscript(state: TranscriptState, history: TranscriptScope & { turns: RawThreadTurn[] }): TranscriptState {
-  let next = state;
+/**
+ * Replaces a single scope solely from a full `thread/read(includeTurns: true)`
+ * payload. This deliberately does not attempt output-delta deduplication:
+ * identical deltas can be distinct output, while history is authoritative.
+ */
+export function replaceTranscriptFromThreadRead(state: TranscriptState, history: TranscriptScope & { turns: RawThreadTurn[] }): TranscriptState {
+  if (!isFullThreadHistory(history)) return state;
+  const scopeItems = state.items.filter((item) => item.accountId !== history.accountId || item.threadId !== history.threadId);
+  let next: TranscriptState = { ...state, items: scopeItems };
   const turns = [...history.turns].sort((left, right) => (left.startedAt ?? Number.MAX_SAFE_INTEGER) - (right.startedAt ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
   for (const turn of turns) {
     const createdAt = turn.startedAt === null ? null : turn.startedAt * 1_000;
     for (const item of turn.items) next = upsert(next, normalizeItem(history, turn.id, item, createdAt));
   }
-  return next;
+  return withRecoveryState(next, history, "complete");
 }
+
+/** Backwards-compatible name for the only authoritative transcript hydration path. */
+export const hydrateTranscript = replaceTranscriptFromThreadRead;
 
 export function reduceTranscriptEvent(state: TranscriptState, event: { method: string; params: unknown }): TranscriptState {
   const params = asRecord(event.params);
@@ -91,6 +135,12 @@ export function reduceTranscriptEvent(state: TranscriptState, event: { method: s
   if (typeof scope.accountId !== "string" || typeof scope.threadId !== "string") return state;
   const typedScope: TranscriptScope = scope as TranscriptScope;
   const turnId = typeof params.turnId === "string" ? params.turnId : null;
+
+  if (event.method === "transcript/disconnected") return withRecoveryState(state, typedScope, "disconnected");
+  if (event.method === "transcript/recoveryStarted") return withRecoveryState(state, typedScope, "recovering");
+
+  const recovery = transcriptRecoveryState(state, typedScope);
+  if (recovery === "disconnected" || recovery === "recovering") return state;
 
   if (event.method === "item/started" || event.method === "item/completed") {
     const item = asRecord(params.item);
@@ -102,20 +152,13 @@ export function reduceTranscriptEvent(state: TranscriptState, event: { method: s
     const itemId = typeof params.itemId === "string" ? params.itemId : undefined;
     const delta = typeof params.delta === "string" ? params.delta : undefined;
     if (!itemId || delta === undefined) return state;
-    // The stable generated v2 event has no deltaId. Retain a local
-    // fingerprint so a replay from a reconnect cannot append the same wire
-    // delta twice; authoritative thread/read hydration still replaces items.
-    const fingerprint = `${typedScope.accountId}\u0000${typedScope.threadId}\u0000${turnId ?? ""}\u0000${itemId}\u0000${delta}`;
-    if (state.appliedDeltaFingerprints.has(fingerprint)) return state;
     const index = state.items.findIndex((item) => itemKey(item) === itemKey({ ...typedScope, turnId, id: itemId }));
     if (index < 0) return state;
     const target = state.items[index];
     const output = typeof target.payload.aggregatedOutput === "string" ? target.payload.aggregatedOutput : "";
     const updated: TranscriptItem = { ...target, payload: { ...target.payload, aggregatedOutput: `${output}${delta}` } };
     const items = state.items.map((item, itemIndex) => itemIndex === index ? updated : item);
-    const appliedDeltaFingerprints = new Set(state.appliedDeltaFingerprints);
-    appliedDeltaFingerprints.add(fingerprint);
-    return { items, appliedDeltaFingerprints };
+    return { ...state, items };
   }
 
   return state;

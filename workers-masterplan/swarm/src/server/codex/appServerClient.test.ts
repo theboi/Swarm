@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeAppServer, type FakeAppServer } from "../../test/fakeAppServer.js";
-import { createTestApprovalContext } from "../safety/approvalPolicy.js";
+import { createApprovalContext, type ApprovalFilesystem } from "../safety/approvalPolicy.js";
 import { ApprovalRouter } from "./approvalRouter.js";
 import { AppServerClient } from "./appServerClient.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
@@ -10,13 +10,25 @@ const token = "one-time-loopback-capability-token";
 const tokenDigest = createHash("sha256").update(token).digest("hex");
 const account = "bot1" as const;
 const cwd = "/Users/bot1/Dev/EdenMind";
+const approvalFilesystem: ApprovalFilesystem = {
+  async realpath(path) {
+    if (path !== cwd) throw new Error(`ENOENT ${path}`);
+    return path;
+  },
+};
 let server: FakeAppServer | undefined;
 let approvalJournal: { append: ReturnType<typeof vi.fn>; waitForDecision: ReturnType<typeof vi.fn> } | undefined;
+function fullThreadHistory(): Array<Record<string, unknown>> {
+  return [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "item-1", text: "hello" }] }];
+}
+
+let threadHistory = fullThreadHistory();
 
 afterEach(async () => {
   await server?.stop();
   server = undefined;
   approvalJournal = undefined;
+  threadHistory = fullThreadHistory();
 });
 
 function safeThreadEcho(overrides: Record<string, unknown> = {}) {
@@ -34,7 +46,7 @@ async function readyClient() {
   server = createFakeAppServer(tokenDigest);
   await server.start();
   server.onMessage((message, peer) => {
-    const reply = (result: unknown) => peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+    const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
     if (message.method === "account/read") reply({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: false });
     if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho());
@@ -43,7 +55,7 @@ async function readyClient() {
       const cursor = (message.params as { cursor?: string }).cursor;
       reply(cursor ? { data: [{ id: "thread-2", name: "Later" }], nextCursor: null } : { data: [{ id: "thread-1", name: "First" }], nextCursor: "page-2" });
     }
-    if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: [{ id: "turn-1", items: [{ type: "agentMessage", id: "item-1", text: "hello" }] }] } });
+    if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: threadHistory } });
     if (message.method === "account/rateLimits/read") reply({
       rateLimits: { limitId: "codex", primary: { usedPercent: 20, resetsAt: 1_800 }, secondary: { usedPercent: 73, resetsAt: null } },
       rateLimitsByLimitId: {
@@ -57,8 +69,9 @@ async function readyClient() {
   const rpc = new JsonRpcClient({ launch: { endpoint: server.url, capabilityToken: token }, requestTimeoutMs: 100 });
   approvalJournal = { append: vi.fn(async () => undefined), waitForDecision: vi.fn(async () => ({ kind: "cancel" })) };
   const approvalRouter = new ApprovalRouter({
-    context: createTestApprovalContext(account, process.cwd()),
+    context: createApprovalContext(account),
     journal: approvalJournal,
+    filesystem: approvalFilesystem,
     requestTimeoutMs: 25,
   });
   const client = new AppServerClient({ account, rpc, approvalRouter });
@@ -67,6 +80,29 @@ async function readyClient() {
 }
 
 describe("AppServerClient", () => {
+  it("replaces tracked transcripts from full history after reconnect without replaying stale output", async () => {
+    threadHistory = [{
+      id: "turn-1",
+      startedAt: 10,
+      itemsView: "full",
+      items: [{ type: "commandExecution", id: "command-1", command: "git status", cwd, status: "inProgress", aggregatedOutput: "authoritative", commandActions: [] }],
+    }];
+    const client = await readyClient();
+    await client.readThread("thread-1", { includeTurns: true });
+    server!.send({ method: "item/commandExecution/outputDelta", params: { threadId: "thread-1", turnId: "turn-1", itemId: "command-1", delta: " live" } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    server!.closeClients();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await client.reconnect();
+
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(2);
+    const snapshot = (client as unknown as { transcriptSnapshot?: () => { items: Array<{ id: string; payload: Record<string, unknown> }>; recoveryByScope: ReadonlyMap<string, string> } }).transcriptSnapshot?.();
+    expect(snapshot?.items.find((item) => item.id === "command-1")?.payload.aggregatedOutput).toBe("authoritative");
+    expect(snapshot?.recoveryByScope.get("bot1\u0000thread-1")).toBe("complete");
+    await client.close();
+  });
+
   it("loads the authenticated account only after the required v2 initialization lifecycle", async () => {
     const client = await readyClient();
 
@@ -78,14 +114,13 @@ describe("AppServerClient", () => {
   it("installs the approval router before work and keeps a human-required v2 request within that policy boundary", async () => {
     const client = await readyClient();
     server!.send({
-      jsonrpc: "2.0",
       id: "approval-1",
       method: "item/fileChange/requestApproval",
       params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, reason: "extra root", grantRoot: "/Users/bot2/Dev/EdenMind" },
     });
     await new Promise((resolve) => setTimeout(resolve, 15));
 
-    expect(server!.received).toContainEqual({ jsonrpc: "2.0", id: "approval-1", result: { decision: "cancel" } });
+    expect(server!.received).toContainEqual({ id: "approval-1", result: { decision: "cancel" } });
     expect(approvalJournal?.append).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ id: "approval-1" }) }));
     await client.close();
   });
@@ -96,10 +131,13 @@ describe("AppServerClient", () => {
       initializeAndReadAccount: vi.fn(async () => { throw new Error("initialize failed"); }),
       close: vi.fn(async () => undefined),
       installApprovalHandler: vi.fn(),
+      onDisconnect: vi.fn(),
+      onNotification: vi.fn(),
     };
     const router = new ApprovalRouter({
-      context: createTestApprovalContext(account, process.cwd()),
+      context: createApprovalContext(account),
       journal: { append: async () => undefined, waitForDecision: async () => ({ kind: "cancel" }) },
+      filesystem: approvalFilesystem,
     });
     const client = new AppServerClient({ account, rpc: rpc as unknown as JsonRpcClient, approvalRouter: router });
 
@@ -130,7 +168,7 @@ describe("AppServerClient", () => {
 
     const unsafe = await readyClient();
     server!.onMessage((message, peer) => {
-      if (message.method === "thread/start") peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: safeThreadEcho({ approvalPolicy: "never" }) }));
+      if (message.method === "thread/start") peer.send(JSON.stringify({ id: message.id, result: safeThreadEcho({ approvalPolicy: "never" }) }));
     });
     await expect(unsafe.startThread()).rejects.toThrow(/unsafe|approval/i);
     await unsafe.close();

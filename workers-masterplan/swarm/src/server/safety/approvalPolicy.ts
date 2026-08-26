@@ -200,7 +200,7 @@ export async function buildApprovalResponse(request: ApprovalRequest, choice: Ap
     case LEGACY_PATCH:
       if (choice.kind === "accept") return { decision: "approved" };
       if (choice.kind === "cancel") return { decision: "abort" };
-      if (choice.kind === "decline") return { decision: "denied" };
+      if (choice.kind === "decline") return { decision: { denied: { rejection: "Declined by coordinator" } } };
       throw new Error("Legacy approvals do not accept permission grants");
     default: throw new Error("Unknown app-server approval method");
   }
