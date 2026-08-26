@@ -1,23 +1,28 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeAppServer, type FakeAppServer } from "../../test/fakeAppServer.js";
+import { createTestApprovalContext } from "../safety/approvalPolicy.js";
+import { ApprovalRouter } from "./approvalRouter.js";
 import { AppServerClient } from "./appServerClient.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
 
 const token = "one-time-loopback-capability-token";
+const tokenDigest = createHash("sha256").update(token).digest("hex");
 const account = "bot1" as const;
 const cwd = "/Users/bot1/Dev/EdenMind";
 let server: FakeAppServer | undefined;
+let approvalJournal: { append: ReturnType<typeof vi.fn>; waitForDecision: ReturnType<typeof vi.fn> } | undefined;
 
 afterEach(async () => {
   await server?.stop();
   server = undefined;
+  approvalJournal = undefined;
 });
 
 function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   return {
     thread: { id: "thread-1" },
     cwd,
-    runtimeWorkspaceRoots: [cwd],
     approvalPolicy: "untrusted",
     approvalsReviewer: "user",
     sandbox: { type: "workspaceWrite", writableRoots: [cwd], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
@@ -26,7 +31,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
 }
 
 async function readyClient() {
-  server = createFakeAppServer(token);
+  server = createFakeAppServer(tokenDigest);
   await server.start();
   server.onMessage((message, peer) => {
     const reply = (result: unknown) => peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
@@ -49,8 +54,14 @@ async function readyClient() {
     if (message.method === "fs/readFile") reply({ dataBase64: Buffer.from("# Checked\n", "utf8").toString("base64") });
     if (["thread/archive", "thread/name/set", "turn/steer", "turn/interrupt"].includes(message.method ?? "")) reply({});
   });
-  const rpc = new JsonRpcClient({ url: server.url, capabilityToken: token, requestTimeoutMs: 100 });
-  const client = new AppServerClient({ account, rpc });
+  const rpc = new JsonRpcClient({ launch: { endpoint: server.url, capabilityToken: token }, requestTimeoutMs: 100 });
+  approvalJournal = { append: vi.fn(async () => undefined), waitForDecision: vi.fn(async () => ({ kind: "cancel" })) };
+  const approvalRouter = new ApprovalRouter({
+    context: createTestApprovalContext(account, process.cwd()),
+    journal: approvalJournal,
+    requestTimeoutMs: 25,
+  });
+  const client = new AppServerClient({ account, rpc, approvalRouter });
   await client.connect();
   return client;
 }
@@ -64,7 +75,39 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
-  it("pins thread starts and resumes to the account clone and rejects an unsafe echoed policy", async () => {
+  it("installs the approval router before work and keeps a human-required v2 request within that policy boundary", async () => {
+    const client = await readyClient();
+    server!.send({
+      jsonrpc: "2.0",
+      id: "approval-1",
+      method: "item/fileChange/requestApproval",
+      params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, reason: "extra root", grantRoot: "/Users/bot2/Dev/EdenMind" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(server!.received).toContainEqual({ jsonrpc: "2.0", id: "approval-1", result: { decision: "cancel" } });
+    expect(approvalJournal?.append).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ id: "approval-1" }) }));
+    await client.close();
+  });
+
+  it("closes the transport when the connect lifecycle fails", async () => {
+    const rpc = {
+      connect: vi.fn(async () => undefined),
+      initializeAndReadAccount: vi.fn(async () => { throw new Error("initialize failed"); }),
+      close: vi.fn(async () => undefined),
+      installApprovalHandler: vi.fn(),
+    };
+    const router = new ApprovalRouter({
+      context: createTestApprovalContext(account, process.cwd()),
+      journal: { append: async () => undefined, waitForDecision: async () => ({ kind: "cancel" }) },
+    });
+    const client = new AppServerClient({ account, rpc: rpc as unknown as JsonRpcClient, approvalRouter: router });
+
+    await expect(client.connect()).rejects.toThrow("initialize failed");
+    expect(rpc.close).toHaveBeenCalledOnce();
+  });
+
+  it("uses only stable v2 thread fields and rejects an unsafe echoed policy", async () => {
     const client = await readyClient();
     await expect(client.startThread()).resolves.toEqual(expect.objectContaining({ thread: { id: "thread-1" } }));
     await expect(client.resumeThread("thread-1")).resolves.toEqual(expect.objectContaining({ thread: { id: "thread-1" } }));
@@ -72,7 +115,14 @@ describe("AppServerClient", () => {
     const starts = server!.received.filter((message) => message.method === "thread/start" || message.method === "thread/resume");
     expect(starts).toHaveLength(2);
     for (const start of starts) {
-      expect(start.params).toMatchObject({ cwd, approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write", runtimeWorkspaceRoots: [cwd] });
+      expect(start.params).toEqual({
+        ...(start.method === "thread/resume" ? { threadId: "thread-1" } : {}),
+        cwd,
+        approvalPolicy: "untrusted",
+        approvalsReviewer: "user",
+        sandbox: "workspace-write",
+      });
+      expect(start.params).not.toHaveProperty("runtimeWorkspaceRoots");
       expect(JSON.stringify(start.params)).not.toContain("danger-full-access");
       expect(JSON.stringify(start.params)).not.toContain('"never"');
     }
@@ -86,7 +136,7 @@ describe("AppServerClient", () => {
     await unsafe.close();
   });
 
-  it("repeats the exact single-root workspace-write envelope on every turn", async () => {
+  it("repeats the exact stable-v2 single-root workspace-write envelope on every turn", async () => {
     const client = await readyClient();
     await client.startTurn({ threadId: "thread-1", clientUserMessageId: "dispatch-1", text: "Proceed with the approved task." });
     const turn = server!.received.find((message) => message.method === "turn/start");
@@ -96,7 +146,6 @@ describe("AppServerClient", () => {
       clientUserMessageId: "dispatch-1",
       input: [{ type: "text", text: "Proceed with the approved task." }],
       cwd,
-      runtimeWorkspaceRoots: [cwd],
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandboxPolicy: { type: "workspaceWrite", writableRoots: [cwd], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true },

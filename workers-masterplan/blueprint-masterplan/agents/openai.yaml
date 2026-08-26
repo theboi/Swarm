@@ -1,4 +1,4 @@
 interface:
   display_name: "Blueprint Masterplan"
-  short_description: "Plan-first worker DAGs with live UI design"
-  default_prompt: "Use $blueprint-masterplan to build a whole-blueprint planning gate and a collision-safe execution DAG, with a separate live UI-design worker when visual design is in scope."
+  short_description: "Plan-first worker DAGs with conditional swarm launches"
+  default_prompt: "Use $blueprint-masterplan to build a whole-blueprint planning gate and a collision-safe execution DAG, with a separate live UI-design worker when visual design is in scope; when the blueprint explicitly declares the EdenMind swarm coordinator, source its launch packets from the canonical coordinator templates."

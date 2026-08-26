@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -56,5 +56,19 @@ describe("readWorkspaceMarkdown", () => {
 
     const tooLarge = vi.fn(async () => ({ dataBase64: Buffer.alloc((2 * 1024 * 1024) + 1, "a").toString("base64") }));
     await expect(readWorkspaceMarkdown({ account: "bot1", requestedPath: "docs/guide.md", workspaceRoot: root, appServer: { readFile: tooLarge } })).rejects.toThrow(/two MiB/i);
+  });
+
+  it("rejects a pathname whose realpath changes while the app-server read is in flight", async () => {
+    const root = await workspace();
+    const target = join(root, "docs", "guide.md");
+    const outside = join(directory!, "outside.md");
+    await writeFile(outside, "outside");
+    const readFile = vi.fn(async () => {
+      await unlink(target);
+      await symlink(outside, target);
+      return { dataBase64: Buffer.from("outside", "utf8").toString("base64") };
+    });
+
+    await expect(readWorkspaceMarkdown({ account: "bot1", requestedPath: "docs/guide.md", workspaceRoot: root, appServer: { readFile } })).rejects.toThrow(/outside workspace|changed/i);
   });
 });

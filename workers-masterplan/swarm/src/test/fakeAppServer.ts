@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -20,8 +21,8 @@ export interface FakeAppServer {
   onMessage(handler: (message: JsonRpcMessage, peer: WebSocket) => void): void;
 }
 
-/** A local v2-shaped websocket fixture that enforces the launch capability token. */
-export function createFakeAppServer(capabilityToken: string): FakeAppServer {
+/** A local v2-shaped websocket fixture that enforces the launch token digest. */
+export function createFakeAppServer(capabilityTokenDigest: string): FakeAppServer {
   const http = createServer();
   const websocket = new WebSocketServer({ noServer: true });
   const peers = new Set<WebSocket>();
@@ -30,7 +31,12 @@ export function createFakeAppServer(capabilityToken: string): FakeAppServer {
   let port = 0;
 
   http.on("upgrade", (request, socket, head) => {
-    if (request.headers.authorization !== `Bearer ${capabilityToken}`) {
+    const authorization = request.headers.authorization;
+    const bearer = typeof authorization === "string" && /^Bearer\s+(.+)$/.exec(authorization)?.[1];
+    const digest = bearer ? createHash("sha256").update(bearer).digest("hex") : "";
+    const authorized = digest.length === capabilityTokenDigest.length
+      && timingSafeEqual(Buffer.from(digest), Buffer.from(capabilityTokenDigest));
+    if (!authorized) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;

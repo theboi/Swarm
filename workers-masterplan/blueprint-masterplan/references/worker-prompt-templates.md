@@ -1,5 +1,49 @@
 # Worker Prompt Templates
 
+## EdenMind swarm coordinator launch packets (conditional)
+
+Use this adapter only when the frozen blueprint explicitly declares the
+EdenMind swarm coordinator. Ordinary Blueprint Masterplan launch prompts remain
+generic and continue to use the templates below.
+
+The coordinator and reusable skill render the packet body from this one
+canonical source map. Do not copy, fork, summarize, or independently edit the
+packet body or its phase/shared-main instructions here.
+
+| Packet | Canonical file |
+| --- | --- |
+| planning | `workers-masterplan/swarm/templates/planning.md` |
+| execution | `workers-masterplan/swarm/templates/execution.md` |
+| ui | `workers-masterplan/swarm/templates/ui.md` |
+
+Before rendering, the coordinator supplies these explicit metadata slots. They
+are launch-envelope values; the canonical packet body remains the source for
+phase behavior and worker instructions.
+
+| Slot | Required value |
+| --- | --- |
+| Selected macOS account | One allowed account ID, distinct from the worker ID |
+| Worker ID | The bounded Workers Masterplan work package ID |
+| Model routing | Terra High / Terra Xhigh selection for execution; Sol High only for unexpected planning during execution |
+| Coordinator chat name | Exact app-server chat name for the launch where the packet requires it |
+| Phase terminal condition | The canonical packet's stopping boundary, recorded in the launch preview and handoff |
+
+The envelope records that one loopback Codex app-server runs for the selected
+account through `su - <account>`, never Codex desktop. An account may have
+unlimited chats; the coordinator's global active-turn default is `3`. It also
+records the fail-closed approval policy: automated approval needs positive
+proof that every target is inside that account's EdenMind clone, while
+ambiguous, destructive, home/system, cross-account, glob, symlink-sensitive,
+or unproven requests require the exact method-compatible human decision and
+never dangerous session approval. Public ngrok access is limited to
+`10:00`–`00:00` `Asia/Singapore`; local access may continue outside that
+window.
+
+The reusable skill's parity verifier renders each source through the coordinator
+and Blueprint Masterplan entry points, normalizes line endings/trailing
+whitespace, and compares their bytes. Keep the direct-main lifecycle in the
+generic ordinary templates below; the coordinator adapter must not replace it.
+
 ## Assembly checklist
 
 Create separate ordinary-worker prompts when planning and execution may occur in different sessions or the user requests a launch packet:
