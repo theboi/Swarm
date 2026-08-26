@@ -1,4 +1,4 @@
-import type { DispatchRecord } from "../../shared/contracts.js";
+import type { AccountId, DispatchRecord } from "../../shared/contracts.js";
 
 export interface ThreadReconciler {
   readThread(record: DispatchRecord, options: { includeTurns: true }): Promise<{ turns: Array<{ clientUserMessageId?: string }> }>;
@@ -38,6 +38,16 @@ export class DispatchOutbox {
 
   async complete(id: string, now = Date.now()): Promise<void> {
     await this.transition(id, ["accepted"], "completed", now);
+  }
+
+  /** Completes the one live launch associated with an app-server turn completion. */
+  async completeAcceptedForThread(accountId: AccountId, threadId: string, now = Date.now()): Promise<DispatchRecord | undefined> {
+    const matches = this.list().filter((record) => record.accountId === accountId && record.threadId === threadId && record.state === "accepted");
+    if (matches.length === 0) return undefined;
+    if (matches.length > 1) throw new Error("Multiple accepted dispatches share one thread");
+    const record = matches[0];
+    await this.complete(record.id, now);
+    return record;
   }
 
   async fail(id: string, errorCode: string, now = Date.now()): Promise<void> {

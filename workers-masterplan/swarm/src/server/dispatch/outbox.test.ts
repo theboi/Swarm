@@ -79,4 +79,16 @@ describe("DispatchOutbox", () => {
 
     expect(outbox.get("d1")?.state).toBe("attention_required");
   });
+
+  it("settles only the accepted launch associated with a completed thread", async () => {
+    const outbox = new DispatchOutbox([
+      { id: "d1", clientUserMessageId: "m1", taskId: "T0", accountId: "bot3", threadId: "thread-1", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null },
+      { id: "d2", clientUserMessageId: "m2", taskId: "T1", accountId: "bot3", threadId: "thread-2", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null },
+    ]);
+
+    await expect(outbox.completeAcceptedForThread("bot3", "thread-1", 10)).resolves.toMatchObject({ id: "d1", state: "accepted" });
+    expect(outbox.get("d1")?.state).toBe("completed");
+    expect(outbox.get("d2")?.state).toBe("accepted");
+    await expect(outbox.completeAcceptedForThread("bot3", "thread-1", 11)).resolves.toBeUndefined();
+  });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { TaskManifest } from "../../shared/contracts.js";
 import { loadManifest } from "./manifestLoader.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./blueprintEvidence.js";
+import { launchGitMetadata } from "./launchGitMetadata.js";
 import { renderWorkerPrompt } from "./promptTemplates.js";
 
 const manifest: TaskManifest = { blueprintId: "mvp3", title: "MVP3", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", tasks: [
@@ -138,5 +139,14 @@ describe("task authority", () => {
     expect(prompt).toContain("Stop after the approved planning handoff.");
     expect(prompt).toContain("swarm-main-mutation-lock");
     expect(prompt).not.toContain("{{WORKER_ID}}");
+  });
+
+  it("uses the independent-clone queue for separate macOS-account workspaces", () => {
+    expect(launchGitMetadata("bot3")).toEqual({
+      checkoutMode: "independent_main_clone",
+      mainMutationLock: "not-applicable-for-independent-clones",
+      mainPushQueue: "swarm-main-push-queue",
+      edenmindClonePath: "/Users/bot3/Dev/EdenMind",
+    });
   });
 });

@@ -33,6 +33,7 @@ import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata } from "./tasks/launchMetadata.js";
+import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
 import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 
 type DurableState = {
@@ -77,6 +78,7 @@ async function createRuntime(config: SwarmConfig) {
   const throttle = new LoginThrottle({ persistence: root.auth as never, persist: () => state.persist() });
   const verifyTotp = createTotpVerifier(config.totpSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
+  const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
   const launcher = new SuLauncher({
     spawn: (file, args, options) => spawn(file, args, options) as never,
@@ -87,16 +89,34 @@ async function createRuntime(config: SwarmConfig) {
     killProcessGroup: (pid, signal) => { try { process.kill(pid, signal); } catch { /* process already gone */ } },
     log: (entry) => logger.info("suLauncher", entry),
   });
-  const accounts = new AccountManager({
+  const completedLaunchThreads = new Set<string>();
+  const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
+  let accounts: AccountManager;
+  const settleCompletedLaunchThread = async (account: AccountId, threadId: string) => {
+    const record = await outbox.completeAcceptedForThread(account, threadId);
+    if (!record) return;
+    completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
+    const snapshot = accounts.snapshot(account);
+    accounts.updateSnapshot(account, { activeTurns: Math.max(0, snapshot.activeTurns - 1) });
+  };
+  accounts = new AccountManager({
     launcher,
     codexBin: config.codexBin,
     createClient: (handle) => {
       const client = new AppServerClient({ account: handle.account, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account), journal }) });
-      client.onEvent((event) => publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}) }));
+      client.onEvent((event) => {
+        if (event.type === "turn" && event.state === "completed" && event.threadId) {
+          const key = completedLaunchThreadKey(event.accountId, event.threadId);
+          if (outbox.list().some((record) => record.accountId === event.accountId && record.threadId === event.threadId && (record.state === "submitting" || record.state === "accepted"))) {
+            completedLaunchThreads.add(key);
+            void settleCompletedLaunchThread(event.accountId, event.threadId).catch((error) => logger.warn("dispatch", { event: "complete_failed", account: event.accountId, threadId: event.threadId, error: error instanceof Error ? error.message : "failed" }));
+          }
+        }
+        publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}) });
+      });
       return client;
     },
   });
-  const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
   let manifest: TaskManifest | undefined;
   let nodes: TaskNode[] = [];
   let manifestError: string | undefined;
@@ -171,7 +191,7 @@ async function createRuntime(config: SwarmConfig) {
   };
   const createPrompt = async (task: TaskNode, id: AccountId) => {
     const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task) : {};
-    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at Claudio's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: `/Users/${id}/Dev/EdenMind`, ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at Claudio's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, ...launchGitMetadata(id), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
   };
   const suggested = (requested?: AccountId) => requested ?? rankAccounts(accountSnapshot(), Date.now())[0]?.id;
   const rateWaitTimers = new Map<string, NodeJS.Timeout>();
@@ -194,6 +214,8 @@ async function createRuntime(config: SwarmConfig) {
           await outbox.markSubmitting(active.id);
           await liveClient(active.accountId).startTurn({ threadId: active.threadId, clientUserMessageId: active.clientUserMessageId, text: await createPrompt(task, active.accountId) });
           await outbox.markAccepted(active.id);
+          accounts.updateSnapshot(active.accountId, { activeTurns: accounts.snapshot(active.accountId).activeTurns + 1, lastAssignedAt: Date.now() });
+          if (completedLaunchThreads.has(completedLaunchThreadKey(active.accountId, active.threadId))) await settleCompletedLaunchThread(active.accountId, active.threadId);
         } catch { const active = outbox.get(record.id); if (active?.state === "submitting" || active?.state === "waiting_for_limit") await outbox.abandon(active.id); }
       })();
     }, delay);
@@ -244,6 +266,7 @@ async function createRuntime(config: SwarmConfig) {
       }
       await outbox.markAccepted(record.id);
       accounts.updateSnapshot(preview.accountId, { activeTurns: accounts.snapshot(preview.accountId).activeTurns + 1, lastAssignedAt: now });
+      if (completedLaunchThreads.has(completedLaunchThreadKey(preview.accountId, thread.id))) await settleCompletedLaunchThread(preview.accountId, thread.id);
       return outbox.get(record.id);
     },
     listThreads: threads,
