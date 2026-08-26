@@ -22,6 +22,7 @@ import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
 import { NgrokController } from "./ngrok/controller.js";
+import { waitForNgrokPublicUrl } from "./ngrok/localApi.js";
 import { createCoordinatorApp } from "./app.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, rankAccounts } from "./scheduler/accountScheduler.js";
@@ -107,6 +108,13 @@ async function createRuntime(config: SwarmConfig) {
   };
   await refreshTasks();
   let ngrokChild: ReturnType<typeof spawn> | undefined;
+  const ngrokTarget = `http://127.0.0.1:${config.port}`;
+  const inspectNgrok = async () => {
+    const response = await fetch("http://127.0.0.1:4040/api/tunnels");
+    if (!response.ok) throw new Error("ngrok loopback inspector is unavailable");
+    return response.json();
+  };
+  const waitForPublicNgrokUrl = () => waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: () => new Promise((resolveSleep) => setTimeout(resolveSleep, 250)) });
   const ngrok = new NgrokController({
     timezone: config.timezone,
     persistence: root.ngrok,
@@ -118,10 +126,23 @@ async function createRuntime(config: SwarmConfig) {
       ngrokChild = spawn(config.ngrok.bin, args, { detached: true, stdio: "ignore", env: { ...process.env, ...(config.ngrok.authtoken ? { NGROK_AUTHTOKEN: config.ngrok.authtoken } : {}) } });
       if (!ngrokChild.pid) throw new Error("ngrok did not start");
       ngrokChild.once("exit", () => { ngrokChild = undefined; void ngrok.notifyProcessExit(); });
-      return { id: `pid:${ngrokChild.pid}` };
+      try {
+        return { id: `pid:${ngrokChild.pid}`, publicUrl: await waitForPublicNgrokUrl() };
+      } catch (error) {
+        try { process.kill(-ngrokChild.pid, "SIGTERM"); } catch { /* child already stopped */ }
+        ngrokChild = undefined;
+        throw error;
+      }
     },
     stop: async () => { if (!ngrokChild?.pid) return; try { process.kill(-ngrokChild.pid, "SIGTERM"); } catch { /* stopped */ } ngrokChild = undefined; },
     isHealthy: async () => Boolean(ngrokChild && !ngrokChild.killed),
+    discover: async () => {
+      try {
+        return { healthy: true, id: root.ngrok?.managedTunnelId ?? "", publicUrl: await waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: async () => undefined, attempts: 1 }) };
+      } catch {
+        return { healthy: false, id: "" };
+      }
+    },
   });
   if (config.ngrok.enabled) { ngrok.startHeartbeat(); await ngrok.reconcile().catch((error) => logger.warn("ngrok", { event: "reconcile_failed", error: error instanceof Error ? error.message : "failed" })); }
 
