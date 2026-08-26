@@ -193,6 +193,17 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
 
   app.use("/api/v1", (request, response, next) => requireFixtureSession(request, response) ? next() : undefined);
   app.get("/api/v1/snapshot", (_request, response) => sendData(response, state.snapshot));
+  app.post("/api/v1/fixture/ngrok", (request, response) => {
+    const input = request.body as { state?: unknown; publicUrl?: unknown; message?: unknown };
+    if (input.state !== "stopped" && input.state !== "running" && input.state !== "error" && input.state !== "disabled") return sendError(response, 400, "INVALID_FIXTURE_NGROK_STATE");
+    state.snapshot.ngrok = {
+      state: input.state,
+      publicUrl: typeof input.publicUrl === "string" ? input.publicUrl : null,
+      message: typeof input.message === "string" ? input.message : null,
+      nextBoundaryAt: state.snapshot.ngrok.nextBoundaryAt,
+    };
+    sendData(response, state.snapshot.ngrok);
+  });
   app.post("/api/v1/tasks/:taskId/preview", (request, response) => {
     const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);
     if (!task || task.readiness.state !== "ready") return sendError(response, 409, task?.readiness.blockingCodes[0] ?? "MASTERPLAN_NOT_READY");
