@@ -307,9 +307,10 @@ The coordinator renderer and this skill resolve each packet directly from the
 single canonical source under `workers-masterplan/swarm/templates`; never copy
 or independently maintain packet bodies in the reusable skill. Supply the
 selected macOS account, worker ID, model routing, coordinator chat name, and
-phase terminal condition as explicit launch metadata. The selected account is
-not a worker: an account may own unlimited chats, while the global active-turn
-default is `3`.
+phase terminal condition, selected Git mode, same-Mac mutation lock, and
+independent-clone push queue as explicit launch metadata. The selected account
+is not a worker: an account may own unlimited chats, while the global
+active-turn default is `3`.
 
 For this conditional mode, use one loopback Codex app-server per selected macOS
 account through `su - <account>`; never launch Codex desktop for a bot account.
@@ -318,7 +319,9 @@ routes bounded implementation to Terra High, difficult implementation,
 integration, migrations, or debugging to Terra Xhigh, and Sol High only to
 unexpected planning required during execution. Continue to apply this skill's
 direct-main lifecycle and remote-reachability proof without weakening it for
-the coordinator.
+the coordinator: each canonical packet must render its phase terminal condition
+and the full checkpoint sequence—focused check, owned-path staging, direct-main
+commit, fetch/merge, affected-check rerun, push, and remote-reachability proof.
 
 The coordinator may automatically approve an app-server request only after
 positive proof that every target is contained in the assigned account's

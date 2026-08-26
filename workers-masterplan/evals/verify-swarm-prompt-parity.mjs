@@ -16,6 +16,25 @@ const coordinatorRendererPath = resolve(
 );
 
 const templateIds = ["planning", "execution", "ui"];
+const phaseStopRules = {
+  planning: "Do not implement product code, UI, migrations, or runtime behavior in this phase.",
+  execution: "Execution ends only when fresh acceptance evidence, closed review, final status, and remote-reachability proof are present.",
+  ui: "Stop at Claudio's review boundary.",
+};
+const lifecycleFacts = [
+  "focused verification",
+  "staging only owned paths",
+  "commit directly to `main`",
+  "fetch and merge newer `origin/main`",
+  "rerun affected checks",
+  "push, and prove remote reachability",
+  "Never reset, clean, stash, rebase, force-push",
+];
+const uiChecklist = `**Mandatory pre-edit source-read checklist** — do not abbreviate:
+- [ ] Completely read \`claude-design/codex/AGENTS.md\`.
+- [ ] Completely read \`claude-design/codex/system-prompt.md\`.
+- [ ] Completely read every relevant procedure under \`claude-design/codex/skills/\`.
+- [ ] Completely read \`.agents/skills/better-ui/SKILL.md\`.`;
 const coordinatorLaunchValues = {
   accountId: "bot3",
   blueprintPath: "docs/plans/edenmind_Implementation_Masterplan.md",
@@ -24,13 +43,17 @@ const coordinatorLaunchValues = {
   devServerCommand: "npm run dev -- --host 127.0.0.1",
   edenmindClonePath: "/Users/bot3/Dev/EdenMind",
   excludedSurfaces: "workers-masterplan/swarm/src/server/**",
+  checkoutMode: "coordinator_managed_same_mac_clones",
   hardPrerequisites: "W1, W2",
   implementationModel: "Terra High",
   implementationPlanPath:
     "docs/superpowers/plans/2026-08-26-edenmind/2026-08-26-W3.md",
   masterplanPath: "docs/plans/edenmind_Implementation_Masterplan.md",
+  mainMutationLock: "swarm-main-mutation-lock",
+  mainPushQueue: "swarm-main-push-queue",
   ownedSurfaces: "workers-masterplan/swarm/src/client/**",
   phase: "execution",
+  phaseTerminalCondition: "Stop after the worker's phase handoff is integrated on origin/main.",
   planningGateCommit: "0123456789abcdef0123456789abcdef01234567",
   planningGatePath: "docs/workers/2026-08-26-edenmind/PLANNING_GATE.md",
   specificationPath:
@@ -128,6 +151,38 @@ for (const templateId of templateIds) {
     throw new Error(
       `${templateId} render differs between coordinator and Blueprint Masterplan entry points`,
     );
+  }
+
+  const renderedPacket = coordinatorRender.toString("utf8");
+  const whitespaceNormalizedPacket = renderedPacket.replace(/\s+/g, " ");
+  if (!renderedPacket.includes(coordinatorLaunchValues.phaseTerminalCondition)) {
+    throw new Error(`${templateId} does not render the required phase terminal condition`);
+  }
+  for (const field of ["checkoutMode", "mainMutationLock", "mainPushQueue"]) {
+    if (!renderedPacket.includes(coordinatorLaunchValues[field])) {
+      throw new Error(`${templateId} does not render the required ${field} launch slot`);
+    }
+  }
+  if (!whitespaceNormalizedPacket.includes("fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability")) {
+    throw new Error(`${templateId} does not require post-reconciliation verification`);
+  }
+  for (const fact of lifecycleFacts) {
+    if (!whitespaceNormalizedPacket.includes(fact)) {
+      throw new Error(`${templateId} does not retain the required lifecycle fact: ${fact}`);
+    }
+  }
+  if (!whitespaceNormalizedPacket.includes(phaseStopRules[templateId])) {
+    throw new Error(`${templateId} does not retain its phase-specific stopping rule`);
+  }
+  if (!whitespaceNormalizedPacket.includes("In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock") || !whitespaceNormalizedPacket.includes("In `independent_main_clone` mode, do not impose a global edit lock")) {
+    throw new Error(`${templateId} does not distinguish serialized same-Mac clones from independent clones`);
+  }
+  const checklistCount = renderedPacket.split(uiChecklist).length - 1;
+  if (templateId === "ui" && checklistCount !== 1) {
+    throw new Error("ui must render exactly one mandatory pre-edit source-read checklist");
+  }
+  if (templateId !== "ui" && checklistCount !== 0) {
+    throw new Error(`${templateId} must not render the UI-design source-read checklist`);
   }
 
   process.stdout.write(

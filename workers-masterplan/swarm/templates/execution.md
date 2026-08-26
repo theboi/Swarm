@@ -16,7 +16,10 @@ Read the following from the account's EdenMind clone before editing:
 - Passed planning-gate receipt: `{{PLANNING_GATE_PATH}}`
 - Gate receipt commit: `{{PLANNING_GATE_COMMIT}}`
 
-Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`, in phase `{{PHASE}}`. Before
+Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`, in phase `{{PHASE}}`. The phase
+terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
+
+Before
 editing, prove that the gate receipt is passed, includes this worker, and is
 reachable from the pinned `origin/main` commit. Also prove that every hard
 implemented prerequisite in `{{HARD_PREREQUISITES}}` is remotely reachable.
@@ -42,17 +45,23 @@ Do not modify:
 `{{EXCLUDED_SURFACES}}`
 
 Work directly on `main` in `{{EDENMIND_CLONE_PATH}}`; do not create feature
-branches or linked worktrees. Preserve unrelated changes. Before every
-filesystem or Git/index mutation, acquire the coordinator's shared main
-mutation lock and retain it through focused verification, staging only owned
-paths, commit, safe reconciliation with `origin/main`, push, and remote
-reachability proof. Never reset, clean, stash, rebase, force-push, or overwrite
-unrelated work.
+branches or linked worktrees. Preserve unrelated changes. The selected Git mode
+is `{{CHECKOUT_MODE}}`; its same-Mac mutation lock is
+`{{MAIN_MUTATION_LOCK}}`, and its independent-clone push queue is
+`{{MAIN_PUSH_QUEUE}}`. In `coordinator_managed_same_mac_clones` mode, acquire
+the named mutation lock before every filesystem or Git/index mutation and hold
+it through focused verification, staging only owned paths, commit, fetch and
+merge newer `origin/main`, rerun affected checks, push, and prove remote
+reachability. In `independent_main_clone` mode, do not impose a global edit
+lock; use the named push queue only for reconciliation, affected verification,
+push, and remote-ancestry proof. Never reset, clean, stash, rebase, force-push,
+or overwrite unrelated work.
 
 Execute the approved plan task-by-task. Use red-green-refactor where code
 changes. At every coherent checkpoint, run the narrow affected test/check,
-review the owned diff, update `{{STATUS_PATH}}`, safely commit/reconcile/push,
-and prove remote reachability before continuing. Do not infer completion from a
+review the owned diff, update `{{STATUS_PATH}}`, stage only owned paths, commit
+directly to `main`, fetch and merge newer `origin/main`, rerun affected checks,
+push, and prove remote reachability before continuing. Do not infer completion from a
 local checkout or another worker's claim. Request and address review for your
 owned changes.
 

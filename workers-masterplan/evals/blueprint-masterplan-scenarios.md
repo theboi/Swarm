@@ -569,6 +569,14 @@ ngrok-window Critical rows. A fresh Sol High reviewer records the baseline and
 post-edit row-by-row results outside the hidden rubric before this scenario is
 marked green.
 
+### Task 6 review record — 26 August 2026
+
+| Review stage | Result | Evidence / finding |
+| --- | --- | --- |
+| Pre-fix pressure review | **Fail** | The canonical packets compressed the direct-main lifecycle without requiring fetch/merge followed by affected-check rerun, and the declared phase-terminal-condition slot was not rendered by the coordinator interface. |
+| First re-review | **Fail** | The parity verifier checked only a lifecycle suffix, while packet Git instructions hardcoded a shared lock and did not distinguish coordinator-managed same-Mac clones from an independent main clone. |
+| Final fresh re-review | **Pass — 9/9** | All Scenario 13 Critical/Required rows pass. The verifier now proves canonical-source parity, terminal-condition substitution, phase-specific stopping rules, full direct-main lifecycle, UI checklist cardinality, and selected Git-mode slots. No Critical or Important issue remains. |
+
 Fixture mode has no impact: this policy change neither changes nor routes any
 fixture behavior, fixture worker, fixture gate, fixture acceptance rule,
 provider, command, or environment.

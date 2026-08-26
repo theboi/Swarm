@@ -27,6 +27,9 @@ phase behavior and worker instructions.
 | Model routing | Terra High / Terra Xhigh selection for execution; Sol High only for unexpected planning during execution |
 | Coordinator chat name | Exact app-server chat name for the launch where the packet requires it |
 | Phase terminal condition | The canonical packet's stopping boundary, recorded in the launch preview and handoff |
+| Git mode | `coordinator_managed_same_mac_clones` or `independent_main_clone` |
+| Same-Mac mutation lock | Exact lock name for serialized same-Mac clone mutation lifecycles |
+| Independent-clone push queue | Exact queue/lock name used only for reconciliation, verification, push, and ancestry proof |
 
 The envelope records that one loopback Codex app-server runs for the selected
 account through `su - <account>`, never Codex desktop. An account may have
@@ -41,8 +44,11 @@ window.
 
 The reusable skill's parity verifier renders each source through the coordinator
 and Blueprint Masterplan entry points, normalizes line endings/trailing
-whitespace, and compares their bytes. Keep the direct-main lifecycle in the
-generic ordinary templates below; the coordinator adapter must not replace it.
+whitespace, and compares their bytes. It also proves that every rendered packet
+contains its supplied phase terminal condition and the full direct-main
+checkpoint sequence: focused check, owned-path staging, direct-main commit,
+fetch/merge, affected-check rerun, push, and remote-reachability proof. The
+coordinator adapter must not weaken or replace that lifecycle.
 
 ## Assembly checklist
 

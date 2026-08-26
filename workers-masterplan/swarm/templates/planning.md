@@ -17,7 +17,10 @@ acting:
 - Implementation plan destination: `{{IMPLEMENTATION_PLAN_PATH}}`
 
 Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is
-`{{PHASE}}`; this is a planning-only launch. Confirm every listed planning
+`{{PHASE}}`; this is a planning-only launch. The phase terminal condition is:
+`{{PHASE_TERMINAL_CONDITION}}`
+
+Confirm every listed planning
 prerequisite is reachable from `origin/main` before editing. Treat any missing,
 stale, or local-only evidence as a blocker and report it through the worker
 status rather than guessing.
@@ -32,11 +35,16 @@ Do not modify these excluded surfaces:
 
 Preserve unrelated working-tree changes. Work directly on `main` in
 `{{EDENMIND_CLONE_PATH}}`; do not create feature branches or linked worktrees.
-Before every filesystem or Git/index mutation, acquire the coordinator's shared
-main mutation lock. Hold it through focused verification, staging only owned
-paths, commit, safe reconciliation with `origin/main`, push, and remote
-reachability proof. Never reset, clean, stash, rebase, force-push, or overwrite
-unrelated work.
+The selected Git mode is `{{CHECKOUT_MODE}}`; its same-Mac mutation lock is
+`{{MAIN_MUTATION_LOCK}}`, and its independent-clone push queue is
+`{{MAIN_PUSH_QUEUE}}`. In `coordinator_managed_same_mac_clones` mode, acquire
+the named mutation lock before every filesystem or Git/index mutation and hold
+it through focused verification, staging only owned paths, commit, fetch and
+merge newer `origin/main`, rerun affected checks, push, and prove remote
+reachability. In `independent_main_clone` mode, do not impose a global edit
+lock; use the named push queue only for reconciliation, affected verification,
+push, and remote-ancestry proof. Never reset, clean, stash, rebase, force-push,
+or overwrite unrelated work.
 
 During this planning phase:
 
@@ -48,8 +56,9 @@ During this planning phase:
    to affected downstream worker artifacts through their owners.
 4. Update `{{STATUS_PATH}}` with the inspected `origin/main` commit, decisions,
    prerequisites, verification, handoff inputs, and remote-reachability proof.
-5. At each coherent planning checkpoint, run the focused check, commit and
-   reconcile/push safely as above before continuing.
+5. At each coherent planning checkpoint, run the focused check, stage only owned
+   paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun
+   affected checks, push, and prove remote reachability before continuing.
 
 Write the implementation plan so its collision-safe owned tasks can be handed
 to Terra subagents and, where the Blueprint permits independent lanes, worked
