@@ -15,8 +15,8 @@ describe("loadConfig", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("requires every bot password and keeps secrets out of its public view", async () => {
-    const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`BOT${index + 1}_PASSWORD`, "local-password"]));
+  it("reads bot credentials only from named SWARM_USER slots and keeps passwords out of its public view", async () => {
+    const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`SWARM_USER${index + 1}`, `bot${index + 1}:local-password-${index + 1}`]));
     const config = await loadConfig({
       ...env,
       SWARM_LOGIN_EMAIL: "Claudio@Example.com",
@@ -27,12 +27,28 @@ describe("loadConfig", () => {
     });
 
     expect(config.loginEmail).toBe("claudio@example.com");
+    expect(config.accountPasswords.bot3).toBe("local-password-3");
+    expect(config.accountPasswords.bot8).toBe("local-password-8");
     expect(config.publicConfig()).not.toContain("local-password");
     expect(config.publicConfig()).not.toContain("ngrok-secret");
   });
 
+  it("leaves an unset bot credential unavailable and rejects a mismatched SWARM_USER name", async () => {
+    const base = {
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+      SWARM_USER1: "bot1:password",
+      BOT2_PASSWORD: "ignored-password",
+    };
+
+    await expect(loadConfig(base)).resolves.toMatchObject({ accountPasswords: { bot1: "password", bot2: undefined } });
+    await expect(loadConfig({ ...base, SWARM_USER2: "bot3:password" })).rejects.toThrow("SWARM_USER2 must start with bot2:");
+  });
+
   it("uses an explicit absolute Codex binary and never enables proxy trust by default", async () => {
-    const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`BOT${index + 1}_PASSWORD`, "local-password"]));
+    const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`SWARM_USER${index + 1}`, `bot${index + 1}:local-password`]));
 
     const config = await loadConfig({
       ...env,

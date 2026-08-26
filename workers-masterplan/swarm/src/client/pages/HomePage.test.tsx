@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { CoordinatorSnapshot } from "../../shared/contracts.js";
 import { HomePage } from "./HomePage";
 import { dashboardSnapshot } from "../test/fixtures";
 
@@ -30,6 +31,18 @@ describe("HomePage", () => {
     expect(screen.getByText("I0 · Integration")).toBeVisible();
     expect(screen.getByText("PLANNING_GATE")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Review launch for I0" })).not.toBeInTheDocument();
+  });
+
+  it("places the local workspace before bot accounts and marks only its failed pull", () => {
+    const localSnapshot: CoordinatorSnapshot = {
+      ...dashboardSnapshot,
+      localWorkspace: { label: "claudiothe (local)", gitSync: { state: "warning", action: "pull", lastAttemptAt: 1, message: "Git pull failed." } },
+    };
+    render(<HomePage snapshot={localSnapshot} api={{ previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: async () => ({ data: {} }) }} />);
+
+    const cards = within(screen.getByLabelText("Accounts")).getAllByRole("heading", { level: 3 });
+    expect(cards[0]).toHaveTextContent("claudiothe (local)");
+    expect(screen.getByLabelText("Git pull warning")).toHaveTextContent("⚠");
   });
 
   it("renders the normalized ngrok public URL only when the coordinator reports one", () => {

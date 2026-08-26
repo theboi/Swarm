@@ -63,7 +63,7 @@ export class AccountManager {
     return () => this.listeners.delete(listener);
   }
 
-  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode">): AccountSnapshot {
+  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync">): AccountSnapshot {
     return this.setSnapshot(account, patch);
   }
 

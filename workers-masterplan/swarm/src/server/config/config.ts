@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { userInfo } from "node:os";
 import { resolve } from "node:path";
 
 export interface SwarmConfig {
@@ -15,7 +16,8 @@ export interface SwarmConfig {
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
   ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; domain: string | undefined; start: string; stop: string };
-  accountPasswords: Record<`bot${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`, string>;
+  localAccount: string;
+  accountPasswords: Record<`bot${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`, string | undefined>;
   publicConfig(): string;
 }
 
@@ -30,6 +32,15 @@ function bool(value: string | undefined, fallback: boolean): boolean {
   return value === "true";
 }
 
+export function swarmUserPassword(env: NodeJS.ProcessEnv, index: number): string | undefined {
+  const name = `SWARM_USER${index}`;
+  const value = env[name]?.trim();
+  if (!value) return undefined;
+  const prefix = `bot${index}:`;
+  if (!value.startsWith(prefix) || value.length === prefix.length) throw new Error(`${name} must start with ${prefix}password`);
+  return value.slice(prefix.length);
+}
+
 export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<SwarmConfig> {
   if (env.SWARM_ENV_FILE) {
     const file = resolve(env.SWARM_ENV_FILE);
@@ -38,13 +49,14 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   }
   const accountPasswords = {} as SwarmConfig["accountPasswords"];
   for (let index = 1; index <= 8; index += 1) {
-    accountPasswords[`bot${index}` as keyof typeof accountPasswords] = required(env, `BOT${index}_PASSWORD`);
+    accountPasswords[`bot${index}` as keyof typeof accountPasswords] = swarmUserPassword(env, index);
   }
   const loginEmail = required(env, "SWARM_LOGIN_EMAIL").toLowerCase();
   const config: SwarmConfig = {
     host: env.SWARM_HOST ?? "127.0.0.1",
     port: Number(env.SWARM_PORT ?? 4310),
     timezone: env.SWARM_TIMEZONE ?? "Asia/Singapore",
+    localAccount: env.SWARM_LOCAL_ACCOUNT?.trim() || userInfo().username,
     loginEmail,
     loginPasswordHash: required(env, "SWARM_LOGIN_PASSWORD_HASH"),
     totpSecret: required(env, "SWARM_TOTP_SECRET"),
@@ -56,7 +68,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     coordinationRoot: env.SWARM_COORDINATION_ROOT,
     ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, domain: env.SWARM_NGROK_DOMAIN, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
     accountPasswords,
-    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, timezone: config.timezone, defaultConcurrency: config.defaultConcurrency, ngrokEnabled: config.ngrok.enabled }),
+    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, timezone: config.timezone, defaultConcurrency: config.defaultConcurrency, ngrokEnabled: config.ngrok.enabled, localAccount: config.localAccount }),
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("SWARM_PORT must be a valid port");
   if (!Number.isInteger(config.defaultConcurrency) || config.defaultConcurrency < 1) throw new Error("SWARM_DEFAULT_CONCURRENCY must be positive");

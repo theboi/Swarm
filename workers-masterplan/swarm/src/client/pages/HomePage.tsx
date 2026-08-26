@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { AccountSnapshot, CoordinatorSnapshot, RateLimitWindow, TaskNode } from "../../shared/contracts.js";
+import type { AccountSnapshot, CoordinatorSnapshot, GitSyncStatus, LocalWorkspaceSnapshot, RateLimitWindow, TaskNode } from "../../shared/contracts.js";
 import type { CoordinatorApi, LaunchPreview } from "../api.js";
 import { RateLimitBar } from "../components/RateLimitBar.js";
 import { StatusBadge } from "../components/StatusBadge.js";
@@ -29,13 +29,22 @@ function ActiveWork({ snapshot, dispatchId }: { snapshot: CoordinatorSnapshot; d
   return <article className="active-work-row"><p>Account: {dispatch.accountId}</p><p>Worker: Not reported</p><p>Task: {task ? `${task.id} · ${task.title}` : "Unknown"}</p><p>Phase: {task?.readiness.phase ?? "Unknown"}</p><p>Live state: {dispatch.state}</p></article>;
 }
 
+function GitSyncWarning({ status }: { status: GitSyncStatus | undefined }) {
+  if (status?.state !== "warning") return null;
+  return <span role="img" aria-label={`Git ${status.action} warning`} title={status.message ?? `Git ${status.action} failed.`}>⚠</span>;
+}
+
+function LocalWorkspaceCard({ workspace }: { workspace: LocalWorkspaceSnapshot }) {
+  return <article className="account-card"><h3>{workspace.label} <GitSyncWarning status={workspace.gitSync} /></h3><p>Local workspace</p></article>;
+}
+
 function AccountCard({ account }: { account: AccountSnapshot }) {
   const primary = windowFor(account, /five|primary/i);
   const secondary = windowFor(account, /week|secondary/i);
   const actionRequired = account.connection === "action_required" || account.authentication === "unauthenticated";
   return (
     <article className="account-card">
-      <h3>{account.id}</h3>
+      <h3>{account.id} <GitSyncWarning status={account.gitSync} /></h3>
       <p>{account.connection.replaceAll("_", " ")}</p>
       <RateLimitBar label="Five-hour" window={primary} />
       <RateLimitBar label="Weekly" window={secondary} />
@@ -114,7 +123,7 @@ export function HomePage({ snapshot, api }: { snapshot: CoordinatorSnapshot; api
       <section aria-labelledby="active-work-title"><h2 id="active-work-title">Active work</h2>{active.length ? active.map((dispatch) => <ActiveWork key={dispatch.id} snapshot={snapshot} dispatchId={dispatch.id} />) : <p>No active work reported.</p>}</section>
       <section aria-labelledby="ready-title"><h2 id="ready-title">Next ready work</h2>{ready.length ? ready.map((task) => <article className="ready-task" key={task.id}><div><StatusBadge state={task.readiness.state} /><h3>{task.id} · {task.title}</h3><p>Suggested account: {task.readiness.suggestedAccount ?? "Unknown"}</p></div><button type="button" onClick={(event) => { launchTrigger.current = event.currentTarget; void reviewLaunch(task); }}>Review launch for {task.id}</button></article>) : <p>No launchable work reported.</p>}</section>
       <section aria-labelledby="blocked-work-title"><h2 id="blocked-work-title">Blocked work</h2>{blocked.length ? blocked.map((task) => <article className="blocked-task" key={task.id}><div><StatusBadge state={task.readiness.state} /><h3>{task.id} · {task.title}</h3><p>{task.readiness.blockingCodes.length ? task.readiness.blockingCodes.join(", ") : "Coordinator attention required"}</p></div></article>) : <p>No blocked work reported.</p>}</section>
-      <section aria-labelledby="accounts-title"><h2 id="accounts-title">Accounts</h2><div className="account-grid">{snapshot.accounts.map((account) => <AccountCard account={account} key={account.id} />)}</div></section>
+      <section aria-labelledby="accounts-title"><h2 id="accounts-title">Accounts</h2><div className="account-grid">{snapshot.localWorkspace ? <LocalWorkspaceCard workspace={snapshot.localWorkspace} /> : null}{snapshot.accounts.map((account) => <AccountCard account={account} key={account.id} />)}</div></section>
       <section aria-labelledby="approvals-title"><h2 id="approvals-title">Attention queue</h2>{snapshot.pendingApprovals.length ? snapshot.pendingApprovals.map((approval) => <article key={approval.id}><p>{approval.summary}</p><small>{approval.accountId} · {approval.method}</small></article>) : <p>No pending approvals reported.</p>}</section>
       {preview ? <LaunchDialog preview={preview} onClose={closePreview} onLaunch={launch} /> : null}
     </section>

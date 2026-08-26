@@ -44,9 +44,11 @@ SWARM_LOGIN_EMAIL='operator@example.com' npm run auth:totp
 ```
 
 Copy the generated `SWARM_TOTP_SECRET` locally into `.env`, then add a strong
-local `SWARM_SESSION_SECRET` and the required `BOT1_PASSWORD` through
-`BOT8_PASSWORD` values. These values never belong in Git, a URL, browser state,
-or a log.
+local `SWARM_SESSION_SECRET`. Bot credentials use matching account slots such
+as `SWARM_USER1=bot1:password` through `SWARM_USER8=bot8:password`. These
+values never belong in Git, a URL, browser state, or a log. A missing slot does
+not prevent the dashboard from starting: that bot displays its authentication
+remediation until you add the matching local credential.
 
 `manifests/mvp3.json` is the production default. It projects the approved MVP3
 Blueprint Masterplan as 26 planning workers across six four-step paths, with
@@ -89,6 +91,14 @@ coordinator supplies the password through its pseudo-terminal and keeps the
 per-launch capability token in memory. Use the CLI app-server path only; do
 not open Codex Desktop under a bot account.
 
+The first Accounts card is the controller checkout, labeled for the macOS user
+running Swarm (for example, `claudiothe (local)`). Every hour Swarm
+deterministically runs a fast-forward-only pull in that local checkout, then
+pushes `origin/main` from each configured bot checkout in `bot1` through
+`bot8` order. A failed pull shows a warning on the local card; a failed push
+shows one on the affected bot card. Swarm leaves the failure for an operator or
+the owning worker to resolve and tries again at the next hourly interval.
+
 If an account needs Codex authentication, sign in manually from the coordinator
 account using the displayed account-specific command. For example, when the
 configured CLI is at its default path:
@@ -117,8 +127,8 @@ The opt-in smoke check uses `su` and the real app-server, never Codex Desktop:
 SWARM_SMOKE_ACCOUNT=bot3 npm run smoke:app-server
 ```
 
-It clearly skips unless `SWARM_SMOKE_ACCOUNT` and the matching local password
-are available. The default metadata-only flow verifies that a missing
+It clearly skips unless `SWARM_SMOKE_ACCOUNT` and its matching
+`SWARM_USERn=botn:password` local credential are available. The default metadata-only flow verifies that a missing
 capability token is rejected, then runs `initialize`, `initialized`,
 `account/read`, rate-limit metadata, and paginated thread listing. It starts no
 turn and always closes the child process. If authentication is expired, it

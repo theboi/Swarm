@@ -25,7 +25,7 @@ describe("AtomicStateStore", () => {
   it("wires every configured credential into the coordinator state store guard", async () => {
     const directory = await mkdtemp(join(tmpdir(), "swarm-state-"));
     const config = await loadConfig({
-      ...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`BOT${index + 1}_PASSWORD`, `bot-secret-${index + 1}`])),
+      ...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`SWARM_USER${index + 1}`, `bot${index + 1}:bot-secret-${index + 1}`])),
       SWARM_LOGIN_EMAIL: "claudio@example.com",
       SWARM_LOGIN_PASSWORD_HASH: "web-hash",
       SWARM_TOTP_SECRET: "totp-secret",

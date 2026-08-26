@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 
-import type { AccountId, CoordinatorSnapshot, DispatchRecord, HealthSnapshot, NgrokSnapshot, TaskManifest, TaskNode, ThreadSummary } from "../shared/contracts.js";
+import type { AccountId, CoordinatorSnapshot, DispatchRecord, HealthSnapshot, LocalWorkspaceSnapshot, NgrokSnapshot, TaskManifest, TaskNode, ThreadSummary } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -22,6 +22,8 @@ import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
+import { GitCommandRunner } from "./git/commandRunner.js";
+import { GitSynchronizer } from "./git/sync.js";
 import { NgrokController } from "./ngrok/controller.js";
 import { waitForNgrokPublicUrl } from "./ngrok/localApi.js";
 import { createCoordinatorApp } from "./app.js";
@@ -79,6 +81,7 @@ async function createRuntime(config: SwarmConfig) {
   const verifyTotp = createTotpVerifier(config.totpSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
   const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
+  const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
   const launcher = new SuLauncher({
     spawn: (file, args, options) => spawn(file, args, options) as never,
@@ -116,6 +119,15 @@ async function createRuntime(config: SwarmConfig) {
       });
       return client;
     },
+  });
+  const gitSynchronizer = new GitSynchronizer({
+    pullLocal: () => new GitCommandRunner(resolve(process.cwd(), "../.."), config.accountPasswords).pullLocal(),
+    pushBot: (account) => new GitCommandRunner(resolve(process.cwd(), "../.."), config.accountPasswords).pushBot(account),
+  });
+  gitSynchronizer.onChange((target, status) => {
+    if (target === "local") localWorkspace.gitSync = status;
+    else accounts.updateSnapshot(target, { gitSync: status });
+    publishRuntimeEvent("git_sync", { target, state: status.state, action: status.action });
   });
   let manifest: TaskManifest | undefined;
   let nodes: TaskNode[] = [];
@@ -182,7 +194,7 @@ async function createRuntime(config: SwarmConfig) {
   const threads = async (id: AccountId): Promise<ThreadSummary[]> => (await liveClient(id).listAllThreads()).map((thread) => asThread(id, thread));
   const ngrokSnapshot = async (): Promise<NgrokSnapshot> => { const current = ngrok.snapshot(); return { state: (config.ngrok.enabled ? current.state : "disabled") as NgrokSnapshot["state"], publicUrl: current.publicUrl, message: current.error, nextBoundaryAt: current.nextBoundaryAt }; };
   const health = async (): Promise<HealthSnapshot> => ({ server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: manifestError ? "degraded" : "ok", ...(manifestError ? { message: manifestError } : {}) }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: (await ngrokSnapshot()).state === "error" ? "error" : "ok" }, accounts: { state: accountSnapshot().some((item) => item.connection === "error") ? "degraded" : "ok" } });
-  const snapshot = async (): Promise<CoordinatorSnapshot> => ({ generatedAt: Date.now(), activeTurnLimit: config.defaultConcurrency, accounts: accountSnapshot(), tasks: nodes, dispatches: outbox.list(), threads: (await Promise.all(accountSnapshot().filter((item) => item.connection === "connected").map((item) => threads(item.id).catch(() => [])))).flat(), pendingApprovals: journal.pending().map((entry) => entry.pending), ngrok: await ngrokSnapshot(), health: await health() });
+  const snapshot = async (): Promise<CoordinatorSnapshot> => ({ generatedAt: Date.now(), activeTurnLimit: config.defaultConcurrency, accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: nodes, dispatches: outbox.list(), threads: (await Promise.all(accountSnapshot().filter((item) => item.connection === "connected").map((item) => threads(item.id).catch(() => [])))).flat(), pendingApprovals: journal.pending().map((entry) => entry.pending), ngrok: await ngrokSnapshot(), health: await health() });
   const allowedOrigins = () => {
     const values = new Set([`http://127.0.0.1:${config.port}`, `http://localhost:${config.port}`]);
     const url = ngrok.snapshot().publicUrl;
@@ -226,7 +238,7 @@ async function createRuntime(config: SwarmConfig) {
     config: { ...config, secureCookies: config.trustManagedProxy && (ngrok.snapshot().publicUrl?.startsWith("https:") ?? false) }, sessions, throttle, verifyTotp,
     snapshot, health,
     connectAccount: async (id) => {
-      const connected = await accounts.connect({ account: id, password: config.accountPasswords[id] });
+      const connected = await accounts.connect({ account: id, password: config.accountPasswords[id] ?? "" });
       await outbox.recover({ readThread: async (record) => {
         const result = await liveClient(record.accountId).readThread(record.threadId, { includeTurns: true });
         const turns = Array.isArray(object(result).thread && object(object(result).thread).turns) ? object(object(result).thread).turns as Array<Record<string, unknown>> : [];
@@ -286,9 +298,11 @@ async function createRuntime(config: SwarmConfig) {
     stopNgrokEarly: () => ngrok.stopEarly(),
     allowedOrigins,
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); for (const id of rateWaitTimers.keys()) clearRateWait(id); await accounts.shutdown(); await ngrok.shutdown().catch(() => undefined); } });
+  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); gitSynchronizer.stop(); for (const id of rateWaitTimers.keys()) clearRateWait(id); await accounts.shutdown(); await ngrok.shutdown().catch(() => undefined); } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
   accounts.onChange(() => coordinator.hub.publish("account", {} as Record<string, unknown>));
+  for (const id of accountIds) void services.connectAccount(id).catch(() => undefined);
+  gitSynchronizer.start();
   return coordinator;
 }
 

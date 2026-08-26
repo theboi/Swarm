@@ -10,6 +10,7 @@ import type { AccountId } from "../src/shared/contracts.js";
 import { JsonRpcClient } from "../src/server/codex/jsonRpcClient.js";
 import { clonePath, safeThreadSettings, safeTurnSettings } from "../src/server/codex/protocol.js";
 import { SuLauncher, type LaunchHandle, type PortLease } from "../src/server/codex/suLauncher.js";
+import { swarmUserPassword } from "../src/server/config/config.js";
 
 const ACCOUNTS = new Set<AccountId>(["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
 const SMOKE_PROMPT = "Reply with SMOKE_OK. Do not use tools or modify files.";
@@ -33,13 +34,13 @@ export function resolveSmokeEnvironment(env: NodeJS.ProcessEnv): SmokeEnvironmen
   if (!isAccount(account)) {
     return { kind: "skip", code: "SWARM_SMOKE_SKIPPED", message: "Set SWARM_SMOKE_ACCOUNT to bot1 through bot8." };
   }
-  const passwordName = `${account.toUpperCase()}_PASSWORD`;
-  const password = env[passwordName];
+  const index = Number(account.slice(3));
+  const password = swarmUserPassword(env, index);
   if (!password) {
     return {
       kind: "skip",
       code: "SWARM_SMOKE_SKIPPED",
-      message: `Set ${passwordName} in the local ignored .env before running the ${account} smoke.`,
+      message: `Set SWARM_USER${index}=bot${index}:password in the local ignored .env before running the ${account} smoke.`,
     };
   }
   return {

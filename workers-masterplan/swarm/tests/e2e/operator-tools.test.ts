@@ -41,19 +41,19 @@ describe("operator tools", () => {
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3" })).toMatchObject({
       kind: "skip",
       code: "SWARM_SMOKE_SKIPPED",
-      message: "Set BOT3_PASSWORD in the local ignored .env before running the bot3 smoke.",
+      message: "Set SWARM_USER3=bot3:password in the local ignored .env before running the bot3 smoke.",
     });
   });
 
   it("gates turn creation and redacts smoke secrets", () => {
     const run = resolveSmokeEnvironment({
       SWARM_SMOKE_ACCOUNT: "bot3",
-      BOT3_PASSWORD: "test-local-password",
+      SWARM_USER3: "bot3:test-local-password",
       SWARM_SMOKE_START_TURN: "false",
     });
 
     expect(run).toMatchObject({ kind: "run", account: "bot3", startTurn: false });
-    expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3", BOT3_PASSWORD: "test-local-password", SWARM_SMOKE_START_TURN: "true" })).toMatchObject({ kind: "run", startTurn: true });
+    expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3", SWARM_USER3: "bot3:test-local-password", SWARM_SMOKE_START_TURN: "true" })).toMatchObject({ kind: "run", startTurn: true });
     expect(redactSmokeOutput("Authorization: Bearer test-local-password", ["test-local-password"])).toBe("Authorization: Bearer [REDACTED]");
   });
 

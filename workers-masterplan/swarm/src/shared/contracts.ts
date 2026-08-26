@@ -30,6 +30,18 @@ export interface RateLimitWindow {
   updatedAt: number;
 }
 
+export interface GitSyncStatus {
+  state: "idle" | "ok" | "warning";
+  action: "pull" | "push";
+  lastAttemptAt: number | null;
+  message?: string;
+}
+
+export interface LocalWorkspaceSnapshot {
+  label: string;
+  gitSync: GitSyncStatus;
+}
+
 export interface AccountSnapshot {
   id: AccountId;
   connection: AccountConnectionState;
@@ -39,6 +51,7 @@ export interface AccountSnapshot {
   lastAssignedAt: number | null;
   terminalCommand?: string;
   errorCode?: string;
+  gitSync?: GitSyncStatus;
 }
 
 export type TaskKind = "planning" | "execution" | "ui" | "gate";
@@ -186,6 +199,7 @@ export interface CoordinatorSnapshot {
   generatedAt: number;
   activeTurnLimit: number;
   accounts: AccountSnapshot[];
+  localWorkspace?: LocalWorkspaceSnapshot;
   tasks: TaskNode[];
   dispatches: DispatchRecord[];
   threads: ThreadSummary[];
