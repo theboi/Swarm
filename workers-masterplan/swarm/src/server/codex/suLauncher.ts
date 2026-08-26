@@ -28,6 +28,7 @@ export interface SuLauncherDependencies {
   spawn(file: string, args: string[], options: { detached: true; stdio: ["pipe", "pipe", "pipe"] }): SpawnedChild;
   allocatePort(): Promise<PortLease>;
   pathExists(path: string): Promise<boolean>;
+  verifyCodexBinary(path: string): Promise<boolean>;
   waitForReady(endpoint: string, capabilityToken: string): Promise<void>;
   killProcessGroup(pid: number, signal: "SIGTERM" | "SIGKILL"): void;
   log(entry: Record<string, unknown>): void;
@@ -46,7 +47,7 @@ function posixQuote(value: string): string {
 }
 
 function isPasswordPrompt(value: string): boolean {
-  return /(?:^|\n|\r)\s*password\s*:\s*$/im.test(value) || /password\s*:/i.test(value);
+  return /(?:^|[\r\n])Password:\s*$/.test(value);
 }
 
 /** PTY-backed, account-isolated app-server launcher. It never persists credentials or tokens. */
@@ -57,10 +58,11 @@ export class SuLauncher {
 
   async launch(options: LaunchAccountOptions): Promise<LaunchHandle> {
     if (!ALLOWED_ACCOUNTS.has(options.account)) throw new Error("Only allowlisted bot1 through bot8 accounts may be launched");
-    if (!options.password) throw new Error("ACCOUNT_AUTH_REQUIRED");
+    let credential = options.password;
+    if (!credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
     if (!options.codexBin.startsWith("/")) throw new Error("Configured Codex binary must be an absolute path");
     const codexHome = `/Users/${options.account}/.codex`;
-    if (!(await this.dependencies.pathExists(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
+    if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
       throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
     const lease = await this.dependencies.allocatePort();
@@ -87,6 +89,7 @@ export class SuLauncher {
     let settled = false;
     let stopped = false;
     let prompted = false;
+    let terminalTail = "";
     let timer: NodeJS.Timeout | undefined;
     let resolveLaunch: (handle: LaunchHandle) => void;
     let rejectLaunch: (error: Error) => void;
@@ -133,10 +136,16 @@ export class SuLauncher {
       this.active.delete(handle);
     });
     child.on("error", () => fail("child_error"));
-    child.stdout?.on("data", (chunk) => {
-      if (prompted || settled || !isPasswordPrompt(String(chunk))) return;
+    const receivePtyOutput = (chunk: Buffer | string) => {
+      if (prompted || settled) return;
+      terminalTail = `${terminalTail}${String(chunk)}`.slice(-256);
+      if (!isPasswordPrompt(terminalTail)) return;
       prompted = true;
-      child.stdin?.write(`${options.password}\n`);
+      terminalTail = "";
+      const password = credential;
+      credential = "";
+      if (!password) return fail("missing_password");
+      child.stdin?.write(`${password}\n`);
       const currentToken = token;
       if (!currentToken) return fail("missing_token");
       void this.dependencies.waitForReady(endpoint, currentToken).then(() => {
@@ -147,8 +156,12 @@ export class SuLauncher {
         this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_ready", outcome: "ok" });
         resolveLaunch!(handle);
       }).catch(() => fail("readiness_failed"));
+    };
+    child.stdout?.on("data", receivePtyOutput);
+    child.stderr?.on("data", (chunk) => {
+      this.dependencies.log({ component: "suLauncher", account: options.account, event: "pty_stderr", outcome: "redacted" });
+      receivePtyOutput(chunk);
     });
-    child.stderr?.on("data", () => this.dependencies.log({ component: "suLauncher", account: options.account, event: "pty_stderr", outcome: "redacted" }));
     timer = setTimeout(() => fail("startup_timeout"), this.dependencies.startupTimeoutMs ?? 30_000);
     timer.unref();
     return result;

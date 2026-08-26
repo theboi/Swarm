@@ -2,7 +2,8 @@ import type { AccountId, TranscriptItem } from "../../shared/contracts.js";
 
 export interface TranscriptState {
   items: TranscriptItem[];
-  appliedDeltaIds: ReadonlySet<string>;
+  /** Local replay fingerprints; v2 outputDelta notifications have no deltaId. */
+  appliedDeltaFingerprints: ReadonlySet<string>;
 }
 
 export interface TranscriptScope {
@@ -22,7 +23,7 @@ const KNOWN_ITEM_TYPES = new Set([
   "enteredReviewMode", "exitedReviewMode", "contextCompaction",
 ]);
 
-export const initialTranscriptState: TranscriptState = { items: [], appliedDeltaIds: new Set<string>() };
+export const initialTranscriptState: TranscriptState = { items: [], appliedDeltaFingerprints: new Set<string>() };
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -101,17 +102,20 @@ export function reduceTranscriptEvent(state: TranscriptState, event: { method: s
     const itemId = typeof params.itemId === "string" ? params.itemId : undefined;
     const delta = typeof params.delta === "string" ? params.delta : undefined;
     if (!itemId || delta === undefined) return state;
-    const deltaId = typeof params.deltaId === "string" ? `${typedScope.accountId}\u0000${typedScope.threadId}\u0000${turnId ?? ""}\u0000${itemId}\u0000${params.deltaId}` : undefined;
-    if (deltaId && state.appliedDeltaIds.has(deltaId)) return state;
+    // The stable generated v2 event has no deltaId. Retain a local
+    // fingerprint so a replay from a reconnect cannot append the same wire
+    // delta twice; authoritative thread/read hydration still replaces items.
+    const fingerprint = `${typedScope.accountId}\u0000${typedScope.threadId}\u0000${turnId ?? ""}\u0000${itemId}\u0000${delta}`;
+    if (state.appliedDeltaFingerprints.has(fingerprint)) return state;
     const index = state.items.findIndex((item) => itemKey(item) === itemKey({ ...typedScope, turnId, id: itemId }));
     if (index < 0) return state;
     const target = state.items[index];
     const output = typeof target.payload.aggregatedOutput === "string" ? target.payload.aggregatedOutput : "";
     const updated: TranscriptItem = { ...target, payload: { ...target.payload, aggregatedOutput: `${output}${delta}` } };
     const items = state.items.map((item, itemIndex) => itemIndex === index ? updated : item);
-    const appliedDeltaIds = new Set(state.appliedDeltaIds);
-    if (deltaId) appliedDeltaIds.add(deltaId);
-    return { items, appliedDeltaIds };
+    const appliedDeltaFingerprints = new Set(state.appliedDeltaFingerprints);
+    appliedDeltaFingerprints.add(fingerprint);
+    return { items, appliedDeltaFingerprints };
   }
 
   return state;

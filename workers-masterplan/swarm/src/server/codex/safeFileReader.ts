@@ -46,6 +46,13 @@ export async function readWorkspaceMarkdown(input: ReadWorkspaceMarkdownInput): 
   if (!markdownPath(target)) throw new Error("Only Markdown files may be read");
 
   const response = await input.appServer.readFile(target);
+  // fs/readFile accepts only a path today. Recheck after the remote read to
+  // detect pathname replacement; descriptor-safe no-follow reads require an
+  // app-server protocol extension and remain the only residual race window.
+  const targetAfterRead = await realpath(requested);
+  if (targetAfterRead !== target || !contained(root, targetAfterRead)) {
+    throw new Error("FILE_OUTSIDE_WORKSPACE: file changed outside workspace during read");
+  }
   const bytes = decodeBase64(response.dataBase64);
   if (bytes.byteLength > MAX_MARKDOWN_BYTES) throw new Error("Markdown file exceeds the two MiB limit");
   return { path: target, filename: basename(target), text: bytes.toString("utf8") };
