@@ -31,7 +31,11 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
   const app = express();
   app.disable("x-powered-by");
   app.use("/api/v1", createApiRouter(dependencies.services));
-  if (dependencies.staticDir) app.use(express.static(resolve(dependencies.staticDir), { index: "index.html", fallthrough: true }));
+  if (dependencies.staticDir) {
+    const staticDir = resolve(dependencies.staticDir);
+    app.use(express.static(staticDir, { index: "index.html", fallthrough: true }));
+    app.use((_request, response) => response.sendFile(resolve(staticDir, "index.html")));
+  }
   const server = createServer(app);
   const hub = new BrowserHub({ server, sessions: dependencies.services.sessions, allowedOrigins: dependencies.services.allowedOrigins, snapshot: dependencies.services.snapshot });
   let stopping: Promise<void> | undefined;

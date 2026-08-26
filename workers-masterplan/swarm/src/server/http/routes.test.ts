@@ -77,4 +77,21 @@ describe("coordinator HTTP routes", () => {
     expect(result.body).toEqual({ data: health });
     expect(JSON.stringify(result.body)).not.toMatch(/secret|password|token|transcript/i);
   });
+
+  it("consumes a challenge after any TOTP attempt and revokes a logged-out session", async () => {
+    const { app } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const first = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: first.body.data.challengeId, code: "000000" }).expect(401);
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: first.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) }).expect(401);
+
+    const second = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+    const complete = await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: second.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) }).expect(200);
+    const priorCookie = complete.headers["set-cookie"][0].split(";")[0];
+
+    await agent.post("/api/v1/auth/logout").set("origin", origin).send({}).expect(200);
+    await request(app).get("/api/v1/snapshot").set("cookie", priorCookie).expect(401);
+  });
 });

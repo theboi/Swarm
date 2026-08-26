@@ -4,7 +4,7 @@ import type { AccountId, CoordinatorSnapshot, HealthSnapshot, PendingApproval } 
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
-import { apiError, requireAllowedOrigin, requireJson, requireSession, SESSION_COOKIE } from "./authMiddleware.js";
+import { apiError, readCookie, requireAllowedOrigin, requireJson, requireSession, SESSION_COOKIE } from "./authMiddleware.js";
 
 export interface CoordinatorRouteServices {
   config: { loginEmail: string; loginPasswordHash: string; trustManagedProxy: boolean; host: string; port: number; secureCookies?: boolean };
@@ -74,7 +74,6 @@ export function createApiRouter(services: CoordinatorRouteServices) {
       apiError(response, 401, "AUTH_INVALID", "Unable to sign in");
       return;
     }
-    await services.throttle.recordSuccess(email, source);
     const challenge = await services.sessions.createChallenge(email);
     sendData(response, { challengeId: challenge.id });
   }));
@@ -83,16 +82,26 @@ export function createApiRouter(services: CoordinatorRouteServices) {
     const body = record(request.body);
     const challengeId = text(body.challengeId, "challengeId");
     const code = text(body.code, "code");
-    if (!challengeId || !code || !(await services.verifyTotp.verify(code, Date.now(), challengeId))) { apiError(response, 401, "AUTH_INVALID", "Unable to sign in"); return; }
-    const challenge = await services.sessions.consumeChallenge(challengeId);
-    if (!challenge || challenge.email !== services.config.loginEmail) { apiError(response, 401, "AUTH_INVALID", "Unable to sign in"); return; }
+    const source = resolveLoginSource({ directAddress: request.socket.remoteAddress ?? "unknown", forwardedFor: typeof request.headers["x-forwarded-for"] === "string" ? request.headers["x-forwarded-for"] : undefined, trustManagedProxy: services.config.trustManagedProxy });
+    const challenge = challengeId ? await services.sessions.consumeChallenge(challengeId) : undefined;
+    if (!challenge || !code || challenge.email !== services.config.loginEmail || !services.throttle.check(challenge.email, source).allowed || !(await services.verifyTotp.verify(code, Date.now(), challengeId ?? ""))) {
+      await services.throttle.recordFailure(challenge?.email ?? "invalid", source);
+      apiError(response, 401, "AUTH_INVALID", "Unable to sign in");
+      return;
+    }
+    await services.throttle.recordSuccess(challenge.email, source);
     const session = await services.sessions.createSession(challenge.email);
     response.cookie(SESSION_COOKIE, session, { httpOnly: true, sameSite: "strict", path: "/", secure: services.config.secureCookies === true, maxAge: 12 * 60 * 60_000 });
     sendData(response, { authenticated: true });
   }));
 
   router.get("/auth/session", requireSession(services.sessions), (_request, response) => sendData(response, { authenticated: true }));
-  router.post("/auth/logout", ...securedMutation, (_request, response) => { response.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "strict", path: "/", secure: services.config.secureCookies === true }); sendData(response, { authenticated: false }); });
+  router.post("/auth/logout", ...securedMutation, asyncRoute(async (request, response) => {
+    const session = readCookie(request, SESSION_COOKIE);
+    if (session) await services.sessions.revokeSession(session);
+    response.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "strict", path: "/", secure: services.config.secureCookies === true });
+    sendData(response, { authenticated: false });
+  }));
   router.get("/snapshot", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.snapshot())));
   router.get("/health", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.health())));
 

@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
@@ -13,13 +16,17 @@ const snapshot: CoordinatorSnapshot = { generatedAt: 1, activeTurnLimit: 3, acco
 let stop: (() => Promise<void>) | undefined;
 afterEach(async () => { await stop?.(); stop = undefined; });
 
+async function servicesFixture(): Promise<CoordinatorRouteServices> {
+  const passwordHash = await createPasswordHash("password", "app-test-salt");
+  return {
+    config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310 }, sessions: new SessionStore("session"), throttle: new LoginThrottle(), verifyTotp: createTotpVerifier("JBSWY3DPEHPK3PXP"), snapshot: async () => snapshot, health: async () => health,
+    connectAccount: async () => ({}), disconnectAccount: async () => undefined, refreshRateLimits: async () => [], previewLaunch: async () => ({}), launch: async () => ({}), listThreads: async () => [], readTranscript: async () => [], startThread: async () => ({}), archiveThread: async () => undefined, startTurn: async () => ({}), steerTurn: async () => undefined, interruptTurn: async () => undefined, readMarkdown: async () => ({ filename: "x.md", content: "" }), decideApproval: async () => undefined, ngrokSnapshot: async () => snapshot.ngrok, stopNgrokEarly: async () => undefined, allowedOrigins: () => new Set(["http://127.0.0.1:4310"]),
+  };
+}
+
 describe("coordinator application composition", () => {
   it("mounts only the versioned API and flushes runtime dependencies before closing", async () => {
-    const passwordHash = await createPasswordHash("password", "app-test-salt");
-    const services: CoordinatorRouteServices = {
-      config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310 }, sessions: new SessionStore("session"), throttle: new LoginThrottle(), verifyTotp: createTotpVerifier("JBSWY3DPEHPK3PXP"), snapshot: async () => snapshot, health: async () => health,
-      connectAccount: async () => ({}), disconnectAccount: async () => undefined, refreshRateLimits: async () => [], previewLaunch: async () => ({}), launch: async () => ({}), listThreads: async () => [], readTranscript: async () => [], startThread: async () => ({}), archiveThread: async () => undefined, startTurn: async () => ({}), steerTurn: async () => undefined, interruptTurn: async () => undefined, readMarkdown: async () => ({ filename: "x.md", content: "" }), decideApproval: async () => undefined, ngrokSnapshot: async () => snapshot.ngrok, stopNgrokEarly: async () => undefined, allowedOrigins: () => new Set(["http://127.0.0.1:4310"]),
-    };
+    const services = await servicesFixture();
     const flush = vi.fn(async () => undefined);
     const shutdown = vi.fn(async () => undefined);
     const coordinator = createCoordinatorApp({ services, flush, shutdown });
@@ -30,5 +37,19 @@ describe("coordinator application composition", () => {
 
     expect(flush).toHaveBeenCalledOnce();
     expect(shutdown).toHaveBeenCalledOnce();
+  });
+
+  it("serves the compiled SPA and its client routes without shadowing API errors", async () => {
+    const staticDir = await mkdtemp(join(tmpdir(), "swarm-client-"));
+    await writeFile(join(staticDir, "index.html"), "<main>Swarm client</main>");
+    const coordinator = createCoordinatorApp({ services: await servicesFixture(), staticDir, flush: async () => undefined, shutdown: async () => undefined });
+    stop = coordinator.shutdown;
+    try {
+      await request(coordinator.app).get("/").expect(200, "<main>Swarm client</main>");
+      await request(coordinator.app).get("/flowchart").expect(200, "<main>Swarm client</main>");
+      await request(coordinator.app).get("/api/v1/not-found").expect(404);
+    } finally {
+      await rm(staticDir, { recursive: true, force: true });
+    }
   });
 });

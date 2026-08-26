@@ -132,4 +132,17 @@ export class SessionStore {
       return { email: record.email };
     });
   }
+
+  async revokeSession(cookie: string): Promise<boolean> {
+    return this.mutate(() => {
+      const [id, signature] = cookie.split(".");
+      if (!id || !signature) return false;
+      const expected = digest(this.secret, id);
+      if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false;
+      const key = digest(this.secret, id);
+      if (!this.data.sessions[key]) return false;
+      delete this.data.sessions[key];
+      return true;
+    });
+  }
 }
