@@ -83,4 +83,15 @@ describe("ngrok window", () => {
     expect(stops).toBe(0);
     expect(controller.snapshot(new Date("2026-08-26T16:00:00.000Z"))).toMatchObject({ state: "stopped", publicUrl: null });
   });
+
+  it("stops its own tunnel during coordinator shutdown without creating an early-stop suppression", async () => {
+    const persisted: { suppressUntil?: number } = {};
+    let stops = 0;
+    const controller = new NgrokController({ timezone: "Asia/Singapore", persistence: persisted, start: async () => ({ id: "managed" }), stop: async () => { stops += 1; } });
+    await controller.reconcile(new Date("2026-08-26T03:00:00.000Z"));
+    await controller.shutdown();
+
+    expect(stops).toBe(1);
+    expect(persisted.suppressUntil).toBeUndefined();
+  });
 });

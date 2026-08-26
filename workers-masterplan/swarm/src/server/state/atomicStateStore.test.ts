@@ -59,4 +59,15 @@ describe("AtomicStateStore", () => {
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ value: "prior" });
     await rm(directory, { recursive: true, force: true });
   });
+
+  it("serializes concurrent read-modify-write updates", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "swarm-state-"));
+    const path = join(directory, "state.json");
+    const store = new AtomicStateStore<{ value?: number }>(path);
+
+    await Promise.all(Array.from({ length: 20 }, () => store.update((current) => ({ value: (current.value ?? 0) + 1 }))));
+
+    await expect(store.read()).resolves.toEqual({ value: 20 });
+    await rm(directory, { recursive: true, force: true });
+  });
 });

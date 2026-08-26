@@ -26,10 +26,13 @@ export class AccountManager {
   private readonly connections = new Map<AccountId, ManagedConnection>();
   private readonly snapshots = new Map<AccountId, AccountSnapshot>();
   private readonly inFlight = new Map<AccountId, Promise<AccountSnapshot>>();
+  private readonly listeners = new Set<(snapshot: AccountSnapshot) => void>();
+  private shuttingDown = false;
 
   constructor(private readonly options: AccountManagerOptions) {}
 
   connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
+    if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
     if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted bot1 through bot8 accounts may be connected"));
     const existing = this.connections.get(input.account);
     if (existing) return Promise.resolve(this.requireSnapshot(input.account));
@@ -46,6 +49,24 @@ export class AccountManager {
     return this.requireSnapshot(account);
   }
 
+  snapshotsList(): AccountSnapshot[] {
+    return (["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as AccountId[]).map((account) => this.requireSnapshot(account));
+  }
+
+  /** Returns a live app-server client only after account authentication completed. */
+  client(account: AccountId): ManagedAppServerClient | undefined {
+    return this.connections.get(account)?.client;
+  }
+
+  onChange(listener: (snapshot: AccountSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode">): AccountSnapshot {
+    return this.setSnapshot(account, patch);
+  }
+
   async disconnect(account: AccountId): Promise<void> {
     const connection = this.connections.get(account);
     this.connections.delete(account);
@@ -57,6 +78,7 @@ export class AccountManager {
   }
 
   async shutdown(): Promise<void> {
+    this.shuttingDown = true;
     await Promise.all([...this.connections.keys()].map((account) => this.disconnect(account)));
     await this.options.launcher.shutdown();
   }
@@ -103,6 +125,8 @@ export class AccountManager {
       ...patch,
     };
     this.snapshots.set(account, next);
-    return next;
+    const publicSnapshot = { ...next, rateLimits: next.rateLimits.map((window) => ({ ...window })) };
+    for (const listener of this.listeners) listener(publicSnapshot);
+    return publicSnapshot;
   }
 }

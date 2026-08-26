@@ -219,4 +219,17 @@ describe("AppServerClient", () => {
     ]);
     await client.close();
   });
+
+  it("emits normalized account/thread activity without exposing transcript content in the event", async () => {
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    server!.send({ method: "turn/started", params: { threadId: "thread-1", turnId: "turn-1", text: "secret transcript" } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-1", state: "started" });
+    expect(JSON.stringify(events)).not.toContain("secret transcript");
+    await client.close();
+  });
 });

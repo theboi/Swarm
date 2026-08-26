@@ -69,4 +69,14 @@ describe("DispatchOutbox", () => {
     const outbox = new DispatchOutbox([{ id: "d1", clientUserMessageId: "m1", taskId: "T0", accountId: "bot3", threadId: "t1", state: "waiting_for_limit", createdAt: 0, updatedAt: 0, retryAt: 1234 }]);
     expect(outbox.recoverWaitingTimers()).toEqual([{ id: "d1", retryAt: 1234 }]);
   });
+
+  it("can complete or abandon an existing record without reminting its stable client id", async () => {
+    const outbox = new DispatchOutbox([{ id: "d1", clientUserMessageId: "m1", taskId: "T0", accountId: "bot3", threadId: "t1", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null }]);
+
+    await outbox.complete("d1", 10);
+    expect(outbox.get("d1")).toMatchObject({ state: "completed", clientUserMessageId: "m1" });
+    await outbox.abandon("d1", 11);
+
+    expect(outbox.get("d1")?.state).toBe("attention_required");
+  });
 });

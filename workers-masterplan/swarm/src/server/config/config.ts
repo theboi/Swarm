@@ -9,6 +9,8 @@ export interface SwarmConfig {
   loginPasswordHash: string;
   totpSecret: string;
   sessionSecret: string;
+  codexBin: string;
+  trustManagedProxy: boolean;
   defaultConcurrency: number;
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
@@ -47,6 +49,8 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     loginPasswordHash: required(env, "SWARM_LOGIN_PASSWORD_HASH"),
     totpSecret: required(env, "SWARM_TOTP_SECRET"),
     sessionSecret: required(env, "SWARM_SESSION_SECRET"),
+    codexBin: env.SWARM_CODEX_BIN ?? "/opt/homebrew/bin/codex",
+    trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     defaultConcurrency: Number(env.SWARM_DEFAULT_CONCURRENCY ?? 3),
     masterplanPath: env.SWARM_MASTERPLAN_PATH,
     coordinationRoot: env.SWARM_COORDINATION_ROOT,
@@ -56,6 +60,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("SWARM_PORT must be a valid port");
   if (!Number.isInteger(config.defaultConcurrency) || config.defaultConcurrency < 1) throw new Error("SWARM_DEFAULT_CONCURRENCY must be positive");
+  if (!config.codexBin.startsWith("/")) throw new Error("SWARM_CODEX_BIN must be an absolute path");
   return config;
 }
 

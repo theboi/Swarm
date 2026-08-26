@@ -30,4 +30,21 @@ describe("loadConfig", () => {
     expect(config.publicConfig()).not.toContain("local-password");
     expect(config.publicConfig()).not.toContain("ngrok-secret");
   });
+
+  it("uses an explicit absolute Codex binary and never enables proxy trust by default", async () => {
+    const env = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`BOT${index + 1}_PASSWORD`, "local-password"]));
+
+    const config = await loadConfig({
+      ...env,
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+      SWARM_CODEX_BIN: "/custom/codex",
+    });
+
+    expect(config.codexBin).toBe("/custom/codex");
+    expect(config.trustManagedProxy).toBe(false);
+    expect(config.publicConfig()).not.toContain("/custom/codex");
+  });
 });

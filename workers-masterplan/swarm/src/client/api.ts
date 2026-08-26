@@ -28,37 +28,45 @@ export interface CoordinatorApi {
   startThread(accountId: string): Promise<ApiResult<ThreadSummary>>;
   archiveThread(accountId: string, threadId: string): Promise<ApiResult<unknown>>;
   startTurn(accountId: string, threadId: string, text: string): Promise<ApiResult<unknown>>;
-  steerTurn(accountId: string, threadId: string, text: string): Promise<ApiResult<unknown>>;
-  interruptTurn(accountId: string, threadId: string): Promise<ApiResult<unknown>>;
+  steerTurn(accountId: string, threadId: string, turnId: string, text: string): Promise<ApiResult<unknown>>;
+  interruptTurn(accountId: string, threadId: string, turnId: string): Promise<ApiResult<unknown>>;
   readTranscript(accountId: string, threadId: string): Promise<ApiResult<TranscriptItem[]>>;
   readMarkdown(accountId: string, path: string): Promise<ApiResult<MarkdownDocument>>;
   decideApproval(approval: PendingApproval, decision: string): Promise<ApiResult<unknown>>;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const response = await fetch(`/api/v1${path}`, {
     credentials: "same-origin",
     headers: { "content-type": "application/json", ...init?.headers },
     ...init,
   });
-  return response.json() as Promise<T>;
+  const payload = await response.json() as ApiResult<T>;
+  if (!response.ok && !("error" in payload)) throw new Error("Coordinator request failed");
+  return payload;
+}
+
+async function read<T>(path: string): Promise<T> {
+  const result = await request<T>(path);
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
 }
 
 export function createHttpCoordinatorApi(): CoordinatorApi {
   return {
-    getSession: () => request<SessionState>("/auth/session"),
-    getSnapshot: () => request<CoordinatorSnapshot>("/snapshot"),
-    startLogin: (input) => request<ApiResult<LoginChallenge>>("/auth/challenge", { method: "POST", body: JSON.stringify(input) }),
-    completeLogin: (input) => request<ApiResult<SessionState>>("/auth/complete", { method: "POST", body: JSON.stringify(input) }),
-    previewLaunch: (taskId) => request<ApiResult<LaunchPreview>>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST" }),
-    launch: (taskId, accountId) => request<ApiResult<unknown>>(`/tasks/${encodeURIComponent(taskId)}/launch`, { method: "POST", body: JSON.stringify({ accountId }) }),
-    startThread: (accountId) => request<ApiResult<ThreadSummary>>(`/accounts/${encodeURIComponent(accountId)}/threads`, { method: "POST" }),
-    archiveThread: (accountId, threadId) => request<ApiResult<unknown>>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/archive`, { method: "POST" }),
-    startTurn: (accountId, threadId, text) => request<ApiResult<unknown>>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/turns`, { method: "POST", body: JSON.stringify({ text }) }),
-    steerTurn: (accountId, threadId, text) => request<ApiResult<unknown>>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/steer`, { method: "POST", body: JSON.stringify({ text }) }),
-    interruptTurn: (accountId, threadId) => request<ApiResult<unknown>>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/interrupt`, { method: "POST" }),
-    readTranscript: (accountId, threadId) => request<ApiResult<TranscriptItem[]>>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}`),
-    readMarkdown: (accountId, path) => request<ApiResult<MarkdownDocument>>(`/accounts/${encodeURIComponent(accountId)}/files/read`, { method: "POST", body: JSON.stringify({ path }) }),
-    decideApproval: (approval, decision) => request<ApiResult<unknown>>(`/approvals/${encodeURIComponent(approval.id)}`, { method: "POST", body: JSON.stringify({ decision }) }),
+    getSession: () => read<SessionState>("/auth/session"),
+    getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
+    startLogin: (input) => request<LoginChallenge>("/auth/challenge", { method: "POST", body: JSON.stringify(input) }),
+    completeLogin: (input) => request<SessionState>("/auth/complete", { method: "POST", body: JSON.stringify(input) }),
+    previewLaunch: (taskId) => request<LaunchPreview>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST" }),
+    launch: (taskId, accountId) => request<unknown>(`/tasks/${encodeURIComponent(taskId)}/launch`, { method: "POST", body: JSON.stringify({ accountId }) }),
+    startThread: (accountId) => request<ThreadSummary>(`/accounts/${encodeURIComponent(accountId)}/threads`, { method: "POST" }),
+    archiveThread: (accountId, threadId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/archive`, { method: "POST" }),
+    startTurn: (accountId, threadId, text) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/turns`, { method: "POST", body: JSON.stringify({ text }) }),
+    steerTurn: (accountId, threadId, turnId, text) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/steer`, { method: "POST", body: JSON.stringify({ turnId, text }) }),
+    interruptTurn: (accountId, threadId, turnId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/interrupt`, { method: "POST", body: JSON.stringify({ turnId }) }),
+    readTranscript: (accountId, threadId) => request<TranscriptItem[]>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}`),
+    readMarkdown: (accountId, path) => request<MarkdownDocument>(`/accounts/${encodeURIComponent(accountId)}/files/read`, { method: "POST", body: JSON.stringify({ path }) }),
+    decideApproval: (approval, decision) => request<unknown>(`/approvals/${encodeURIComponent(approval.id)}`, { method: "POST", body: JSON.stringify({ decision }) }),
   };
 }

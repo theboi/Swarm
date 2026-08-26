@@ -13,6 +13,7 @@ function containsSecret(value: unknown, secretValues: readonly string[], key = "
 }
 
 export class AtomicStateStore<T extends Record<string, unknown>> {
+  private mutation = Promise.resolve();
   constructor(
     private readonly path: string,
     private readonly io: { writeTemp?: (path: string, data: string) => Promise<void>; secretValues?: readonly string[] } = {},
@@ -35,9 +36,14 @@ export class AtomicStateStore<T extends Record<string, unknown>> {
     await rename(temporary, this.path);
   }
   async update(mutator: (current: T) => T): Promise<T> {
-    const next = mutator(await this.read());
-    await this.write(next);
-    return next;
+    let result!: T;
+    const next = this.mutation.then(async () => {
+      result = mutator(await this.read());
+      await this.write(result);
+    });
+    this.mutation = next.catch(() => undefined);
+    await next;
+    return result;
   }
 }
 

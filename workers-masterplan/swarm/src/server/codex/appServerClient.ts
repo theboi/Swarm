@@ -35,6 +35,14 @@ export interface SteerTurnInput {
   text: string;
 }
 
+export interface NormalizedAppServerEvent {
+  type: "turn" | "thread" | "rate_limit" | "account" | "connection";
+  accountId: AccountId;
+  threadId?: string;
+  turnId?: string;
+  state?: string;
+}
+
 type ThreadSettingsEcho = {
   cwd?: unknown;
   approvalPolicy?: unknown;
@@ -49,6 +57,7 @@ export class AppServerClient {
   accountInfo: AccountReadResult | undefined;
   private transcript = initialTranscriptState;
   private readonly trackedThreadIds = new Set<string>();
+  private readonly eventListeners = new Set<(event: NormalizedAppServerEvent) => void>();
   private needsTranscriptRecovery = false;
 
   constructor(options: AppServerClientOptions) {
@@ -81,6 +90,11 @@ export class AppServerClient {
   }
 
   close(): Promise<void> { return this.rpc.close(); }
+
+  onEvent(listener: (event: NormalizedAppServerEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
 
   async listAllThreads(): Promise<Array<Record<string, unknown>>> {
     this.requireReady();
@@ -257,10 +271,20 @@ export class AppServerClient {
     const params = notification.params;
     if (params === null || typeof params !== "object" || Array.isArray(params)) return;
     const threadId = (params as Record<string, unknown>).threadId;
+    const recordParams = params as Record<string, unknown>;
+    const turnId = typeof recordParams.turnId === "string" ? recordParams.turnId : undefined;
+    if (notification.method.startsWith("turn/")) this.emit({ type: "turn", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state: notification.method.slice("turn/".length) });
+    else if (notification.method.startsWith("thread/")) this.emit({ type: "thread", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, state: notification.method.slice("thread/".length) });
+    else if (notification.method === "account/rateLimits/updated") this.emit({ type: "rate_limit", accountId: this.account, state: "updated" });
+    else if (notification.method === "account/updated") this.emit({ type: "account", accountId: this.account, state: "updated" });
     if (typeof threadId !== "string" || !this.trackedThreadIds.has(threadId)) return;
     this.transcript = reduceTranscriptEvent(this.transcript, {
       method: notification.method,
-      params: { ...(params as Record<string, unknown>), accountId: this.account },
+      params: { ...recordParams, accountId: this.account },
     });
+  }
+
+  private emit(event: NormalizedAppServerEvent): void {
+    for (const listener of this.eventListeners) listener(event);
   }
 }

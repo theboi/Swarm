@@ -53,4 +53,25 @@ describe("AccountManager", () => {
     await expect(manager.connect({ account: "bot9" as AccountId, password: "bot-password" })).rejects.toThrow(/allowlisted/i);
     expect(launch).not.toHaveBeenCalled();
   });
+
+  it("exposes only a connected account client and emits normalized snapshot changes", async () => {
+    const { manager, client } = fixture();
+    const changes: string[] = [];
+    const unsubscribe = manager.onChange((snapshot) => changes.push(snapshot.connection));
+
+    expect(manager.client(account)).toBeUndefined();
+    await manager.connect({ account, password: "bot-password" });
+
+    expect(manager.client(account)).toBe(client);
+    expect(changes).toEqual(["connecting", "connected"]);
+    unsubscribe();
+  });
+
+  it("allows the coordinator to merge normalized non-secret account status", () => {
+    const { manager } = fixture();
+
+    manager.updateSnapshot(account, { activeTurns: 2, rateLimits: [{ id: "primary", label: "Primary", usedPercent: 20, resetsAt: 1_800, updatedAt: 1_000 }] });
+
+    expect(manager.snapshot(account)).toMatchObject({ activeTurns: 2, rateLimits: [{ id: "primary", usedPercent: 20 }] });
+  });
 });

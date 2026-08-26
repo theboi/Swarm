@@ -129,8 +129,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, onRefresh = async ()
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); if (selectedThread && accountId && draft.trim()) void run(() => api.startTurn(accountId, selectedThread.id, draft), "Message sent."); }}>
             <label htmlFor="message">Message</label><textarea id="message" value={draft} onChange={(event) => setDraft(event.target.value)} />
             <button className="primary-button" type="submit" disabled={!selectedThread?.capabilities.canStartTurn}>Send</button>
-            <button type="button" disabled={!selectedThread?.capabilities.canSteer || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.steerTurn(accountId, selectedThread.id, draft), "Turn steered.")}>Steer</button>
-            <button type="button" disabled={!selectedThread?.capabilities.canInterrupt || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id), "Turn interrupted.")}>Interrupt</button>
+            <button type="button" disabled={!selectedThread?.capabilities.canSteer || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.steerTurn(accountId, selectedThread.id, latestTurnId, draft), "Turn steered.")}>Steer</button>
+            <button type="button" disabled={!selectedThread?.capabilities.canInterrupt || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}>Interrupt</button>
           </form>
         </section>
       </div>

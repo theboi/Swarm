@@ -36,6 +36,19 @@ export class DispatchOutbox {
   async markSubmitting(id: string, now = Date.now()): Promise<void> { await this.transition(id, ["queued", "waiting_for_limit"], "submitting", now); }
   async markAccepted(id: string, now = Date.now()): Promise<void> { await this.transition(id, ["submitting"], "accepted", now); }
 
+  async complete(id: string, now = Date.now()): Promise<void> {
+    await this.transition(id, ["accepted"], "completed", now);
+  }
+
+  async fail(id: string, errorCode: string, now = Date.now()): Promise<void> {
+    await this.transition(id, ["queued", "submitting", "accepted", "waiting_for_limit"], "failed", now, undefined, errorCode);
+  }
+
+  /** Human acknowledgement of an ambiguous/aborted dispatch; it cannot resend the old stable message. */
+  async abandon(id: string, now = Date.now()): Promise<void> {
+    await this.transition(id, ["queued", "submitting", "accepted", "waiting_for_limit", "completed", "failed"], "attention_required", now);
+  }
+
   async waitForLimit(id: string, retryAt: number, now = Date.now()): Promise<void> {
     const record = this.require(id);
     if (!Number.isFinite(retryAt) || retryAt <= now) throw new Error("Rate-limit retry must be in the future");
@@ -70,13 +83,14 @@ export class DispatchOutbox {
     return record;
   }
 
-  private async transition(id: string, allowed: DispatchRecord["state"][], state: DispatchRecord["state"], now: number, retryAt?: number): Promise<void> {
+  private async transition(id: string, allowed: DispatchRecord["state"][], state: DispatchRecord["state"], now: number, retryAt?: number, errorCode?: string): Promise<void> {
     const record = this.require(id);
     if (!allowed.includes(record.state)) throw new Error(`Cannot transition dispatch ${id} from ${record.state} to ${state}`);
     const prior = { ...record };
     record.state = state;
     record.updatedAt = now;
     record.retryAt = retryAt ?? null;
+    record.errorCode = errorCode;
     try { await this.flush(); } catch (error) { Object.assign(record, prior); throw error; }
   }
 
