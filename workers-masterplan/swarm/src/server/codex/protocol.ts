@@ -1,28 +1,39 @@
 import type { AccountId } from "../../shared/contracts.js";
 
-export type JsonRpcId = number | string;
+/** The Codex app-server wire protocol deliberately omits a JSON-RPC version field. */
+export type AppServerId = number | string;
 
-export interface JsonRpcRequest {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
+export interface AppServerRequest {
+  id: AppServerId;
+  method: string;
+  params?: unknown;
+  /** Opaque tracing context sent by the app-server; the coordinator does not synthesize it. */
+  trace?: unknown;
+}
+
+export interface AppServerNotification {
   method: string;
   params?: unknown;
 }
 
-export interface JsonRpcNotification {
-  jsonrpc: "2.0";
+export interface AppServerSuccessResponse {
+  id: AppServerId;
+  result: unknown;
+}
+
+export interface AppServerErrorResponse {
+  id: AppServerId;
+  error: { code: number; message: string; data?: unknown };
+}
+
+export type AppServerResponse = AppServerSuccessResponse | AppServerErrorResponse;
+export type AppServerInbound = AppServerRequest | AppServerNotification | AppServerResponse;
+
+/** Coordinator-local telemetry. It is never an app-server wire message. */
+export interface ProtocolDiagnostic {
   method: string;
-  params?: unknown;
+  params: unknown;
 }
-
-export interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
-
-export type JsonRpcInbound = JsonRpcRequest | JsonRpcNotification | JsonRpcResponse;
 
 export const APP_SERVER_METHODS = [
   "initialize",
@@ -56,7 +67,7 @@ export function isApprovalMethod(method: string): method is ApprovalMethod {
   return (APPROVAL_METHODS as readonly string[]).includes(method);
 }
 
-/** Method-compatible no-grant response for a failed or timed-out approval path. */
+/** Method-compatible timeout/error response; a selected human denial is built separately. */
 export function safeApprovalDecline(method: ApprovalMethod): Record<string, unknown> {
   switch (method) {
     case "item/commandExecution/requestApproval":
@@ -65,9 +76,8 @@ export function safeApprovalDecline(method: ApprovalMethod): Record<string, unkn
     case "item/permissions/requestApproval":
       return { permissions: {}, scope: "turn", strictAutoReview: true };
     case "execCommandApproval":
-      return { decision: "timed_out" };
     case "applyPatchApproval":
-      return { decision: "denied" };
+      return { decision: "timed_out" };
   }
 }
 
@@ -136,22 +146,44 @@ export function safeTurnSettings(account: AccountId): SafeTurnSettings {
   };
 }
 
-function isJsonRpcId(value: unknown): value is JsonRpcId {
-  return typeof value === "string" || typeof value === "number";
+function isAppServerId(value: unknown): value is AppServerId {
+  return typeof value === "string" || (typeof value === "number" && Number.isFinite(value));
 }
 
-export function isJsonRpcObject(message: unknown): message is Record<string, unknown> {
+function hasOwn(message: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(message, key);
+}
+
+export function isAppServerObject(message: unknown): message is Record<string, unknown> {
   return message !== null && typeof message === "object" && !Array.isArray(message);
 }
 
-export function isJsonRpcResponse(message: unknown): message is JsonRpcResponse {
-  return isJsonRpcObject(message) && message.jsonrpc === "2.0" && isJsonRpcId(message.id) && typeof message.method !== "string";
+function isAppServerError(value: unknown): value is AppServerErrorResponse["error"] {
+  return isAppServerObject(value)
+    && typeof value.code === "number"
+    && Number.isFinite(value.code)
+    && typeof value.message === "string";
 }
 
-export function isJsonRpcRequest(message: unknown): message is JsonRpcRequest {
-  return isJsonRpcObject(message) && message.jsonrpc === "2.0" && isJsonRpcId(message.id) && typeof message.method === "string";
+export function isAppServerResponse(message: unknown): message is AppServerResponse {
+  if (!isAppServerObject(message) || !isAppServerId(message.id) || typeof message.method === "string") return false;
+  const hasResult = hasOwn(message, "result");
+  const hasError = hasOwn(message, "error");
+  return (hasResult && !hasError) || (!hasResult && hasError && isAppServerError(message.error));
 }
 
-export function isJsonRpcNotification(message: unknown): message is JsonRpcNotification {
-  return isJsonRpcObject(message) && message.jsonrpc === "2.0" && !("id" in message) && typeof message.method === "string";
+export function isAppServerRequest(message: unknown): message is AppServerRequest {
+  return isAppServerObject(message)
+    && isAppServerId(message.id)
+    && typeof message.method === "string"
+    && !hasOwn(message, "result")
+    && !hasOwn(message, "error");
+}
+
+export function isAppServerNotification(message: unknown): message is AppServerNotification {
+  return isAppServerObject(message)
+    && !hasOwn(message, "id")
+    && typeof message.method === "string"
+    && !hasOwn(message, "result")
+    && !hasOwn(message, "error");
 }

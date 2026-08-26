@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import type { LaunchHandle } from "./suLauncher.js";
-import { APP_SERVER_NOTIFICATION_METHODS, isApprovalMethod, isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse, safeApprovalDecline, type JsonRpcId, type JsonRpcNotification, type JsonRpcRequest, type JsonRpcResponse } from "./protocol.js";
+import { APP_SERVER_NOTIFICATION_METHODS, isAppServerNotification, isAppServerRequest, isAppServerResponse, isApprovalMethod, safeApprovalDecline, type AppServerId, type AppServerNotification, type AppServerRequest, type AppServerResponse, type ProtocolDiagnostic } from "./protocol.js";
 
 export interface JsonRpcClientOptions {
   launch: Pick<LaunchHandle, "endpoint" | "capabilityToken">;
@@ -15,18 +15,19 @@ type PendingRequest = {
   timeout: NodeJS.Timeout;
 };
 
-export type ServerRequestHandler = (request: JsonRpcRequest) => Promise<unknown | undefined> | unknown | undefined;
-export type NotificationHandler = (notification: JsonRpcNotification) => void;
+export type ServerRequestHandler = (request: AppServerRequest) => Promise<unknown | undefined> | unknown | undefined;
+export type NotificationHandler = (notification: AppServerNotification | ProtocolDiagnostic) => void;
 export interface ApprovalRequestHandler {
-  handle(request: JsonRpcRequest): Promise<Record<string, unknown>>;
+  handle(request: AppServerRequest): Promise<Record<string, unknown>>;
 }
 
-/** JSON-RPC 2.0 transport that holds the only plaintext loopback capability token. */
+/** Codex app-server RPC transport that holds the only plaintext loopback capability token. */
 export class JsonRpcClient {
-  private readonly pending = new Map<JsonRpcId, PendingRequest>();
+  private readonly pending = new Map<AppServerId, PendingRequest>();
   private readonly notificationHandlers = new Set<NotificationHandler>();
+  private readonly disconnectHandlers = new Set<() => void>();
   private readonly serverRequestHandlers = new Set<ServerRequestHandler>();
-  private readonly diagnostics: JsonRpcNotification[] = [];
+  private readonly diagnostics: ProtocolDiagnostic[] = [];
   private approvalHandler: ApprovalRequestHandler | undefined;
   private socket: WebSocket | undefined;
   private nextId = 1;
@@ -56,7 +57,10 @@ export class JsonRpcClient {
     });
 
     socket.on("message", (data) => this.receive(String(data)));
-    socket.on("close", () => this.rejectAllPending(new Error("App-server disconnected")));
+    socket.on("close", () => {
+      this.rejectAllPending(new Error("App-server disconnected"));
+      if (!this.closing) for (const handler of this.disconnectHandlers) handler();
+    });
     socket.on("error", () => undefined);
   }
 
@@ -81,6 +85,11 @@ export class JsonRpcClient {
     return () => this.serverRequestHandlers.delete(handler);
   }
 
+  onDisconnect(handler: () => void): () => void {
+    this.disconnectHandlers.add(handler);
+    return () => this.disconnectHandlers.delete(handler);
+  }
+
   /** Installs the only handler allowed to answer app-server approval methods. */
   installApprovalHandler(handler: ApprovalRequestHandler): () => void {
     if (this.approvalHandler) throw new Error("An approval policy handler is already installed");
@@ -88,17 +97,17 @@ export class JsonRpcClient {
     return () => { if (this.approvalHandler === handler) this.approvalHandler = undefined; };
   }
 
-  getDiagnostics(): JsonRpcNotification[] { return [...this.diagnostics]; }
+  getDiagnostics(): ProtocolDiagnostic[] { return [...this.diagnostics]; }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("App-server is not connected"));
     const id = this.nextId++;
-    const message: JsonRpcRequest = { jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) };
+    const message: AppServerRequest = { id, method, ...(params === undefined ? {} : { params }) };
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`JSON-RPC request ${method} timed out`));
+        reject(new Error(`Codex app-server RPC request ${method} timed out`));
       }, this.options.requestTimeoutMs ?? 15_000);
       this.pending.set(id, { method, resolve: (value) => resolve(value as T), reject, timeout });
       socket.send(JSON.stringify(message), (error) => {
@@ -115,7 +124,7 @@ export class JsonRpcClient {
   notify(method: string, params?: unknown): void {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("App-server is not connected");
-    socket.send(JSON.stringify({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }));
+    socket.send(JSON.stringify({ method, ...(params === undefined ? {} : { params }) }));
   }
 
   async initializeAndReadAccount<T = unknown>(): Promise<T> {
@@ -132,16 +141,16 @@ export class JsonRpcClient {
       this.recordDiagnostic("protocol/invalidMessage", { raw: "[REDACTED]" });
       return;
     }
-    if (isJsonRpcResponse(message)) {
+    if (isAppServerResponse(message)) {
       this.receiveResponse(message);
       return;
     }
-    if (isJsonRpcRequest(message)) {
+    if (isAppServerRequest(message)) {
       void this.receiveServerRequest(message);
       return;
     }
-    if (isJsonRpcNotification(message)) {
-      const notification: JsonRpcNotification = { jsonrpc: "2.0", method: message.method, ...(message.params === undefined ? {} : { params: message.params }) };
+    if (isAppServerNotification(message)) {
+      const notification: AppServerNotification = { method: message.method, ...(message.params === undefined ? {} : { params: message.params }) };
       if (!APP_SERVER_NOTIFICATION_METHODS.has(notification.method)) {
         this.recordDiagnostic("protocol/unknownNotification", {
           method: notification.method,
@@ -155,7 +164,7 @@ export class JsonRpcClient {
     this.recordDiagnostic("protocol/unknownMessage", {});
   }
 
-  private receiveResponse(message: JsonRpcResponse): void {
+  private receiveResponse(message: AppServerResponse): void {
     const pending = this.pending.get(message.id);
     if (!pending) {
       this.recordDiagnostic("protocol/orphanResponse", { id: message.id });
@@ -163,22 +172,22 @@ export class JsonRpcClient {
     }
     clearTimeout(pending.timeout);
     this.pending.delete(message.id);
-    if (message.error) {
-      pending.reject(new Error(`JSON-RPC ${pending.method} failed: ${message.error.message}`));
+    if ("error" in message) {
+      pending.reject(new Error(`Codex app-server RPC ${pending.method} failed: ${message.error.message}`));
     } else {
       pending.resolve(message.result);
     }
   }
 
-  private async receiveServerRequest(request: JsonRpcRequest): Promise<void> {
+  private async receiveServerRequest(request: AppServerRequest): Promise<void> {
     if (isApprovalMethod(request.method)) {
       try {
         if (!this.approvalHandler) throw new Error("No approval policy handler is installed");
         const result = await this.withDeadline(this.approvalHandler.handle(request), request.method);
-        this.sendResponse({ jsonrpc: "2.0", id: request.id, result });
+        this.sendResponse({ id: request.id, result });
       } catch {
         this.recordDiagnostic("protocol/serverRequestFailed", { method: request.method, id: request.id, outcome: "safe_decline" });
-        this.sendResponse({ jsonrpc: "2.0", id: request.id, result: safeApprovalDecline(request.method) });
+        this.sendResponse({ id: request.id, result: safeApprovalDecline(request.method) });
       }
       return;
     }
@@ -191,24 +200,24 @@ export class JsonRpcClient {
       }
     } catch {
       this.recordDiagnostic("protocol/serverRequestFailed", { method: request.method, id: request.id, outcome: "error" });
-      this.sendResponse({ jsonrpc: "2.0", id: request.id, error: { code: -32603, message: "Server request handler failed" } });
+      this.sendResponse({ id: request.id, error: { code: -32603, message: "Server request handler failed" } });
       return;
     }
     if (result !== undefined) {
-      this.sendResponse({ jsonrpc: "2.0", id: request.id, result });
+      this.sendResponse({ id: request.id, result });
       return;
     }
     this.recordDiagnostic("protocol/unknownServerRequest", { method: request.method, id: request.id });
-    this.sendResponse({ jsonrpc: "2.0", id: request.id, error: { code: -32601, message: "Request requires human review" } });
+    this.sendResponse({ id: request.id, error: { code: -32601, message: "Request requires human review" } });
   }
 
-  private sendResponse(response: JsonRpcResponse): void {
+  private sendResponse(response: AppServerResponse): void {
     const socket = this.socket;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(response));
   }
 
   private recordDiagnostic(method: string, params: unknown): void {
-    const event: JsonRpcNotification = { jsonrpc: "2.0", method, params };
+    const event: ProtocolDiagnostic = { method, params };
     this.diagnostics.push(event);
     for (const handler of this.notificationHandlers) handler(event);
   }

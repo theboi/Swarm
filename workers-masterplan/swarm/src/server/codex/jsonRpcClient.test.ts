@@ -25,17 +25,18 @@ describe("JsonRpcClient", () => {
   it("correlates unique request ids and delivers notifications", async () => {
     const client = await connectedClient();
     server!.onMessage((message, peer) => {
-      if (message.method === "first") peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { value: 1 } }));
-      if (message.method === "second") peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { value: 2 } }));
+      if (message.method === "first") peer.send(JSON.stringify({ id: message.id, result: { value: 1 } }));
+      if (message.method === "second") peer.send(JSON.stringify({ id: message.id, result: { value: 2 } }));
     });
     const notifications: string[] = [];
     client.onNotification((event) => notifications.push(event.method));
 
     await expect(Promise.all([client.request("first", {}), client.request("second", {})])).resolves.toEqual([{ value: 1 }, { value: 2 }]);
-    server!.send({ jsonrpc: "2.0", method: "thread/started", params: { thread: { id: "t1" } } });
+    server!.send({ method: "thread/started", params: { thread: { id: "t1" } } });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(server!.received.map((message) => message.id)).toEqual([1, 2]);
+    expect(server!.received.every((message) => !Object.prototype.hasOwnProperty.call(message, "jsonrpc"))).toBe(true);
     expect(notifications).toEqual(["thread/started"]);
     await client.close();
   });
@@ -45,8 +46,8 @@ describe("JsonRpcClient", () => {
     const order: string[] = [];
     server!.onMessage((message, peer) => {
       if (message.method) order.push(message.method);
-      if (message.method === "initialize") peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { codexHome: "/Users/bot1/.codex" } }));
-      if (message.method === "account/read") peer.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { account: { type: "chatgpt" }, requiresOpenaiAuth: false } }));
+      if (message.method === "initialize") peer.send(JSON.stringify({ id: message.id, result: { codexHome: "/Users/bot1/.codex" } }));
+      if (message.method === "account/read") peer.send(JSON.stringify({ id: message.id, result: { account: { type: "chatgpt" }, requiresOpenaiAuth: false } }));
     });
 
     await expect(client.initializeAndReadAccount()).resolves.toEqual({ account: { type: "chatgpt" }, requiresOpenaiAuth: false });
@@ -57,12 +58,12 @@ describe("JsonRpcClient", () => {
   it("uses a method-compatible fallback for approvals and safely refuses unknown requests", async () => {
     const client = await connectedClient();
 
-    server!.send({ jsonrpc: "2.0", id: "command-1", method: "item/commandExecution/requestApproval", params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, environmentId: null, command: "git status", cwd: "/Users/bot1/Dev/EdenMind" } });
-    server!.send({ jsonrpc: "2.0", id: "unknown-1", method: "unknown/request", params: {} });
+    server!.send({ id: "command-1", method: "item/commandExecution/requestApproval", params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, environmentId: null, command: "git status", cwd: "/Users/bot1/Dev/EdenMind" } });
+    server!.send({ id: "unknown-1", method: "unknown/request", params: {} });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(server!.received).toContainEqual({ jsonrpc: "2.0", id: "command-1", result: { decision: "cancel" } });
-    expect(server!.received).toContainEqual(expect.objectContaining({ jsonrpc: "2.0", id: "unknown-1", error: expect.objectContaining({ code: -32601 }) }));
+    expect(server!.received).toContainEqual({ id: "command-1", result: { decision: "cancel" } });
+    expect(server!.received).toContainEqual(expect.objectContaining({ id: "unknown-1", error: expect.objectContaining({ code: -32601 }) }));
     await client.close();
   });
 
@@ -120,7 +121,7 @@ describe("JsonRpcClient", () => {
     client.onNotification((event) => notifications.push(event));
 
     server!.send(null as never);
-    server!.send({ jsonrpc: "2.0", method: "future/secret", params: { token: "never-expose-this" } });
+    server!.send({ method: "future/secret", params: { token: "never-expose-this" } });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(notifications).toContainEqual(expect.objectContaining({ method: "protocol/unknownNotification", params: expect.objectContaining({ method: "future/secret" }) }));
@@ -134,7 +135,7 @@ describe("JsonRpcClient", () => {
     const notifications: string[] = [];
     client.onNotification((event) => notifications.push(event.method));
 
-    server!.send({ jsonrpc: "2.0", method: "account/login/completed", params: { account: { type: "chatgpt" } } });
+    server!.send({ method: "account/login/completed", params: { account: { type: "chatgpt" } } });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(notifications).toEqual(["account/login/completed"]);
@@ -148,11 +149,28 @@ describe("JsonRpcClient", () => {
     const client = await connectedClient();
     client.installApprovalHandler({ handle });
 
-    server!.send({ jsonrpc: "2.0", id: `approval-${_case}`, method: "item/fileChange/requestApproval", params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, reason: null, grantRoot: null } });
+    server!.send({ id: `approval-${_case}`, method: "item/fileChange/requestApproval", params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, reason: null, grantRoot: null } });
     await new Promise((resolve) => setTimeout(resolve, 120));
 
-    expect(server!.received).toContainEqual({ jsonrpc: "2.0", id: `approval-${_case}`, result: { decision: "cancel" } });
+    expect(server!.received).toContainEqual({ id: `approval-${_case}`, result: { decision: "cancel" } });
     expect(client.getDiagnostics()).toContainEqual(expect.objectContaining({ method: "protocol/serverRequestFailed" }));
+    await client.close();
+  });
+
+  it("does not let primitive, array, ambiguous, result-less, or malformed-error frames settle a pending request", async () => {
+    const client = await connectedClient();
+    server!.onMessage((message, peer) => {
+      if (message.method !== "await-valid-response") return;
+      peer.send(JSON.stringify(null));
+      peer.send(JSON.stringify([]));
+      peer.send(JSON.stringify({ id: message.id, method: "ambiguous", result: {} }));
+      peer.send(JSON.stringify({ id: message.id }));
+      peer.send(JSON.stringify({ id: message.id, error: { code: "bad", message: 42 } }));
+      setTimeout(() => peer.send(JSON.stringify({ id: message.id, result: { settled: true } })), 5);
+    });
+
+    await expect(client.request("await-valid-response", {})).resolves.toEqual({ settled: true });
+    expect(client.getDiagnostics().filter((event) => event.method === "protocol/unknownMessage")).toHaveLength(5);
     await client.close();
   });
 

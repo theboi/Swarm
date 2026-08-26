@@ -2,8 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 
-export interface JsonRpcMessage {
-  jsonrpc: "2.0";
+export interface AppServerWireMessage {
   id?: number | string;
   method?: string;
   params?: unknown;
@@ -13,12 +12,12 @@ export interface JsonRpcMessage {
 
 export interface FakeAppServer {
   url: string;
-  received: JsonRpcMessage[];
+  received: AppServerWireMessage[];
   start(): Promise<void>;
   stop(): Promise<void>;
-  send(message: JsonRpcMessage): void;
+  send(message: AppServerWireMessage): void;
   closeClients(): void;
-  onMessage(handler: (message: JsonRpcMessage, peer: WebSocket) => void): void;
+  onMessage(handler: (message: AppServerWireMessage, peer: WebSocket) => void): void;
 }
 
 /** A local v2-shaped websocket fixture that enforces the launch token digest. */
@@ -26,8 +25,8 @@ export function createFakeAppServer(capabilityTokenDigest: string): FakeAppServe
   const http = createServer();
   const websocket = new WebSocketServer({ noServer: true });
   const peers = new Set<WebSocket>();
-  const received: JsonRpcMessage[] = [];
-  let handler: ((message: JsonRpcMessage, peer: WebSocket) => void) | undefined;
+  const received: AppServerWireMessage[] = [];
+  let handler: ((message: AppServerWireMessage, peer: WebSocket) => void) | undefined;
   let port = 0;
 
   http.on("upgrade", (request, socket, head) => {
@@ -48,7 +47,7 @@ export function createFakeAppServer(capabilityTokenDigest: string): FakeAppServe
     peers.add(peer);
     peer.on("close", () => peers.delete(peer));
     peer.on("message", (wire) => {
-      const message = JSON.parse(String(wire)) as JsonRpcMessage;
+      const message = JSON.parse(String(wire)) as AppServerWireMessage;
       received.push(message);
       handler?.(message, peer);
     });

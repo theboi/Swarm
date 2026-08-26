@@ -5,9 +5,10 @@ import {
   type ApprovalChoice,
   type ApprovalClassification,
   type ApprovalContext,
+  type ApprovalFilesystem,
   type ApprovalRequest,
 } from "../safety/approvalPolicy.js";
-import { isApprovalMethod, safeApprovalDecline, type ApprovalMethod, type JsonRpcRequest } from "./protocol.js";
+import { isApprovalMethod, safeApprovalDecline, type ApprovalMethod, type AppServerRequest } from "./protocol.js";
 
 export interface ApprovalJournalEntry {
   pending: PendingApproval;
@@ -17,6 +18,7 @@ export interface ApprovalJournalEntry {
   summary: string;
   offeredChoices: string[];
   actor: "auto" | "human" | "timeout" | "error";
+  chosenChoice?: ApprovalChoice["kind"];
   chosenResponse?: Record<string, unknown>;
   sendOutcome: "pending" | "response_ready" | "safe_decline";
 }
@@ -32,6 +34,7 @@ export interface ApprovalRouterOptions {
   journal: ApprovalJournal;
   requestTimeoutMs?: number;
   now?: () => number;
+  filesystem?: ApprovalFilesystem;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -44,45 +47,47 @@ function asString(value: unknown): string | null {
 
 function protocolChoices(method: ApprovalMethod): string[] {
   switch (method) {
-    case "item/commandExecution/requestApproval": return ["decline", "cancel"];
-    case "item/fileChange/requestApproval": return ["decline", "cancel"];
-    case "item/permissions/requestApproval": return ["grant"];
+    case "item/commandExecution/requestApproval": return ["accept", "decline", "cancel"];
+    case "item/fileChange/requestApproval": return ["accept", "decline", "cancel"];
+    case "item/permissions/requestApproval": return ["grant_turn", "grant_turn_strict", "deny"];
     case "execCommandApproval": return ["accept", "decline", "cancel"];
     case "applyPatchApproval": return ["accept", "decline", "cancel"];
   }
 }
 
 function autoChoice(method: ApprovalMethod): ApprovalChoice {
-  return method === "item/permissions/requestApproval"
-    ? { kind: "grant", permissions: {}, scope: "turn" }
-    : { kind: "accept" };
+  if (method === "item/permissions/requestApproval") throw new Error("Permissions cannot be auto-granted");
+  return { kind: "accept" };
 }
 
 /** One fail-closed policy boundary for every app-server approval server request. */
 export class ApprovalRouter {
   private readonly now: () => number;
+  readonly account;
 
   constructor(private readonly options: ApprovalRouterOptions) {
     this.now = options.now ?? Date.now;
+    this.account = options.context.account;
   }
 
-  async handle(request: JsonRpcRequest): Promise<Record<string, unknown>> {
+  async handle(request: AppServerRequest): Promise<Record<string, unknown>> {
     if (!isApprovalMethod(request.method)) throw new Error("Approval router received a non-approval method");
     const method = request.method;
     const params = record(request.params);
     const policyRequest: ApprovalRequest = { method, params };
-    const classification = await classifyApproval(policyRequest, this.options.context);
+    const classification = await classifyApproval(policyRequest, this.options.context, this.options.filesystem);
     const base = this.entry(request, method, params, classification, "error", "pending");
 
     if (classification.outcome === "auto_accept") {
-      const response = buildApprovalResponse(policyRequest, autoChoice(method), this.options.context);
-      await this.options.journal.append({ ...base, actor: "auto", chosenResponse: response, sendOutcome: "response_ready" });
+      const choice = autoChoice(method);
+      const response = await buildApprovalResponse(policyRequest, choice, this.options.context, this.options.filesystem);
+      await this.options.journal.append({ ...base, actor: "auto", chosenChoice: choice.kind, chosenResponse: response, sendOutcome: "response_ready" });
       return response;
     }
 
     if (classification.outcome === "decline") {
       const response = safeApprovalDecline(method);
-      await this.options.journal.append({ ...base, actor: "error", chosenResponse: response, sendOutcome: "safe_decline" });
+      await this.options.journal.append({ ...base, actor: "error", chosenChoice: "deny", chosenResponse: response, sendOutcome: "safe_decline" });
       return response;
     }
 
@@ -90,8 +95,8 @@ export class ApprovalRouter {
     await this.options.journal.append(pending);
     try {
       const choice = await this.withDeadline(this.options.journal.waitForDecision(pending));
-      const response = buildApprovalResponse(policyRequest, choice, this.options.context);
-      await this.options.journal.append({ ...base, actor: "human", chosenResponse: response, sendOutcome: "response_ready" });
+      const response = await buildApprovalResponse(policyRequest, choice, this.options.context, this.options.filesystem);
+      await this.options.journal.append({ ...base, actor: "human", chosenChoice: choice.kind, chosenResponse: response, sendOutcome: "response_ready" });
       return response;
     } catch {
       const response = safeApprovalDecline(method);
@@ -101,7 +106,7 @@ export class ApprovalRouter {
   }
 
   private entry(
-    request: JsonRpcRequest,
+    request: AppServerRequest,
     method: ApprovalMethod,
     params: Record<string, unknown>,
     classification: ApprovalClassification,
