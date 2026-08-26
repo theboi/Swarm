@@ -1,6 +1,6 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 
@@ -28,6 +28,18 @@ describe("loadConfig", () => {
 
     expect(config.loginEmail).toBe("claudio@example.com");
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("uses the MVP3 manifest and EdenMind repository root when path settings are omitted", async () => {
+    const config = await loadConfig({
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+    });
+
+    expect(config.masterplanPath).toBe("manifests/mvp3.json");
+    expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
   });
 
   it("reads bot credentials only from named SWARM_USER slots and keeps passwords out of its public view", async () => {
