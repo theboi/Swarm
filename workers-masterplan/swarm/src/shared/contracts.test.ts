@@ -91,6 +91,44 @@ describe("validateTaskManifest", () => {
     });
   });
 
+  it("accepts paired path and layer metadata", () => {
+    const layered = {
+      ...validManifest,
+      tasks: [
+        { ...validManifest.tasks[0], pathId: "P", pathStep: 1 },
+        { ...validManifest.tasks[1], pathId: "P", pathStep: 2 },
+      ],
+    };
+
+    expect(validateTaskManifest(layered)).toEqual({ ok: true, data: layered });
+  });
+
+  it.each([
+    [{ ...validManifest.tasks[0], pathId: "P" }, "tasks[0].pathStep", "required"],
+    [{ ...validManifest.tasks[0], pathStep: 1 }, "tasks[0].pathId", "required"],
+    [{ ...validManifest.tasks[0], pathId: " ", pathStep: 1 }, "tasks[0].pathId", "required"],
+    [{ ...validManifest.tasks[0], pathId: "P", pathStep: -1 }, "tasks[0].pathStep", "value"],
+    [{ ...validManifest.tasks[0], pathId: "P", pathStep: 1.5 }, "tasks[0].pathStep", "value"],
+  ])("rejects malformed path-layer metadata", (task, field, reason) => {
+    expect(validateTaskManifest({ ...validManifest, tasks: [task] })).toEqual({
+      ok: false,
+      error: { code: "MANIFEST_INVALID", field, reason },
+    });
+  });
+
+  it("rejects duplicate positions inside one path", () => {
+    expect(validateTaskManifest({
+      ...validManifest,
+      tasks: [
+        { ...validManifest.tasks[0], pathId: "P", pathStep: 1 },
+        { ...validManifest.tasks[1], pathId: "P", pathStep: 1 },
+      ],
+    })).toEqual({
+      ok: false,
+      error: { code: "MANIFEST_INVALID", field: "tasks[1].pathStep", reason: "duplicate" },
+    });
+  });
+
   it("rejects required fields that contain only whitespace", () => {
     expect(validateTaskManifest({ ...validManifest, title: "   " })).toEqual({
       ok: false,

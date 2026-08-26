@@ -26,11 +26,27 @@ function useMobile(): boolean {
   return mobile;
 }
 
-function taskNodes(tasks: TaskNode[], onSelect: (task: TaskNode) => void): TaskFlowNode[] {
+export function taskLayoutPositions(tasks: Array<Pick<TaskNode, "id" | "pathId" | "pathStep">>): Map<string, { x: number; y: number }> {
+  const layered = tasks.length > 0 && tasks.every((task) => task.pathId !== undefined && task.pathStep !== undefined);
+  if (!layered) {
+    return new Map(tasks.map((task, index) => [task.id, { x: (index % 3) * 260, y: Math.floor(index / 3) * 170 }]));
+  }
+
+  const paths = [...new Set(tasks.map((task) => task.pathId!).filter((path) => path !== "shared"))];
+  const pathColumns = new Map(paths.map((path, index) => [path, index * 260]));
+  const sharedX = paths.length > 0 ? ((paths.length - 1) * 260) / 2 : 0;
+  return new Map(tasks.map((task) => [
+    task.id,
+    { x: task.pathId === "shared" ? sharedX : pathColumns.get(task.pathId!) ?? sharedX, y: task.pathStep! * 170 },
+  ]));
+}
+
+function taskNodes(tasks: TaskNode[], onSelect: (task: TaskNode) => void, layoutTasks: TaskNode[] = tasks): TaskFlowNode[] {
+  const positions = taskLayoutPositions(layoutTasks);
   return tasks.map((task, index) => ({
     id: task.id,
     type: "task",
-    position: { x: (index % 3) * 260, y: Math.floor(index / 3) * 170 },
+    position: positions.get(task.id) ?? { x: (index % 3) * 260, y: Math.floor(index / 3) * 170 },
     data: { task, onSelect },
   }));
 }
@@ -45,7 +61,7 @@ function TaskInspector({ task, onOpenChat, threadId, mobile, onClose }: { task: 
   useEffect(() => {
     if (mobile) closeButton.current?.focus();
   }, [mobile, task.id]);
-  const body = <><StatusBadge state={task.readiness.state} /><h2 id="task-inspector-title">{task.id} {task.title}</h2><p>Dependencies: {task.dependsOn.length ? task.dependsOn.join(", ") : "None reported"}</p><p>Suggested account: {task.readiness.suggestedAccount ?? "Unknown"}</p><h3>Readiness evidence</h3>{task.readiness.evidence.length ? <ul>{task.readiness.evidence.map((evidence) => <li key={evidence.code}>{evidence.code}: {evidence.satisfied ? "satisfied" : "not satisfied"}</li>)}</ul> : <p>No readiness evidence reported.</p>}<button type="button" aria-label={`Launch ${task.id}`} disabled>Launch from Home</button><button className="primary-button" type="button" onClick={onOpenChat} disabled={!threadId}>Open chat</button></>;
+  const body = <><StatusBadge state={task.readiness.state} /><h2 id="task-inspector-title">{task.id} {task.title}</h2>{task.pathId !== undefined && task.pathStep !== undefined ? <p>Path: {task.pathId} · Layer: {task.pathStep}</p> : null}<p>Dependencies: {task.dependsOn.length ? task.dependsOn.join(", ") : "None reported"}</p><p>Suggested account: {task.readiness.suggestedAccount ?? "Unknown"}</p><h3>Readiness evidence</h3>{task.readiness.evidence.length ? <ul>{task.readiness.evidence.map((evidence) => <li key={evidence.code}>{evidence.code}: {evidence.satisfied ? "satisfied" : "not satisfied"}</li>)}</ul> : <p>No readiness evidence reported.</p>}<button type="button" aria-label={`Launch ${task.id}`} disabled>Launch from Home</button><button className="primary-button" type="button" onClick={onOpenChat} disabled={!threadId}>Open chat</button></>;
   if (!mobile) return <aside className="flow-inspector" aria-labelledby="task-inspector-title">{body}</aside>;
   return <div className="dialog-backdrop"><section className="flow-overlay" role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Tab") { const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled])')]; const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }}>{body}<button ref={closeButton} type="button" onClick={onClose}>Close</button></section></div>;
 }
@@ -65,7 +81,7 @@ export function FlowchartPage({ snapshot, onOpenChat, initialViewport = { x: 0, 
     if (!selectedTask) selectionTrigger.current?.focus();
   }, [selectedTask]);
   const visibleTasks = useMemo(() => snapshot.tasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, snapshot.tasks]);
-  const nodes = useMemo(() => taskNodes(visibleTasks, selectTask), [selectTask, visibleTasks]);
+  const nodes = useMemo(() => taskNodes(visibleTasks, selectTask, snapshot.tasks), [selectTask, snapshot.tasks, visibleTasks]);
   const edges = useMemo(() => taskEdges(visibleTasks), [visibleTasks]);
   const selectedThread = selectedTask ? snapshot.dispatches.find((dispatch) => dispatch.taskId === selectedTask.id)?.threadId : undefined;
 

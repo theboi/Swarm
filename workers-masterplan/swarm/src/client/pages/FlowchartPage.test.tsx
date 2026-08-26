@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FlowchartPage } from "./FlowchartPage";
+import { FlowchartPage, taskLayoutPositions } from "./FlowchartPage";
 import { dashboardSnapshot, setViewport } from "../test/fixtures";
 
 class TestResizeObserver {
@@ -36,6 +36,37 @@ HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 afterEach(cleanup);
 
 describe("FlowchartPage", () => {
+  it("places paths in columns, layers in rows, and shared nodes in the center", () => {
+    const base = dashboardSnapshot.tasks[0];
+    const layered = [
+      { ...base, id: "F0", pathId: "shared", pathStep: 0 },
+      { ...base, id: "P1", pathId: "P", pathStep: 1 },
+      { ...base, id: "C1", pathId: "C", pathStep: 1 },
+      { ...base, id: "P2", pathId: "P", pathStep: 2 },
+    ];
+
+    expect(taskLayoutPositions(layered)).toEqual(new Map([
+      ["F0", { x: 130, y: 0 }],
+      ["P1", { x: 0, y: 170 }],
+      ["C1", { x: 260, y: 170 }],
+      ["P2", { x: 0, y: 340 }],
+    ]));
+  });
+
+  it("shows path and layer metadata in the task inspector", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const layered = {
+      ...dashboardSnapshot,
+      tasks: dashboardSnapshot.tasks.map((task, index) => ({ ...task, pathId: "P", pathStep: index + 1 })),
+    };
+    render(<FlowchartPage snapshot={layered} onOpenChat={() => undefined} />);
+
+    await user.click(screen.getByRole("button", { name: "T0 Graph planning running" }));
+
+    expect(screen.getByText("Path: P · Layer: 1")).toBeVisible();
+  });
+
   it.each([1440, 768, 390])("renders the same React Flow graph surface at %ipx", (width) => {
     setViewport(width);
     render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);

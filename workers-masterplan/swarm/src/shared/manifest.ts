@@ -55,6 +55,23 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
     return { code: "MANIFEST_INVALID", field: `${prefix}.dependsOn`, reason: "duplicate" };
   }
 
+  if (value.pathId !== undefined || value.pathStep !== undefined) {
+    if (value.pathId === undefined) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.pathId`, reason: "required" };
+    }
+    if (value.pathStep === undefined) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.pathStep`, reason: "required" };
+    }
+    const pathError = requiredString(value.pathId, `${prefix}.pathId`);
+    if (pathError) return pathError;
+    if (typeof value.pathStep !== "number") {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.pathStep`, reason: "type" };
+    }
+    if (!Number.isInteger(value.pathStep) || value.pathStep < 0) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.pathStep`, reason: "value" };
+    }
+  }
+
   if (typeof value.promptTemplate !== "string") {
     return { code: "MANIFEST_INVALID", field: `${prefix}.promptTemplate`, reason: "type" };
   }
@@ -131,11 +148,20 @@ export function validateTaskManifest(value: unknown): ManifestValidationResult {
 
   const manifest = value as unknown as TaskManifest;
   const taskIds = new Set<string>();
+  const pathPositions = new Set<string>();
   for (const task of manifest.tasks) {
     if (taskIds.has(task.id)) {
       return { ok: false, error: { code: "MANIFEST_DUPLICATE_TASK_ID", taskId: task.id } };
     }
     taskIds.add(task.id);
+    if (task.pathId !== undefined && task.pathStep !== undefined) {
+      const position = `${task.pathId}\u0000${task.pathStep}`;
+      if (pathPositions.has(position)) {
+        const index = manifest.tasks.indexOf(task);
+        return { ok: false, error: { code: "MANIFEST_INVALID", field: `tasks[${index}].pathStep`, reason: "duplicate" } };
+      }
+      pathPositions.add(position);
+    }
   }
 
   for (const task of manifest.tasks) {

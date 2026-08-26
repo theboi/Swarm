@@ -49,6 +49,8 @@ export interface TaskManifestTask {
   title: string;
   kind: TaskKind;
   dependsOn: string[];
+  pathId?: string;
+  pathStep?: number;
   statusPath?: string;
   specificationPath?: string;
   implementationPlanPath?: string;
