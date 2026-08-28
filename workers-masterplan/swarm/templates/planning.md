@@ -33,6 +33,15 @@ Do not modify these excluded surfaces:
 
 `{{EXCLUDED_SURFACES}}`
 
+Planning propagation exception: when this worker's approved contract requires
+a change to an upstream dated specification or implementation plan, this
+worker must directly update that upstream planning artifact and every affected
+upstream/downstream worker planning or status file. Record the decision and
+impact, stage only those exact additional planning paths, and integrate them as
+one coherent checkpoint. This exception does not transfer product-code,
+schema, migration, generated-artifact, coordinator aggregate, or gate-receipt
+ownership.
+
 Preserve unrelated working-tree changes. Work directly on `main` in
 `{{EDENMIND_CLONE_PATH}}`; do not create feature branches or linked worktrees.
 The selected Git mode is `{{CHECKOUT_MODE}}`; its same-Mac mutation lock is
@@ -52,13 +61,15 @@ During this planning phase:
 2. Produce the worker-authored specification at `{{SPECIFICATION_PATH}}` and
    detailed implementation plan at `{{IMPLEMENTATION_PLAN_PATH}}`.
 3. Record an evidence-backed product-specification impact update or no-impact
-   finding, update required stable authorities, and propagate approved changes
-   to affected downstream worker artifacts through their owners.
+   finding, update required stable authorities, and directly propagate approved
+   dependency-contract changes to every affected upstream/downstream dated
+   specification, implementation plan, and worker status.
 4. Update `{{STATUS_PATH}}` with the inspected `origin/main` commit, decisions,
    prerequisites, verification, handoff inputs, and remote-reachability proof.
 5. At each coherent planning checkpoint, run the focused check, stage only owned
-   paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun
-   affected checks, push, and prove remote reachability before continuing.
+   paths plus exact planning-propagation paths authorized above, commit directly
+   to `main`, fetch and merge newer `origin/main`, rerun affected checks, push,
+   and prove remote reachability before continuing.
 
 Write the implementation plan so its collision-safe owned tasks can be handed
 to Terra subagents and, where the Blueprint permits independent lanes, worked
