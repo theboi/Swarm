@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatsPage, normalizeExecutionSettings } from "./ChatsPage";
 import { chatSnapshot, chatTranscript, setViewport } from "../test/fixtures";
+import type { TranscriptItem } from "../../shared/contracts";
 
 afterEach(cleanup);
 
@@ -31,6 +32,35 @@ describe("ChatsPage", () => {
     expect(screen.getByText("Turn options")).toBeVisible();
     expect(screen.getByLabelText("Model")).not.toBeVisible();
     expect(screen.getByRole("button", { name: "New chat" }).querySelector("svg")).not.toBeNull();
+  });
+
+  it("opens referenced subagents as compact pills with their own transcript and composer", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const childTranscript: TranscriptItem[] = [
+      { id: "child-agent", accountId: "bot3", threadId: "child-thread", turnId: "child-turn", type: "agentMessage", status: "completed", createdAt: 1_725_000_010, payload: { text: "Subagent findings are ready." } },
+    ];
+    const parentTranscript: TranscriptItem[] = [
+      ...chatTranscript,
+      { id: "child-spawn", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "subAgentActivity", status: "completed", createdAt: 1_725_000_009, payload: { kind: "spawned", agentThreadId: "child-thread", agentPath: "ui-review" } },
+      { id: "child-tool", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "collabAgentToolCall", status: "completed", createdAt: 1_725_000_010, payload: { receiverThreadIds: ["child-thread"] } },
+    ];
+    const readTranscript = vi.fn(async (_accountId: string, requestedThreadId: string) => ({ data: requestedThreadId === "child-thread" ? childTranscript : parentTranscript }));
+    const startTurn = vi.fn(async () => ({ data: { turn: { id: "child-next-turn" } } }));
+    const markTurnActive = vi.fn();
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript, startTurn }} markTurnActive={markTurnActive} />);
+
+    const pill = await screen.findByRole("button", { name: "Open subagent ui-review" });
+    expect(screen.getAllByRole("button", { name: "Open subagent ui-review" })).toHaveLength(1);
+    await user.click(pill);
+
+    const dialog = await screen.findByRole("dialog", { name: "Subagent ui-review" });
+    expect(within(dialog).getByText("Subagent findings are ready.")).toBeVisible();
+    await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Check the remaining states.");
+    await user.click(within(dialog).getByRole("button", { name: "Send" }));
+
+    expect(startTurn).toHaveBeenCalledWith("bot3", "child-thread", "Check the remaining states.", expect.objectContaining({ permissionMode: expect.any(String) }));
+    expect(markTurnActive).toHaveBeenCalledWith("bot3", "child-thread", "child-next-turn");
   });
 
   it("groups chats by macOS account and toggles the selected bot3 picker only on a re-click", async () => {

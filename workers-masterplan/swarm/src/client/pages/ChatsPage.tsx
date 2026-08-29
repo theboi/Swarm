@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Archive, CircleStop, CornerUpRight, MessageSquarePlus, Plus, Send, SquareTerminal } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Archive, CircleStop, CornerUpRight, MessageSquarePlus, Network, Plus, Send, SquareTerminal } from "lucide-react";
 
 import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
 import type { CoordinatorApi, MarkdownDocument } from "../api.js";
@@ -13,6 +13,40 @@ import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
 type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount">>;
+
+interface SubagentReference {
+  threadId: string;
+  label: string;
+}
+
+function textField(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function subagentReferences(items: TranscriptItem[], parentThreadId?: string | null): SubagentReference[] {
+  const references = new Map<string, SubagentReference>();
+  const add = (threadId: unknown, label?: unknown) => {
+    const id = textField(threadId);
+    if (!id || id === parentThreadId || references.has(id)) return;
+    references.set(id, { threadId: id, label: textField(label) ?? `Subagent ${references.size + 1}` });
+  };
+
+  for (const item of items) {
+    if (item.type === "subAgentActivity") add(item.payload.agentThreadId, item.payload.agentPath);
+    if (item.type !== "collabAgentToolCall") continue;
+    const states = item.payload.agentsStates && typeof item.payload.agentsStates === "object" && !Array.isArray(item.payload.agentsStates)
+      ? item.payload.agentsStates as Record<string, unknown>
+      : {};
+    const receivers = Array.isArray(item.payload.receiverThreadIds) ? item.payload.receiverThreadIds : [];
+    for (const receiver of receivers) {
+      const state = typeof receiver === "string" && states[receiver] && typeof states[receiver] === "object" && !Array.isArray(states[receiver])
+        ? states[receiver] as Record<string, unknown>
+        : {};
+      add(receiver, state.agentPath ?? state.path ?? state.name);
+    }
+  }
+  return [...references.values()];
+}
 
 function settingsKey(accountId: AccountId | null, threadId: string | null, isDraftChat: boolean): string | null {
   return accountId && threadId && !isDraftChat ? chatExecutionSettingsKey(accountId, threadId) : null;
@@ -74,6 +108,116 @@ function turnIdFromStart(value: unknown): string | undefined {
     : undefined;
 }
 
+function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onOpenMarkdown, onClose, report, reportError }: {
+  accountId: AccountId;
+  reference: SubagentReference;
+  api: ChatsApi;
+  models: ChatModelOption[];
+  settings: ChatExecutionSettings;
+  activeTurnKeys: ReadonlySet<string>;
+  activeTurnIds: ReadonlyMap<string, string>;
+  markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
+  onSettingsChange: (settings: ChatExecutionSettings) => void;
+  onOpenMarkdown: (path: string) => void;
+  onClose: () => void;
+  report: (message: string) => void;
+  reportError: (message: string) => void;
+}) {
+  const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [draft, setDraft] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const opened = useRef(false);
+  const key = `${accountId}\u0000${reference.threadId}`;
+  const thinking = activeTurnKeys.has(key);
+  const latestTurnId = activeTurnIds.get(key) ?? [...items].reverse().find((item) => item.turnId)?.turnId ?? undefined;
+
+  useEffect(() => {
+    let live = true;
+    void api.readTranscript(accountId, reference.threadId).then((result) => {
+      if (!live) return;
+      setLoading(false);
+      if ("error" in result && result.error) return reportError(result.error.message);
+      setItems(result.data);
+    }).catch(() => {
+      if (!live) return;
+      setLoading(false);
+      reportError("Unable to load this subagent.");
+    });
+    return () => { live = false; };
+  }, [accountId, api, reference.threadId, reportError, revision]);
+
+  useLayoutEffect(() => {
+    if (loading || opened.current || !scrollRef.current) return;
+    opened.current = true;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [items, loading]);
+
+  useEffect(() => {
+    const priorFocus = globalThis.document.activeElement as HTMLElement | null;
+    window.setTimeout(() => closeRef.current?.focus(), 0);
+    return () => priorFocus?.focus();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (globalThis.document.visibilityState === "visible") setRevision((current) => current + 1);
+    }, 2_500);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || thinking) return;
+    try {
+      const result = await api.startTurn(accountId, reference.threadId, text, normalizeExecutionSettings(models, settings));
+      if ("error" in result && result.error) return reportError(result.error.message);
+      markTurnActive(accountId, reference.threadId, turnIdFromStart(result.data));
+      setDraft("");
+      setRevision((current) => current + 1);
+      report("Message sent.");
+    } catch { reportError("Unable to message this subagent."); }
+  };
+
+  const steer = async () => {
+    const text = draft.trim();
+    if (!latestTurnId || !text) return;
+    try {
+      const result = await api.steerTurn(accountId, reference.threadId, latestTurnId, text);
+      if ("error" in result && result.error) return reportError(result.error.message);
+      setDraft("");
+      setRevision((current) => current + 1);
+      report("Turn steered.");
+    } catch { reportError("Unable to steer this subagent."); }
+  };
+
+  const interrupt = async () => {
+    if (!latestTurnId) return;
+    try {
+      const result = await api.interruptTurn(accountId, reference.threadId, latestTurnId);
+      if ("error" in result && result.error) return reportError(result.error.message);
+      setRevision((current) => current + 1);
+      report("Turn interrupted.");
+    } catch { reportError("Unable to interrupt this subagent."); }
+  };
+
+  return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="subagent-dialog" role="dialog" aria-modal="true" aria-labelledby="subagent-dialog-title" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+      <header className="subagent-dialog__header"><div><span>{accountId}</span><h2 id="subagent-dialog-title">Subagent {reference.label}</h2></div>{thinking ? <span className="chat-thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}<OverlayCloseButton ref={closeRef} onClick={onClose} /></header>
+      <div className="transcript-scroll subagent-dialog__transcript" ref={scrollRef} aria-label={`Conversation with ${reference.label}`}>
+        {loading ? <div className="transcript-working"><span className="loading-spinner" aria-hidden="true" /><span>Loading subagent…</span></div> : items.length ? items.map((item) => <TranscriptItemView item={item} key={item.id} active={thinking && item.turnId === latestTurnId && item.type === "reasoning"} onOpenMarkdown={onOpenMarkdown} />) : <div className="transcript-empty"><p>No messages in this subagent yet.</p></div>}
+      </div>
+      <form className="chat-compose subagent-dialog__composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+        <div className="chat-compose__field"><textarea aria-label="Message" rows={2} placeholder={thinking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
+        <TurnOptions models={models} settings={settings} onChange={onSettingsChange} />
+        <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><button type="button" aria-label="Steer" title="Steer" disabled={!latestTurnId || !draft.trim()} onClick={() => void steer()}><CornerUpRight aria-hidden="true" size={16} strokeWidth={1.75} /></button><button type="button" aria-label="Interrupt" title="Interrupt" disabled={!latestTurnId || !thinking} onClick={() => void interrupt()}><CircleStop aria-hidden="true" size={16} strokeWidth={1.75} /></button></div><button className="primary-button chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={thinking || !draft.trim()}><Send aria-hidden="true" size={16} strokeWidth={2} /></button></div>
+      </form>
+    </section>
+  </div>;
+}
+
 export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = new Set<string>(), activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = new Set<string>(), markTurnActive = () => undefined, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
@@ -97,6 +241,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AccountId | null>(null);
   const [moving, setMoving] = useState(false);
+  const [openSubagent, setOpenSubagent] = useState<SubagentReference | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -229,8 +374,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     setMessage(null);
     setError(null);
   };
-  const report = (text: string) => { setError(null); setMessage(text); };
-  const reportError = (text: string) => { setMessage(null); setError(text); };
+  const report = useCallback((text: string) => { setError(null); setMessage(text); }, []);
+  const reportError = useCallback((text: string) => { setMessage(null); setError(text); }, []);
   const run = async <T,>(operation: () => Promise<ApiResult<T>>, success: string, onSuccess?: (data: T) => void) => {
     try {
       const result = await operation();
@@ -315,6 +460,16 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const limitExhausted = Boolean(selectedThread && activeTurnKey && (limitExhaustedTurnKeys.has(activeTurnKey) || waitingAssignment));
   const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
   const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
+  const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);
+  const openSubagentSettings = openSubagent && accountId
+    ? settingsByChat[chatExecutionSettingsKey(accountId, openSubagent.threadId)] ?? (models.length ? normalizeExecutionSettings(models, globalSettings) : defaultExecutionSettings(models))
+    : null;
+
+  const updateSubagentSettings = (next: ChatExecutionSettings) => {
+    if (!openSubagent || !accountId) return;
+    setSettingsByChat((current) => ({ ...current, [chatExecutionSettingsKey(accountId, openSubagent.threadId)]: next }));
+    setGlobalSettings(next);
+  };
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat || !isThinking) return;
@@ -400,6 +555,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const missingPermissions = isPermissionGrant(decision) && (!permissions || Object.keys(permissions).length === 0);
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
           })}</div></section>)}</div> : null}
+          {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
           <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div>
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
             <div className="chat-compose__field"><textarea ref={composerRef} id="message" aria-label="Message" rows={2} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
@@ -410,6 +566,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         </section>
       </div>
       {document ? <MarkdownViewer document={document} onClose={closeMarkdown} /> : null}
+      {openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onOpenMarkdown={(path) => void openMarkdown(path)} onClose={() => setOpenSubagent(null)} report={report} reportError={reportError} /> : null}
       {moveOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !moving) setMoveOpen(false); }}><section className="launch-dialog chat-move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-chat-title" tabIndex={-1} ref={moveDialogRef} onKeyDown={(event) => { if (event.key === "Escape" && !moving) setMoveOpen(false); }}><OverlayCloseButton ref={moveCloseButton} disabled={moving} onClick={() => setMoveOpen(false)} /><h2 id="move-chat-title">Move to another account</h2><p>The original chat will remain on {accountId}. Swarm will attach its JSONL to a new chat on the selected account and ask it to continue from that session.</p>{continuationAccounts.length ? <fieldset className="chat-move-dialog__accounts"><legend>New chat account</legend>{continuationAccounts.map((account) => <label key={account.id}><input type="radio" name="continuation-account" value={account.id} checked={moveTarget === account.id} onChange={() => setMoveTarget(account.id)} />{account.id}</label>)}</fieldset> : <p>No other signed-in account is available.</p>}<div className="dialog-actions"><button className="primary-button" type="button" disabled={!moveTarget || moving} onClick={() => void moveToAccount()}>{moving ? "Moving…" : `Move to ${moveTarget ?? "account"}`}</button></div></section></div> : null}
     </section>
   );
