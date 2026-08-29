@@ -162,7 +162,7 @@ describe("task authority", () => {
       ["docs/blueprint.md", "# Blueprint: mvp3\nIntegration authority: origin/main\n"],
       ["docs/workers/mvp3/T0.md", "status: complete\nremoteCommit: abc123\n"],
       ["docs/spec.md", "# spec\n"], ["docs/plan.md", "# plan\n"],
-      ["docs/workers/mvp3/G0.md", "status: passed\nremoteCommit: abc123\nT0 authority-sync abc123 docs/spec.md docs/plan.md\n"],
+      ["docs/workers/mvp3/G0.md", "status: passed\nremoteCommit: abc123\nT0 authority-sync abc123 docs/spec.md docs/plan.md reconciled\n"],
     ]);
     const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "I0")?.state).toBe("ready");
@@ -177,7 +177,7 @@ describe("task authority", () => {
       ["docs/workers/mvp3/T0.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |"],
       ["docs/spec.md", "# Approved specification\n"],
       ["docs/plan.md", "# Approved plan\n"],
-      ["docs/workers/mvp3/G0.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n| T0 authority-sync | abc123 docs/spec.md docs/plan.md |"],
+      ["docs/workers/mvp3/G0.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n| T0 authority-sync | abc123 docs/spec.md docs/plan.md reconciled |"],
     ]);
     const result = await loadBlueprintEvidence(authoritative, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(authoritative, result).find((item) => item.taskId === "I0")?.state).toBe("ready");

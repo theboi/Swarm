@@ -439,14 +439,14 @@ git merge-base --is-ancestor HEAD origin/main
 - Readiness evidence codes: retain `REMOTE_PREREQUISITES`, `PLANNING_GATE`, and `PLANNING_ARTIFACTS`; add `UI_ARTIFACTS`.
 - Gate contract: every ordinary planning row needs specification, plan, authority/no-impact, reconciliation, and an integrated commit; every UI row needs accepted app evidence, approval, handoff, requirements, live review, reconciliation, transfer, and an integrated commit.
 
-- [ ] **Step 1: Pull current `main`**
+- [x] **Step 1: Pull current `main`**
 
 ```bash
 git status --short --branch
 git pull --ff-only origin main
 ```
 
-- [ ] **Step 2: Add a two-pass evidence fixture and failing readiness tests**
+- [x] **Step 2: Add a two-pass evidence fixture and failing readiness tests**
 
 Add a focused fixture to `blueprintEvidence.test.ts` with tasks `P2` planning, `PD` UI depending on `P2`, `P3` planning depending on `P2` and `PD`, `PG` gate depending on `P3`, and `P3X` execution depending on `PG` and an implemented predecessor. Use these UI paths:
 
@@ -497,7 +497,7 @@ npx vitest run src/server/tasks/blueprintEvidence.test.ts
 
 Expected: FAIL because UI artifacts are not loaded or evaluated and the gate scans planning rows only.
 
-- [ ] **Step 3: Load UI artifacts and accepted app commits from remote evidence**
+- [x] **Step 3: Load UI artifacts and accepted app commits from remote evidence**
 
 Extend `allReferencedPaths` to include both new task fields. Extend `remoteCommitFrom` so `Accepted app-state commit` is a recognized label and its commit enters `integratedCommits` after the ancestry check.
 
@@ -527,13 +527,13 @@ function uiEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvidence)
 }
 ```
 
-- [ ] **Step 4: Replace terminal-only planned dependency checks with role-aware evidence**
+- [x] **Step 4: Replace terminal-only planned dependency checks with role-aware evidence**
 
 For a `planning`, `ui`, or `gate` consumer, require a planning dependency to satisfy `planningEvidenceIsComplete` and a UI dependency to satisfy `uiEvidenceIsComplete`. For an execution consumer, retain terminal runtime dependency evidence and separately evaluate its direct gate dependency. Continue to surface `REMOTE_EVIDENCE_MISMATCH` when a cited commit is not an ancestor of the inspected remote head.
 
 Make UI terminal state depend on `uiEvidenceIsComplete`, not the status file alone. While a UI task is not terminal, it may be `ready` or `attention_required`; if it claims terminal status with missing artifacts, keep it blocked and report `UI_ARTIFACTS: not satisfied`.
 
-- [ ] **Step 5: Expand the global gate evaluator**
+- [x] **Step 5: Expand the global gate evaluator**
 
 Refactor `gateEvidenceIsComplete` to scan all `kind === "planning" || kind === "ui"` tasks, regardless of the gate node's direct dependencies. Ordinary rows must match the exact ID and include their spec, plan, `authority-sync` or `no-impact`, `reconciled`, and an integrated commit. UI rows must match the exact ID and include both UI paths plus case-insensitive evidence for accepted app, approval, live review, reconciliation, transfer, and an integrated commit.
 
@@ -548,7 +548,7 @@ evidence(
 ),
 ```
 
-- [ ] **Step 6: Run focused evidence tests**
+- [x] **Step 6: Run focused evidence tests**
 
 ```bash
 npx vitest run src/server/tasks/blueprintEvidence.test.ts src/server/tasks/tasks.test.ts
