@@ -28,6 +28,7 @@ const api: CoordinatorApi = {
   openTerminal: async () => ({ data: {} }),
   startThread: async () => ({ data: { id: "thread", accountId: "bot3", name: null, archived: false, updatedAt: 0, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } } }),
   moveThreadToAccount: async () => ({ data: { id: "thread", accountId: "bot3", name: null, archived: false, updatedAt: 0, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } } }),
+  renameThread: async () => ({ data: {} }),
   archiveThread: async () => ({ data: {} }),
   startTurn: async () => ({ data: {} }),
   steerTurn: async () => ({ data: {} }),

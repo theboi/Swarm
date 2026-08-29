@@ -55,7 +55,8 @@ function object(value: unknown): Record<string, unknown> | undefined {
 
 function turnLimitExhausted(value: unknown): boolean {
   const error = object(object(value)?.error);
-  return error?.codexErrorInfo === "sessionBudgetExceeded" || error?.codexErrorInfo === "usageLimitExceeded";
+  if (error?.codexErrorInfo === "sessionBudgetExceeded" || error?.codexErrorInfo === "usageLimitExceeded") return true;
+  return error ? /(?:session|usage|rate).{0,24}limit|limit.{0,24}(?:exceed|reset)/i.test(JSON.stringify(error)) : false;
 }
 
 function turnActivityState(turn: Record<string, unknown>): "started" | "completed" | "failed" | "interrupted" | "limit_exhausted" | undefined {
@@ -71,7 +72,7 @@ function turnActivityState(turn: Record<string, unknown>): "started" | "complete
     case "complete":
       return turnLimitExhausted(turn) ? "limit_exhausted" : "completed";
     case "failed":
-      return "failed";
+      return turnLimitExhausted(turn) ? "limit_exhausted" : "failed";
     case "interrupted":
     case "cancelled":
     case "canceled":
@@ -378,7 +379,7 @@ export class AppServerClient {
     const recordParams = params as Record<string, unknown>;
     const turn = object(recordParams.turn);
     const turnId = typeof recordParams.turnId === "string" ? recordParams.turnId : typeof turn?.id === "string" ? turn.id : undefined;
-    const state = notification.method === "turn/completed" && turnLimitExhausted(turn) ? "limit_exhausted" : notification.method.slice("turn/".length);
+    const state = notification.method.startsWith("turn/") && turnLimitExhausted(turn) ? "limit_exhausted" : notification.method.slice("turn/".length);
     if (notification.method.startsWith("turn/")) this.emit({ type: "turn", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state });
     else if (notification.method.startsWith("thread/")) this.emit({ type: "thread", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, state: notification.method.slice("thread/".length) });
     else if (notification.method === "account/rateLimits/updated") this.emit({ type: "rate_limit", accountId: this.account, state: "updated" });

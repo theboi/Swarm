@@ -40,6 +40,30 @@ describe("HomePage", () => {
     expect(onViewAccounts).toHaveBeenCalledOnce();
   });
 
+  it("colors each overlaid limit independently and empties five-hour capacity when weekly is exhausted", () => {
+    const api = { previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: successfulLaunch };
+    const coloredSnapshot: CoordinatorSnapshot = {
+      ...dashboardSnapshot,
+      accounts: [{ ...dashboardSnapshot.accounts[0], rateLimits: [
+        { id: "five-hour", label: "Five-hour", usedPercent: 90, resetsAt: null, updatedAt: 1 },
+        { id: "weekly", label: "Weekly", usedPercent: 20, resetsAt: null, updatedAt: 1 },
+      ] }],
+    };
+    const { rerender } = render(<HomePage snapshot={coloredSnapshot} api={api} />);
+
+    const layered = screen.getByLabelText("bot3: five-hour remaining 10%; weekly remaining 80%");
+    expect(layered.querySelector(".account-summary__five-hour")).toHaveClass("usage-tone--critical");
+    expect(layered.querySelector(".account-summary__weekly")).toHaveClass("usage-tone--healthy");
+
+    rerender(<HomePage snapshot={{ ...coloredSnapshot, accounts: [{ ...coloredSnapshot.accounts[0], rateLimits: [
+      { id: "five-hour", label: "Five-hour", usedPercent: 10, resetsAt: null, updatedAt: 1 },
+      { id: "weekly", label: "Weekly", usedPercent: 100, resetsAt: null, updatedAt: 1 },
+    ] }] }} api={api} />);
+    const exhausted = screen.getByLabelText("bot3: five-hour remaining 0%; weekly remaining 0%");
+    expect(exhausted.querySelector(".account-summary__five-hour")).toHaveStyle({ width: "0%" });
+    expect(exhausted.querySelector(".account-summary__weekly")).toHaveClass("usage-tone--critical");
+  });
+
   it("lets the operator refresh every account's usage from the dashboard", async () => {
     const user = userEvent.setup();
     const refreshUsage = vi.fn(async () => undefined);

@@ -95,8 +95,18 @@ describe("HTTP coordinator API", () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
 
-    await createHttpCoordinatorApi().moveThreadToAccount("bot3", "thread-1", "bot1");
+    const settings = { model: "gpt-5.6-terra", effort: "xhigh", serviceTier: "standard", permissionMode: "full_access" as const };
+    await createHttpCoordinatorApi().moveThreadToAccount("bot3", "thread-1", "bot1", settings);
 
-    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3/threads/thread-1/move", expect.objectContaining({ method: "POST", body: JSON.stringify({ targetAccountId: "bot1" }) }));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3/threads/thread-1/move", expect.objectContaining({ method: "POST", body: JSON.stringify({ targetAccountId: "bot1", settings }) }));
+  });
+
+  it("renames a chat through its authenticated thread route", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await createHttpCoordinatorApi().renameThread("bot3", "thread-1", "Graph plan review");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3/threads/thread-1/name", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Graph plan review" }) }));
   });
 });

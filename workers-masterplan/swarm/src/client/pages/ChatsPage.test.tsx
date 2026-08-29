@@ -15,6 +15,7 @@ const api = {
   listThreads: async (accountId: string) => ({ data: chatSnapshot.threads.filter((thread) => thread.accountId === accountId) }),
   startTurn: async () => ({ data: {} }),
   startThread: async () => ({ data: chatSnapshot.threads[1] }),
+  renameThread: async () => ({ data: {} }),
   archiveThread: async () => ({ data: {} }),
   steerTurn: async () => ({ data: {} }),
   interruptTurn: async () => ({ data: {} }),
@@ -187,6 +188,27 @@ describe("ChatsPage", () => {
     await user.type(screen.getByRole("textbox", { name: "Message" }), "Use the new requirements.");
     await user.click(screen.getByRole("button", { name: "Steer" }));
     expect(steerTurn).toHaveBeenCalledWith("bot3", "thread-2", "turn-live", "Use the new requirements.");
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+    expect(screen.getByRole("status", { name: "Pending steer" })).toHaveTextContent("Use the new requirements.");
+    await user.click(screen.getByRole("button", { name: "Edit pending steer" }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Use the new requirements.");
+    expect(screen.queryByRole("status", { name: "Pending steer" })).not.toBeInTheDocument();
+  });
+
+  it("opens a rename overlay when the selected chat is clicked again", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const renameThread = vi.fn(async () => ({ data: {} }));
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, renameThread }} />);
+
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    const dialog = screen.getByRole("dialog", { name: "Rename chat" });
+    await user.clear(within(dialog).getByRole("textbox", { name: "Chat name" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Chat name" }), "Graph plan review");
+    await user.click(within(dialog).getByRole("button", { name: "Rename" }));
+
+    expect(renameThread).toHaveBeenCalledWith("bot3", "thread-1", "Graph plan review");
+    expect(await screen.findByRole("heading", { name: "Graph plan review" })).toBeVisible();
   });
 
   it("marks an accepted turn as working before the realtime event arrives", async () => {
@@ -407,11 +429,11 @@ describe("ChatsPage", () => {
   it("shows a session-limit wait state and starts a JSONL continuation on another signed-in account", async () => {
     setViewport(1440);
     const user = userEvent.setup();
-    const moveThreadToAccount = vi.fn(async () => ({ data: { id: "continuation", accountId: "bot1" as const, name: "Continuation", archived: false, updatedAt: 1, capabilities: { canArchive: false, canInterrupt: true, canStartTurn: false, canSteer: true } } }));
+    const moveThreadToAccount = vi.fn(async () => ({ data: { id: "continuation", accountId: "bot1" as const, name: "(Handoff) T0 · Graph planning", archived: false, updatedAt: 1, capabilities: { canArchive: false, canInterrupt: true, canStartTurn: false, canSteer: true } } }));
     const continuationSnapshot = {
       ...chatSnapshot,
       accounts: chatSnapshot.accounts.map((account) => account.id === "bot1" ? { ...account, connection: "connected" as const, authentication: "authenticated" as const } : account),
-      workerAssignments: [{ taskId: "T0", accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, assignedAt: 1, updatedAt: 2, transferHistory: [] }],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: 2 }],
     };
     render(<ChatsPage snapshot={continuationSnapshot} api={{ ...api, moveThreadToAccount }} />);
 
@@ -424,7 +446,22 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("radio", { name: "bot1" }));
     await user.click(screen.getByRole("button", { name: "Move to bot1" }));
 
-    expect(moveThreadToAccount).toHaveBeenCalledWith("bot3", "thread-1", "bot1");
+    expect(moveThreadToAccount).toHaveBeenCalledWith("bot3", "thread-1", "bot1", expect.objectContaining({ permissionMode: expect.any(String) }));
+    expect(await screen.findByRole("heading", { name: "(Handoff) T0 · Graph planning" })).toBeVisible();
+  });
+
+  it("flags an unassigned chat for resume when its durable limit record is waiting", () => {
+    setViewport(1440);
+    const unassignedLimitSnapshot = {
+      ...chatSnapshot,
+      workerAssignments: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: 2 }],
+    };
+
+    render(<ChatsPage snapshot={unassignedLimitSnapshot} api={api} />);
+
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
+    expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
   it("does not show a stale resume notice after the durable assignment moved away", () => {

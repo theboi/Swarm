@@ -392,6 +392,22 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("marks usage exhaustion even when app-server reports the stopped turn as failed", async () => {
+    threadHistory = [{ id: "turn-limited", status: "failed", error: { message: "You've hit your usage limit" } }];
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.readThread("thread-1", { includeTurns: true });
+    server!.send({ method: "turn/failed", params: { threadId: "thread-1", turn: { id: "turn-limited", error: { codexErrorInfo: "usageLimitExceeded" } } } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(events.filter((event) => (event as { turnId?: string }).turnId === "turn-limited")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ state: "limit_exhausted" }),
+    ]));
+    await client.close();
+  });
+
   it("emits a transcript revision for a tracked chat without sending its contents to the browser event", async () => {
     const client = await readyClient();
     const events: unknown[] = [];

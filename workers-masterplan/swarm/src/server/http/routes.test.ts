@@ -36,6 +36,7 @@ async function fixture() {
     listThreads: vi.fn(async () => []),
     readTranscript: vi.fn(async () => []),
     startThread: vi.fn(async () => ({ id: "thread-1", accountId: "bot1", name: null, archived: false, updatedAt: 1, capabilities: { canArchive: true, canInterrupt: false, canStartTurn: true, canSteer: false } })),
+    renameThread: vi.fn(async () => undefined),
     moveThreadToAccount: vi.fn(async () => ({ id: "thread-2", accountId: "bot2", name: null, archived: false, updatedAt: 1, capabilities: { canArchive: false, canInterrupt: true, canStartTurn: false, canSteer: true } })),
     archiveThread: vi.fn(async () => undefined),
     startTurn: vi.fn(async () => ({ turnId: "turn-1" })),
@@ -150,10 +151,23 @@ describe("coordinator HTTP routes", () => {
     const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
     await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
 
-    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot2" }).expect(200);
+    const settings = { model: "gpt-5.6-terra", effort: "xhigh", serviceTier: "standard", permissionMode: "full_access" };
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot2", settings }).expect(200);
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot1" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Choose a different known account" } });
 
-    expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2");
+    expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2", settings);
+  });
+
+  it("validates and forwards a chat rename", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/name").set("origin", origin).send({ name: "Graph plan review" }).expect(200);
+
+    expect(services.renameThread).toHaveBeenCalledWith("bot1", "thread-1", "Graph plan review");
   });
 
   it("keeps health in the shared shape without operational secrets", async () => {

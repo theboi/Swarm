@@ -1,13 +1,10 @@
 import { ChevronRight, CircleCheck, RotateCw, TriangleAlert } from "lucide-react";
 
 import type { AccountSnapshot, RateLimitWindow, TaskNode, WorkerAssignmentRecord } from "../../shared/contracts.js";
+import { remainingPercent, usageTone } from "../usage.js";
 
 function windowFor(account: AccountSnapshot, pattern: RegExp): RateLimitWindow | undefined {
   return account.rateLimits.find((window) => pattern.test(window.label) || pattern.test(window.id));
-}
-
-function remainingPercent(window: RateLimitWindow | undefined): number | null {
-  return typeof window?.usedPercent === "number" ? Math.max(0, Math.min(100, 100 - window.usedPercent)) : null;
 }
 
 function displayPercent(value: number | null): string {
@@ -19,13 +16,14 @@ function usageWidth(value: number | null): string {
 }
 
 export function AccountUsageBar({ account, showLabels = false }: { account: AccountSnapshot; showLabels?: boolean }) {
-  const fiveHour = remainingPercent(windowFor(account, /five|primary/i));
+  const rawFiveHour = remainingPercent(windowFor(account, /five|primary/i));
   const weekly = remainingPercent(windowFor(account, /week|secondary/i));
+  const fiveHour = weekly === 0 ? 0 : rawFiveHour;
   const fiveHourText = displayPercent(fiveHour);
   const weeklyText = displayPercent(weekly);
   const bar = <div className="account-summary__usage" role="img" aria-label={`${account.id}: five-hour remaining ${fiveHourText}; weekly remaining ${weeklyText}`}>
-    <span className="account-summary__weekly" aria-hidden="true" style={{ width: usageWidth(weekly) }} />
-    <span className="account-summary__five-hour" aria-hidden="true" style={{ width: usageWidth(fiveHour) }} />
+    <span className={`account-summary__weekly usage-tone--${usageTone(weekly)}`} aria-hidden="true" style={{ width: usageWidth(weekly) }} />
+    <span className={`account-summary__five-hour usage-tone--${usageTone(fiveHour)}`} aria-hidden="true" style={{ width: usageWidth(fiveHour) }} />
   </div>;
   if (!showLabels) return bar;
   return <div className="account-usage-detail"><div className="account-usage-detail__labels"><strong>{account.id}</strong><span>5h {fiveHourText} · Week {weeklyText}</span></div>{bar}</div>;
@@ -37,8 +35,9 @@ export function AccountSummaryPanel({ accounts, assignments = [], tasks = [], on
       <header className="account-summary__header"><h2 id="accounts-title">Accounts</h2><div>{onRefreshUsage ? <button className="icon-button" type="button" aria-label="Refresh usage" title="Refresh usage" onClick={() => void onRefreshUsage()}><RotateCw aria-hidden="true" size={16} /></button> : null}<button className="icon-button" type="button" aria-label="View more accounts" title="View more accounts" onClick={onViewMore}><ChevronRight aria-hidden="true" size={18} /></button></div></header>
       <ul className="account-summary-list">
         {accounts.map((account) => {
-          const fiveHour = remainingPercent(windowFor(account, /five|primary/i));
+          const rawFiveHour = remainingPercent(windowFor(account, /five|primary/i));
           const weekly = remainingPercent(windowFor(account, /week|secondary/i));
+          const fiveHour = weekly === 0 ? 0 : rawFiveHour;
           const fiveHourText = displayPercent(fiveHour);
           const weeklyText = displayPercent(weekly);
           const isConnected = account.connection === "connected" && account.authentication === "authenticated";

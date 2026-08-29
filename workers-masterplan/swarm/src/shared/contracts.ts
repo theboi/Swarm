@@ -158,6 +158,18 @@ export interface WorkerAssignmentRecord {
   transferHistory: WorkerTransferRecord[];
 }
 
+export type LimitResumeState = "waiting_for_limit" | "resuming" | "transferring" | "transferred";
+
+/** Durable recovery state for any chat whose active turn stopped at an account usage limit. */
+export interface LimitResumeRecord {
+  accountId: AccountId;
+  threadId: string;
+  state: LimitResumeState;
+  updatedAt: number;
+  /** Stable idempotency key retained while a limit-resume turn is being reconciled. */
+  resumeClientUserMessageId?: string;
+}
+
 export interface ThreadCapabilities {
   canArchive: boolean;
   canInterrupt: boolean;
@@ -252,6 +264,7 @@ export interface CoordinatorSnapshot {
   tasks: TaskNode[];
   dispatches: DispatchRecord[];
   workerAssignments?: WorkerAssignmentRecord[];
+  limitResumes?: LimitResumeRecord[];
   threads: ThreadSummary[];
   pendingApprovals: PendingApproval[];
   health: HealthSnapshot;

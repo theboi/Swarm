@@ -6,7 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LocalWorkspaceSnapshot, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -39,6 +39,8 @@ import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
+import { LimitResumeManifest } from "./tasks/limitResumes.js";
+import { handoffThreadName } from "./tasks/handoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -48,6 +50,7 @@ type DurableState = {
   auth?: { challenges?: Record<string, unknown>; sessions?: Record<string, unknown>; loginThrottle?: Record<string, { failures: number; retryAt: number }>; usedTotp?: Record<string, true> };
   dispatches?: DispatchRecord[];
   workerAssignments?: WorkerAssignmentRecord[];
+  limitResumes?: LimitResumeRecord[];
   completedTaskIds?: string[];
   approvals?: ApprovalJournalEntry[];
   notifications?: { breakingChangeAccounts?: AccountId[] };
@@ -125,6 +128,10 @@ async function createRuntime(config: SwarmConfig) {
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
   const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
   const assignments = new WorkerAssignmentManifest(root.workerAssignments ?? [], async (records) => state.mutate((value) => { value.workerAssignments = records; }));
+  root.limitResumes ??= (root.workerAssignments ?? [])
+    .filter((record) => record.state === "waiting_for_limit" || record.state === "resuming" || record.state === "transferring")
+    .map((record): LimitResumeRecord => ({ accountId: record.accountId, threadId: record.threadId, state: record.state as LimitResumeRecord["state"], updatedAt: record.updatedAt, ...(record.resumeClientUserMessageId ? { resumeClientUserMessageId: record.resumeClientUserMessageId } : {}) }));
+  const limitResumes = new LimitResumeManifest(root.limitResumes, async (records) => state.mutate((value) => { value.limitResumes = records; }));
   const completedTaskIds = new Set([...(root.completedTaskIds ?? []), ...(root.dispatches ?? []).filter((record) => record.state === "completed").map((record) => record.taskId)]);
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
   const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
@@ -192,12 +199,15 @@ async function createRuntime(config: SwarmConfig) {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
         if (event.type === "turn" && event.threadId && event.turnId && event.state === "started") {
           activeTurnIds.set(activeTurnKey(event.accountId, event.threadId), event.turnId);
+          void limitResumes.clear(event.accountId, event.threadId).catch((error) => logger.warn("resume", { event: "clear_started_failed", error: error instanceof Error ? error.message : "failed" }));
           void assignments.markAssigned(event.accountId, event.threadId).catch((error) => logger.warn("assignments", { event: "mark_assigned_failed", error: error instanceof Error ? error.message : "failed" }));
         }
         if (event.type === "turn" && event.threadId && event.state === "limit_exhausted") {
           const exhaustedThreadId = event.threadId;
           activeTurnIds.delete(activeTurnKey(event.accountId, exhaustedThreadId));
           void (async () => {
+            await limitResumes.markWaiting(event.accountId, exhaustedThreadId);
+            if (limitResumes.forThread(event.accountId, exhaustedThreadId)?.state !== "waiting_for_limit") return;
             await assignments.markWaitingForLimit(event.accountId, exhaustedThreadId);
             try { await gitRunner.checkpointAndPush(event.accountId); }
             catch {
@@ -306,7 +316,7 @@ async function createRuntime(config: SwarmConfig) {
   const threads = async (id: AccountId): Promise<ThreadSummary[]> => cacheThreads(id, (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id))));
   const refreshAllRateLimits = async () => {
     await Promise.allSettled(accountSnapshot().filter((account) => account.connection === "connected" && account.authentication === "authenticated").map((account) => updateRateLimits(account.id)));
-    await Promise.allSettled(assignments.list().filter((assignment) => assignment.state === "waiting_for_limit").map((assignment) => scheduleLimitResume(assignment.accountId, assignment.threadId)));
+    await Promise.allSettled(limitResumes.list().filter((record) => record.state === "waiting_for_limit").map((record) => scheduleLimitResume(record.accountId, record.threadId)));
     return accountSnapshot();
   };
   const health = async (): Promise<HealthSnapshot> => ({ server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: manifestError ? "degraded" : "ok", ...(manifestError ? { message: manifestError } : {}) }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: accountSnapshot().some((item) => item.connection === "error") ? "degraded" : "ok" } });
@@ -329,7 +339,7 @@ async function createRuntime(config: SwarmConfig) {
     const dispatches = outbox.list();
     const threadSummaries = [...threadCache.values()].flat();
     await reconcileAssignments(threadSummaries);
-    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: projectDispatchState(nodes, dispatches, threadSummaries, assignments.list(), completedTaskIds), dispatches, workerAssignments: assignments.list(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
+    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: projectDispatchState(nodes, dispatches, threadSummaries, assignments.list(), completedTaskIds), dispatches, workerAssignments: assignments.list(), limitResumes: limitResumes.list(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
   };
   const allowedOrigins = () => dashboardOrigins(config.port, config.host);
   const createPrompt = async (task: TaskNode, id: AccountId) => {
@@ -385,22 +395,24 @@ async function createRuntime(config: SwarmConfig) {
       limitResumeTimers.delete(key);
       void (async () => {
         const clientUserMessageId = randomUUID();
-        const assignment = await assignments.claimResume(account, threadId, clientUserMessageId);
-        if (!assignment) return;
+        const resume = await limitResumes.claimResume(account, threadId, clientUserMessageId);
+        if (!resume) return;
+        const assignment = assignments.forThread(account, threadId);
         try {
           await updateRateLimits(account);
           if (!rankAccounts([accounts.snapshot(account)], Date.now()).length) {
-            await assignments.restoreWaitingFromResume(account, threadId, clientUserMessageId);
+            await limitResumes.restoreWaitingFromResume(account, threadId, clientUserMessageId);
             await scheduleLimitResume(account, threadId);
             return;
           }
           const dispatch = outbox.list().find((record) => record.accountId === account && record.threadId === threadId);
           await (await liveClient(account)).startTurn({ threadId, clientUserMessageId, text: "Continue from where you stopped after the usage limit reset.", settings: dispatch?.settings });
+          await limitResumes.clear(account, threadId);
           await assignments.markAssigned(account, threadId);
-          publishRuntimeEvent("task", { taskId: assignment.taskId });
+          publishRuntimeEvent("task", { taskId: assignment?.taskId ?? "" });
         } catch (error) {
-          await assignments.restoreWaitingFromResume(account, threadId, clientUserMessageId);
-          if (assignments.forThread(account, threadId)?.state === "waiting_for_limit") await scheduleLimitResume(account, threadId, Date.now() + 60_000);
+          await limitResumes.restoreWaitingFromResume(account, threadId, clientUserMessageId);
+          if (limitResumes.forThread(account, threadId)?.state === "waiting_for_limit") await scheduleLimitResume(account, threadId, Date.now() + 60_000);
           logger.warn("resume", { event: "limit_resume_failed", account, threadId, error: error instanceof Error ? error.message : "failed" });
         }
       })();
@@ -419,27 +431,29 @@ async function createRuntime(config: SwarmConfig) {
         return { turns: turns.map((turn) => ({ clientUserMessageId: typeof turn.clientUserMessageId === "string" ? turn.clientUserMessageId : undefined })) };
       } });
       for (const waiting of outbox.recoverWaitingTimers()) { const record = outbox.get(waiting.id); if (record?.accountId === id) await scheduleRateWait(record); }
-      for (const resuming of assignments.list().filter((assignment) => assignment.accountId === id && assignment.state === "resuming")) {
+      for (const resuming of limitResumes.list().filter((record) => record.accountId === id && record.state === "resuming")) {
         const clientUserMessageId = resuming.resumeClientUserMessageId;
-        if (!clientUserMessageId) { await assignments.markAttentionRequired(id, resuming.threadId); continue; }
+        if (!clientUserMessageId) { await limitResumes.markWaiting(id, resuming.threadId); continue; }
         try {
           const result = await (await liveClient(id)).readThread(resuming.threadId, { includeTurns: true });
           const thread = object(result).thread ? object(object(result).thread) : object(result);
           const turns = Array.isArray(thread.turns) ? thread.turns.map(object) : [];
-          if (turns.some((turn) => turn.clientUserMessageId === clientUserMessageId)) await assignments.markAssigned(id, resuming.threadId);
-          else await assignments.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
+          if (turns.some((turn) => turn.clientUserMessageId === clientUserMessageId)) {
+            await limitResumes.clear(id, resuming.threadId);
+            await assignments.markAssigned(id, resuming.threadId);
+          } else await limitResumes.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
         } catch {
-          await assignments.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
+          await limitResumes.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
         }
       }
-      for (const waiting of assignments.waitingForAccount(id)) await scheduleLimitResume(id, waiting.threadId);
+      for (const waiting of limitResumes.waitingForAccount(id)) await scheduleLimitResume(id, waiting.threadId);
       return connected;
     },
     disconnectAccount: (id) => accounts.disconnect(id),
     openTerminal: (id) => accounts.openTerminal(id),
     refreshRateLimits: async (id) => {
       const updated = await updateRateLimits(id);
-      await Promise.allSettled(assignments.waitingForAccount(id).map((assignment) => scheduleLimitResume(id, assignment.threadId)));
+      await Promise.allSettled(limitResumes.waitingForAccount(id).map((record) => scheduleLimitResume(id, record.threadId)));
       return updated;
     },
     refreshAllRateLimits,
@@ -489,8 +503,11 @@ async function createRuntime(config: SwarmConfig) {
       upsertCachedThread(thread);
       return thread;
     },
-    moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId) => {
+    moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId, settings?: ChatExecutionSettings) => {
       const resumeKey = activeTurnKey(sourceAccountId, threadId);
+      const sourceResume = limitResumes.forThread(sourceAccountId, threadId);
+      const priorResumeState = sourceResume ? await limitResumes.claimTransfer(sourceAccountId, threadId) : undefined;
+      if (sourceResume && !priorResumeState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
       const sourceAssignment = assignments.forThread(sourceAccountId, threadId);
       const priorAssignmentState = sourceAssignment ? await assignments.claimTransfer(sourceAccountId, threadId) : undefined;
       if (sourceAssignment && !priorAssignmentState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
@@ -511,19 +528,27 @@ async function createRuntime(config: SwarmConfig) {
         const filename = handoffFilename(sourceAccountId, threadId);
         const path = resolve(workspaceRoot(targetAccountId, workspaceFor(targetAccountId)), filename);
         await target.writeFile(path, handoff.jsonl);
-        const threadName = `Continuation · ${typeof sourceThread.name === "string" && sourceThread.name ? sourceThread.name : "previous session"}`;
+        const threadName = handoffThreadName(sourceThread.name);
         await target.setThreadName(thread.id, threadName);
         upsertCachedThread({ ...thread, name: threadName });
         const clientUserMessageId = randomUUID();
         const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
         const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
-        await target.startTurn({ threadId: thread.id, clientUserMessageId, text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`, attachments: [{ name: filename, path }], settings: dispatch?.settings });
+        await target.startTurn({ threadId: thread.id, clientUserMessageId, text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`, attachments: [{ name: filename, path }], settings: settings ?? dispatch?.settings });
         targetAccepted = true;
+        if (sourceResume) await limitResumes.completeTransfer(sourceAccountId, threadId);
         if (sourceAssignment) await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
         await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
         publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
         return thread;
       } catch (error) {
+        if (sourceResume && priorResumeState) {
+          if (targetAccepted) await limitResumes.completeTransfer(sourceAccountId, threadId);
+          else {
+            await limitResumes.restoreTransfer(sourceAccountId, threadId, priorResumeState);
+            if (priorResumeState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
+          }
+        }
         if (sourceAssignment && priorAssignmentState) {
           if (targetAccepted) await assignments.markAttentionRequired(sourceAccountId, threadId);
           else {
@@ -537,6 +562,10 @@ async function createRuntime(config: SwarmConfig) {
     archiveThread: async (id, threadId) => {
       await (await liveClient(id)).archiveThread(threadId);
       cacheThreads(id, (threadCache.get(id) ?? []).map((thread) => thread.id === threadId ? { ...thread, archived: true } : thread));
+    },
+    renameThread: async (id, threadId, name) => {
+      await (await liveClient(id)).setThreadName(threadId, name);
+      cacheThreads(id, (threadCache.get(id) ?? []).map((thread) => thread.id === threadId ? { ...thread, name, updatedAt: Date.now() } : thread));
     },
     startTurn: async (id, threadId, input) => (await liveClient(id)).startTurn({ threadId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID(), settings: input.settings }),
     steerTurn: async (id, threadId, input) => { await (await liveClient(id)).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },

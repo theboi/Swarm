@@ -35,7 +35,8 @@ export interface CoordinatorApi {
   listThreads(accountId: string): Promise<ApiResult<ThreadSummary[]>>;
   openTerminal(accountId: string): Promise<ApiResult<unknown>>;
   startThread(accountId: string): Promise<ApiResult<ThreadSummary>>;
-  moveThreadToAccount(sourceAccountId: string, threadId: string, targetAccountId: string): Promise<ApiResult<ThreadSummary>>;
+  moveThreadToAccount(sourceAccountId: string, threadId: string, targetAccountId: string, settings?: ChatExecutionSettings): Promise<ApiResult<ThreadSummary>>;
+  renameThread(accountId: string, threadId: string, name: string): Promise<ApiResult<unknown>>;
   archiveThread(accountId: string, threadId: string): Promise<ApiResult<unknown>>;
   startTurn(accountId: string, threadId: string, text: string, settings?: ChatExecutionSettings): Promise<ApiResult<unknown>>;
   steerTurn(accountId: string, threadId: string, turnId: string, text: string): Promise<ApiResult<unknown>>;
@@ -96,7 +97,8 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     listThreads: (accountId) => request<ThreadSummary[]>(`/accounts/${encodeURIComponent(accountId)}/threads`),
     openTerminal: (accountId) => terminalRequest<unknown>(`/accounts/${encodeURIComponent(accountId)}/terminal`),
     startThread: (accountId) => request<ThreadSummary>(`/accounts/${encodeURIComponent(accountId)}/threads`, { method: "POST" }),
-    moveThreadToAccount: (sourceAccountId, threadId, targetAccountId) => request<ThreadSummary>(`/accounts/${encodeURIComponent(sourceAccountId)}/threads/${encodeURIComponent(threadId)}/move`, { method: "POST", body: JSON.stringify({ targetAccountId }) }),
+    moveThreadToAccount: (sourceAccountId, threadId, targetAccountId, settings) => request<ThreadSummary>(`/accounts/${encodeURIComponent(sourceAccountId)}/threads/${encodeURIComponent(threadId)}/move`, { method: "POST", body: JSON.stringify({ targetAccountId, ...(settings ? { settings } : {}) }) }),
+    renameThread: (accountId, threadId, name) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/name`, { method: "POST", body: JSON.stringify({ name }) }),
     archiveThread: (accountId, threadId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/archive`, { method: "POST" }),
     startTurn: (accountId, threadId, text, settings) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/turns`, { method: "POST", body: JSON.stringify({ text, ...(settings ? { settings } : {}) }) }),
     steerTurn: (accountId, threadId, turnId, text) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/steer`, { method: "POST", body: JSON.stringify({ turnId, text }) }),

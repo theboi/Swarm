@@ -5,6 +5,7 @@ import type { AccountSnapshot, CoordinatorSnapshot, GitSyncStatus, RateLimitWind
 import type { CoordinatorApi } from "../api.js";
 import { RateLimitBar } from "../components/RateLimitBar.js";
 import { Toast } from "../components/Toast.js";
+import { remainingPercent } from "../usage.js";
 
 type AccountsApi = Pick<CoordinatorApi, "connectAccount" | "openTerminal" | "refreshAllRateLimits">;
 
@@ -25,11 +26,12 @@ function AccountCard({ account, assignments, tasks, onOpenTerminal, onReconnect 
   const primary = windowFor(account, /five|primary/i);
   const secondary = windowFor(account, /week|secondary/i);
   const actionRequired = isActionRequired(account);
+  const weeklyExhausted = remainingPercent(secondary) === 0;
   return (
     <article className="account-card">
       <h2>{account.id} {account.hasBreakingChange ? <span className="account-notification-dot" role="img" aria-label={`${account.id} has a breaking change notification`} title="Breaking change notification" /> : null} <GitSyncWarning status={account.gitSync} /></h2>
       <p>{account.connection.replaceAll("_", " ")}</p>
-      <RateLimitBar label="Five-hour" window={primary} />
+      <RateLimitBar label="Five-hour" window={primary} forceEmpty={weeklyExhausted} />
       <RateLimitBar label="Weekly" window={secondary} />
       {assignments.length ? <div className="account-card__work"><strong>Current work</strong>{assignments.map((assignment) => <p key={assignment.taskId}>{assignment.taskId} · {tasks.find((task) => task.id === assignment.taskId)?.title ?? "Worker task"}{assignment.state === "waiting_for_limit" ? " · waiting for limit" : ""}</p>)}</div> : <p>No assigned worker tasks.</p>}
       {actionRequired ? <><p>Action required: sign in to this account.</p>{account.terminalCommand ? <code>{account.terminalCommand}</code> : null}</> : null}
