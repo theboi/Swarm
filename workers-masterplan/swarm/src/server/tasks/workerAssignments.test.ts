@@ -47,4 +47,31 @@ describe("WorkerAssignmentManifest", () => {
 
     expect(manifest.forTask("QD")?.state).toBe("attention_required");
   });
+
+  it("allows only one durable resume claim for a waiting thread", async () => {
+    const manifest = new WorkerAssignmentManifest([]);
+    await manifest.assign("CD", "bot8", "cd-thread", 10);
+    await manifest.markWaitingForLimit("bot8", "cd-thread", 20);
+
+    const [first, second] = await Promise.all([
+      manifest.claimResume("bot8", "cd-thread", "resume-1", 30),
+      manifest.claimResume("bot8", "cd-thread", "resume-2", 30),
+    ]);
+
+    expect([first, second].filter(Boolean)).toHaveLength(1);
+    expect(manifest.forTask("CD")).toMatchObject({ state: "resuming", resumeClientUserMessageId: expect.stringMatching(/^resume-/) });
+  });
+
+  it("blocks resume while a waiting worker is durably claimed for transfer", async () => {
+    const manifest = new WorkerAssignmentManifest([]);
+    await manifest.assign("CD", "bot8", "cd-thread", 10);
+    await manifest.markWaitingForLimit("bot8", "cd-thread", 20);
+
+    const prior = await manifest.claimTransfer("bot8", "cd-thread", 30);
+
+    expect(prior).toBe("waiting_for_limit");
+    expect(await manifest.claimResume("bot8", "cd-thread", "resume", 40)).toBeUndefined();
+    await manifest.restoreTransfer("bot8", "cd-thread", prior!, 50);
+    expect(manifest.forTask("CD")?.state).toBe("waiting_for_limit");
+  });
 });

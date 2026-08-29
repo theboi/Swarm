@@ -133,7 +133,7 @@ export interface DispatchRecord {
   settings?: ChatExecutionSettings;
 }
 
-export type WorkerAssignmentState = "assigned" | "waiting_for_limit" | "completed" | "attention_required";
+export type WorkerAssignmentState = "assigned" | "waiting_for_limit" | "resuming" | "transferring" | "completed" | "attention_required";
 
 export interface WorkerTransferRecord {
   fromAccountId: AccountId;
@@ -151,6 +151,8 @@ export interface WorkerAssignmentRecord {
   state: WorkerAssignmentState;
   assignedAt: number;
   updatedAt: number;
+  /** Stable idempotency key retained while a limit-resume turn is being reconciled. */
+  resumeClientUserMessageId?: string;
   transferHistory: WorkerTransferRecord[];
 }
 

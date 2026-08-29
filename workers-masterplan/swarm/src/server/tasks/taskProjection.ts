@@ -25,10 +25,10 @@ export function projectDispatchState(nodes: TaskNode[], dispatches: DispatchReco
   }
   return nodes.map((node) => {
     const assignment = assignments.find((candidate) => candidate.taskId === node.id);
-    if (node.readiness.state !== "complete" && (assignment?.state === "assigned" || assignment?.state === "waiting_for_limit" || runningTaskIds.has(node.id))) {
+    if (assignment?.state === "attention_required" && node.readiness.state !== "complete") return { ...node, readiness: { ...node.readiness, state: "attention_required" } };
+    if (node.readiness.state !== "complete" && (assignment?.state === "assigned" || assignment?.state === "waiting_for_limit" || assignment?.state === "resuming" || assignment?.state === "transferring" || runningTaskIds.has(node.id))) {
       return { ...node, readiness: { ...node.readiness, state: "running", blockingCodes: [] } };
     }
-    if (assignment?.state === "attention_required" && node.readiness.state !== "complete") return { ...node, readiness: { ...node.readiness, state: "attention_required" } };
     return node;
   });
 }

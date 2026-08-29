@@ -134,7 +134,7 @@ async function createRuntime(config: SwarmConfig) {
   const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
   const activeTurnIds = new Map<string, string>();
   const activeTurnKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
-  let scheduleLimitResume: (account: AccountId, threadId: string) => Promise<void> = async () => undefined;
+  let scheduleLimitResume: (account: AccountId, threadId: string, retryNotBefore?: number) => Promise<void> = async () => undefined;
   const launcher = new SuLauncher({
     spawnPty: (file, args, options) => spawnPty(file, args, options),
     allocatePort: leasePort,
@@ -369,25 +369,42 @@ async function createRuntime(config: SwarmConfig) {
     timer.unref();
     rateWaitTimers.set(record.id, timer);
   };
-  scheduleLimitResume = async (account, threadId) => {
+  scheduleLimitResume = async (account, threadId, retryNotBefore = 0) => {
     const key = activeTurnKey(account, threadId);
     const existing = limitResumeTimers.get(key);
     if (existing) clearTimeout(existing);
-    await updateRateLimits(account).catch(() => undefined);
-    const next = nextLimitResumeCheck(accounts.snapshot(account), key);
+    let nextAt: number;
+    try {
+      await updateRateLimits(account);
+      nextAt = nextLimitResumeCheck(accounts.snapshot(account), key).at;
+    } catch {
+      nextAt = Date.now() + 60_000;
+    }
+    nextAt = Math.max(nextAt, retryNotBefore);
     const timer = setTimeout(() => {
       limitResumeTimers.delete(key);
       void (async () => {
-        const assignment = assignments.forThread(account, threadId);
-        if (!assignment || assignment.state !== "waiting_for_limit") return;
-        await updateRateLimits(account).catch(() => undefined);
-        if (!rankAccounts([accounts.snapshot(account)], Date.now()).length) { await scheduleLimitResume(account, threadId); return; }
-        const dispatch = outbox.list().find((record) => record.accountId === account && record.threadId === threadId);
-        await (await liveClient(account)).startTurn({ threadId, clientUserMessageId: randomUUID(), text: "Continue from where you stopped after the usage limit reset.", settings: dispatch?.settings });
-        await assignments.markAssigned(account, threadId);
-        publishRuntimeEvent("task", { taskId: assignment.taskId });
-      })().catch((error) => logger.warn("resume", { event: "limit_resume_failed", account, threadId, error: error instanceof Error ? error.message : "failed" }));
-    }, Math.max(0, next.at - Date.now()));
+        const clientUserMessageId = randomUUID();
+        const assignment = await assignments.claimResume(account, threadId, clientUserMessageId);
+        if (!assignment) return;
+        try {
+          await updateRateLimits(account);
+          if (!rankAccounts([accounts.snapshot(account)], Date.now()).length) {
+            await assignments.restoreWaitingFromResume(account, threadId, clientUserMessageId);
+            await scheduleLimitResume(account, threadId);
+            return;
+          }
+          const dispatch = outbox.list().find((record) => record.accountId === account && record.threadId === threadId);
+          await (await liveClient(account)).startTurn({ threadId, clientUserMessageId, text: "Continue from where you stopped after the usage limit reset.", settings: dispatch?.settings });
+          await assignments.markAssigned(account, threadId);
+          publishRuntimeEvent("task", { taskId: assignment.taskId });
+        } catch (error) {
+          await assignments.restoreWaitingFromResume(account, threadId, clientUserMessageId);
+          if (assignments.forThread(account, threadId)?.state === "waiting_for_limit") await scheduleLimitResume(account, threadId, Date.now() + 60_000);
+          logger.warn("resume", { event: "limit_resume_failed", account, threadId, error: error instanceof Error ? error.message : "failed" });
+        }
+      })();
+    }, Math.max(0, nextAt - Date.now()));
     timer.unref();
     limitResumeTimers.set(key, timer);
   };
@@ -402,6 +419,19 @@ async function createRuntime(config: SwarmConfig) {
         return { turns: turns.map((turn) => ({ clientUserMessageId: typeof turn.clientUserMessageId === "string" ? turn.clientUserMessageId : undefined })) };
       } });
       for (const waiting of outbox.recoverWaitingTimers()) { const record = outbox.get(waiting.id); if (record?.accountId === id) await scheduleRateWait(record); }
+      for (const resuming of assignments.list().filter((assignment) => assignment.accountId === id && assignment.state === "resuming")) {
+        const clientUserMessageId = resuming.resumeClientUserMessageId;
+        if (!clientUserMessageId) { await assignments.markAttentionRequired(id, resuming.threadId); continue; }
+        try {
+          const result = await (await liveClient(id)).readThread(resuming.threadId, { includeTurns: true });
+          const thread = object(result).thread ? object(object(result).thread) : object(result);
+          const turns = Array.isArray(thread.turns) ? thread.turns.map(object) : [];
+          if (turns.some((turn) => turn.clientUserMessageId === clientUserMessageId)) await assignments.markAssigned(id, resuming.threadId);
+          else await assignments.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
+        } catch {
+          await assignments.restoreWaitingFromResume(id, resuming.threadId, clientUserMessageId);
+        }
+      }
       for (const waiting of assignments.waitingForAccount(id)) await scheduleLimitResume(id, waiting.threadId);
       return connected;
     },
@@ -460,37 +490,49 @@ async function createRuntime(config: SwarmConfig) {
       return thread;
     },
     moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId) => {
-      try { await gitRunner.checkpointAndPush(sourceAccountId); }
-      catch { throw new Error(`GIT_HANDOFF_PUSH_FAILED: Push ${sourceAccountId}'s changes manually, then try moving this worker again.`); }
-      const source = await liveClient(sourceAccountId);
-      const sourceResult = await source.readThread(threadId, { includeTurns: true });
-      const sourceThread = sourceResult.thread;
-      const handoff = handoffSource(threadId, sourceThread);
-      const target = await liveClient(targetAccountId);
-      const rawThread = await target.startThread();
-      const thread = asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId));
-      const filename = handoffFilename(sourceAccountId, threadId);
-      const path = resolve(workspaceRoot(targetAccountId, workspaceFor(targetAccountId)), filename);
-      await target.writeFile(path, handoff.jsonl);
-      await target.setThreadName(thread.id, `Continuation · ${typeof sourceThread.name === "string" && sourceThread.name ? sourceThread.name : "previous session"}`);
-      const clientUserMessageId = randomUUID();
-      const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
-      const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
-      await target.startTurn({
-        threadId: thread.id,
-        clientUserMessageId,
-        text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`,
-        attachments: [{ name: filename, path }],
-        settings: dispatch?.settings,
-      });
       const resumeKey = activeTurnKey(sourceAccountId, threadId);
+      const sourceAssignment = assignments.forThread(sourceAccountId, threadId);
+      const priorAssignmentState = sourceAssignment ? await assignments.claimTransfer(sourceAccountId, threadId) : undefined;
+      if (sourceAssignment && !priorAssignmentState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
       const resumeTimer = limitResumeTimers.get(resumeKey);
       if (resumeTimer) clearTimeout(resumeTimer);
       limitResumeTimers.delete(resumeKey);
-      await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
-      await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
-      publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
-      return thread;
+      let targetAccepted = false;
+      try {
+        try { await gitRunner.checkpointAndPush(sourceAccountId); }
+        catch { throw new Error(`GIT_HANDOFF_PUSH_FAILED: Push ${sourceAccountId}'s changes manually, then try moving this worker again.`); }
+        const source = await liveClient(sourceAccountId);
+        const sourceResult = await source.readThread(threadId, { includeTurns: true });
+        const sourceThread = sourceResult.thread;
+        const handoff = handoffSource(threadId, sourceThread);
+        const target = await liveClient(targetAccountId);
+        const rawThread = await target.startThread();
+        const thread = asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId));
+        const filename = handoffFilename(sourceAccountId, threadId);
+        const path = resolve(workspaceRoot(targetAccountId, workspaceFor(targetAccountId)), filename);
+        await target.writeFile(path, handoff.jsonl);
+        const threadName = `Continuation · ${typeof sourceThread.name === "string" && sourceThread.name ? sourceThread.name : "previous session"}`;
+        await target.setThreadName(thread.id, threadName);
+        upsertCachedThread({ ...thread, name: threadName });
+        const clientUserMessageId = randomUUID();
+        const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
+        const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
+        await target.startTurn({ threadId: thread.id, clientUserMessageId, text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`, attachments: [{ name: filename, path }], settings: dispatch?.settings });
+        targetAccepted = true;
+        if (sourceAssignment) await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
+        await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
+        publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
+        return thread;
+      } catch (error) {
+        if (sourceAssignment && priorAssignmentState) {
+          if (targetAccepted) await assignments.markAttentionRequired(sourceAccountId, threadId);
+          else {
+            await assignments.restoreTransfer(sourceAccountId, threadId, priorAssignmentState);
+            if (priorAssignmentState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
+          }
+        }
+        throw error;
+      }
     },
     archiveThread: async (id, threadId) => {
       await (await liveClient(id)).archiveThread(threadId);

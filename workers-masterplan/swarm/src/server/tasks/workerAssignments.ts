@@ -1,4 +1,4 @@
-import type { AccountId, WorkerAssignmentRecord } from "../../shared/contracts.js";
+import type { AccountId, WorkerAssignmentRecord, WorkerAssignmentState } from "../../shared/contracts.js";
 
 function clone(record: WorkerAssignmentRecord): WorkerAssignmentRecord {
   return { ...record, transferHistory: record.transferHistory.map((transfer) => ({ ...transfer })) };
@@ -31,7 +31,7 @@ export class WorkerAssignmentManifest {
   }
 
   async markAssigned(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    await this.updateCurrent(accountId, threadId, (record) => { record.state = "assigned"; record.updatedAt = now; });
+    await this.updateCurrent(accountId, threadId, (record) => { record.state = "assigned"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
   }
 
   async markWaitingForLimit(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
@@ -43,11 +43,52 @@ export class WorkerAssignmentManifest {
   }
 
   async complete(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    await this.updateCurrent(accountId, threadId, (record) => { record.state = "completed"; record.updatedAt = now; });
+    await this.updateCurrent(accountId, threadId, (record) => { record.state = "completed"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
   }
 
   async markAttentionRequired(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    await this.updateCurrent(accountId, threadId, (record) => { record.state = "attention_required"; record.updatedAt = now; });
+    await this.updateCurrent(accountId, threadId, (record) => { record.state = "attention_required"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
+  }
+
+  async claimResume(accountId: AccountId, threadId: string, clientUserMessageId: string, now = Date.now()): Promise<WorkerAssignmentRecord | undefined> {
+    let claimed = false;
+    await this.updateCurrent(accountId, threadId, (record) => {
+      if (record.state !== "waiting_for_limit") return;
+      record.state = "resuming";
+      record.resumeClientUserMessageId = clientUserMessageId;
+      record.updatedAt = now;
+      claimed = true;
+    });
+    return claimed ? this.forThread(accountId, threadId) : undefined;
+  }
+
+  async restoreWaitingFromResume(accountId: AccountId, threadId: string, clientUserMessageId: string, now = Date.now()): Promise<void> {
+    await this.updateCurrent(accountId, threadId, (record) => {
+      if (record.state !== "resuming" || record.resumeClientUserMessageId !== clientUserMessageId) return;
+      record.state = "waiting_for_limit";
+      delete record.resumeClientUserMessageId;
+      record.updatedAt = now;
+    });
+  }
+
+  async claimTransfer(accountId: AccountId, threadId: string, now = Date.now()): Promise<WorkerAssignmentState | undefined> {
+    let prior: WorkerAssignmentState | undefined;
+    await this.updateCurrent(accountId, threadId, (record) => {
+      if (record.state === "completed" || record.state === "transferring" || record.state === "resuming") return;
+      prior = record.state;
+      record.state = "transferring";
+      delete record.resumeClientUserMessageId;
+      record.updatedAt = now;
+    });
+    return prior;
+  }
+
+  async restoreTransfer(accountId: AccountId, threadId: string, state: WorkerAssignmentState, now = Date.now()): Promise<void> {
+    await this.updateCurrent(accountId, threadId, (record) => {
+      if (record.state !== "transferring") return;
+      record.state = state;
+      record.updatedAt = now;
+    });
   }
 
   async transfer(sourceAccountId: AccountId, sourceThreadId: string, targetAccountId: AccountId, targetThreadId: string, now = Date.now()): Promise<void> {
