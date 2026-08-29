@@ -16,6 +16,8 @@ ordinary implementation prompt.
 7. Set `<CHECKOUT_OR_CLONE_MODE>`, `<MAIN_MUTATION_LOCK>`, and
    `<MAIN_PUSH_LOCK_OR_QUEUE>` to exact repository values; retain the dedicated
    UI-design shared-main lifecycle below.
+8. Name every repository-authoritative access runtime, health check, local
+   fixture-identity source, and process that must remain alive for review.
 
 ## UI-design worker prompt
 
@@ -86,9 +88,20 @@ functional change, record the named decision in `<STATUS_PATH>` and
 
 Edit the actual application, reusing its established components and tokens;
 do not create a competing component library or token system. Run
-`<ESTABLISHED_DEV_SERVER_COMMAND>`, publish the live URL to the user, and keep
-the server available while they review the work. Show a working skeleton early,
-then edit the real app and iterate from user feedback.
+`<ESTABLISHED_DEV_SERVER_COMMAND>`, publish the localhost URL to the user, and
+keep the server available while they review the work. Start every access
+dependency required by the repository's local setup, including local
+authentication/Supabase, APIs, or seed data even when the presentation uses
+fixture content. Verify each dependency at the exact endpoint configured in the
+client and prove one documented local fixture identity authenticates without
+publishing secret values. When a browser is available, complete the real sign-in
+and protected-route entry there. A protected-route redirect or `200` response
+from the sign-in page proves only that the unauthenticated shell is reachable;
+it is not login proof or a review-ready handoff. If browser integration is
+unavailable, record that visual limitation and still verify the auth service,
+documented credential, configured endpoint, and localhost process. Keep the app
+and its access dependencies running through review. Show a working skeleton
+early, then edit the real app and iterate from user feedback.
 
 When alternatives make feedback cheaper, you may offer a small set of
 substantively different options in one temporary toggleable comparison surface
@@ -108,9 +121,11 @@ contract only inside the handoff.
 
 Record the accepted app-state commit, user approval, affected routes/components,
 reused design-system foundations, verified states, development-server command
-and reviewed URL, limitations, functional decisions returned to planning, and
-ownership transfer in `<DESIGN_HANDOFF_PATH>`. Update `<STATUS_PATH>` with
-coherent progress and both artifact paths.
+and reviewed localhost URL, access-runtime commands and endpoint-health proof,
+the source of the documented fixture identity without secret values,
+limitations, functional decisions returned to planning, and ownership transfer
+in `<DESIGN_HANDOFF_PATH>`. Update `<STATUS_PATH>` with coherent progress and
+both artifact paths.
 
 Integrate the accepted presentation state and design handoff into `origin/main`.
 Only after that integration, transfer mutable presentation ownership to
