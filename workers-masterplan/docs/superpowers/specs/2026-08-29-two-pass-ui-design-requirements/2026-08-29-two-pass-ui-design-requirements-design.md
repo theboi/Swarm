@@ -5,7 +5,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Approved in conversation by the EdenMind product owner on 29 August 2026; written specification awaiting repository review |
+| Status | Approved by the EdenMind product owner on 29 August 2026 for implementation planning |
 | Decision owner | EdenMind product owner |
 | Effective scope | Reusable `blueprint-masterplan` workflow and the `2026-08-14-mvp3` delivery blueprint/coordinator projection |
 | Integration authority | `origin/main` |
