@@ -94,6 +94,21 @@ describe("ChatsPage", () => {
     expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
   });
 
+  it("does not reselect the navigation account after the operator chooses another account", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const { rerender } = render(<ChatsPage snapshot={chatSnapshot} api={api} initialAccountId="bot1" />);
+
+    expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "bot3" }));
+    expect(await screen.findByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();
+
+    rerender(<ChatsPage snapshot={{ ...chatSnapshot, generatedAt: chatSnapshot.generatedAt + 1, threads: [...chatSnapshot.threads] }} api={api} initialAccountId="bot1" />);
+
+    expect(screen.getByRole("button", { name: "bot3" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();
+  });
+
   it("renders the chat workspace immediately and lazy-loads only the selected account's chat list", async () => {
     setViewport(1440);
     let resolveThreads: ((value: { data: typeof chatSnapshot.threads }) => void) | undefined;
@@ -396,8 +411,9 @@ describe("ChatsPage", () => {
     const continuationSnapshot = {
       ...chatSnapshot,
       accounts: chatSnapshot.accounts.map((account) => account.id === "bot1" ? { ...account, connection: "connected" as const, authentication: "authenticated" as const } : account),
+      workerAssignments: [{ taskId: "T0", accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, assignedAt: 1, updatedAt: 2, transferHistory: [] }],
     };
-    render(<ChatsPage snapshot={continuationSnapshot} api={{ ...api, moveThreadToAccount }} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+    render(<ChatsPage snapshot={continuationSnapshot} api={{ ...api, moveThreadToAccount }} />);
 
     expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
     await user.click(screen.getByRole("button", { name: "Move to another account" }));
@@ -409,6 +425,18 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "Move to bot1" }));
 
     expect(moveThreadToAccount).toHaveBeenCalledWith("bot3", "thread-1", "bot1");
+  });
+
+  it("does not show a stale resume notice after the durable assignment moved away", () => {
+    setViewport(1440);
+    const transferredSnapshot = {
+      ...chatSnapshot,
+      workerAssignments: [{ taskId: "T0", accountId: "bot1" as const, threadId: "continuation", state: "assigned" as const, assignedAt: 1, updatedAt: 2, transferHistory: [{ fromAccountId: "bot3" as const, fromThreadId: "thread-1", toAccountId: "bot1" as const, toThreadId: "continuation", transferredAt: 2 }] }],
+    };
+
+    render(<ChatsPage snapshot={transferredSnapshot} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+
+    expect(screen.queryByRole("status", { name: "Session limit reached" })).not.toBeInTheDocument();
   });
 
   it("enables thread controls only for reported capabilities", async () => {

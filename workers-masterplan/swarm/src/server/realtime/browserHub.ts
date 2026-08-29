@@ -3,6 +3,7 @@ import WebSocket, { WebSocketServer } from "ws";
 
 import type { CoordinatorEvent, CoordinatorSnapshot } from "../../shared/contracts.js";
 import { readCookie, SESSION_COOKIE } from "../http/authMiddleware.js";
+import { isAllowedDashboardOrigin } from "../http/dashboardOrigins.js";
 import type { SessionStore } from "../auth/sessionStore.js";
 
 export interface BrowserHubOptions {
@@ -62,7 +63,7 @@ export class BrowserHub {
   private async handleUpgrade(request: IncomingMessage, socket: { write(data: string): unknown; destroy(): void }, head: Buffer): Promise<void> {
     if (this.closed || new URL(request.url ?? "/", "http://localhost").pathname !== "/ws") { rejectUpgrade(socket); return; }
     const origin = request.headers.origin;
-    if (typeof origin !== "string" || !this.options.allowedOrigins().has(origin)) { rejectUpgrade(socket); return; }
+    if (!isAllowedDashboardOrigin(origin, request.headers.host, this.options.allowedOrigins())) { rejectUpgrade(socket); return; }
     const cookie = readCookie(request as never, SESSION_COOKIE);
     const auth = cookie ? await this.options.sessions.useSession(cookie) : undefined;
     if (!auth) { rejectUpgrade(socket); return; }

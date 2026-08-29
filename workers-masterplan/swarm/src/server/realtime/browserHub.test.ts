@@ -39,6 +39,24 @@ describe("BrowserHub", () => {
     socket.close();
   });
 
+  it("accepts an authenticated same-host Tailscale websocket outside the startup allowlist", async () => {
+    const http = createServer();
+    const sessions = new SessionStore("session-secret");
+    const token = await sessions.createSession("claudio@example.test");
+    const hub = new BrowserHub({ server: http, sessions, allowedOrigins: () => new Set(["http://127.0.0.1:4310"]), snapshot: async () => snapshot });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    const address = http.address();
+    if (!address || typeof address === "string") throw new Error("missing listener");
+    close = async () => { await hub.close(); await new Promise<void>((resolve) => http.close(() => resolve())); };
+
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, { headers: { host: "100.87.251.123:4310", origin: "http://100.87.251.123:4310", cookie: `swarm_session=${encodeURIComponent(token)}` } });
+    socket.on("error", () => undefined);
+    await once(socket, "open");
+
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.close();
+  });
+
   it("contains a snapshot failure to the browser connection instead of creating an unhandled rejection", async () => {
     const http = createServer();
     const sessions = new SessionStore("session-secret");
