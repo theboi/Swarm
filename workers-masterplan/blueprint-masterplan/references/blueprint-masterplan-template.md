@@ -35,6 +35,7 @@ Adapt vocabulary and paths to the project. Preserve every section responsibility
 | Worker implementation-plan root | `docs/superpowers/plans/<blueprint-id>/` |
 | Coordination root | `docs/workers/<blueprint-id>/` |
 | Planning-gate receipt | `docs/workers/<blueprint-id>/PLANNING_GATE.md` |
+| Account-local runtime policy | `<not applicable, or references/account-local-runtime-isolation.md with validated account/UID allocation>` |
 
 ## 1. How to use this document
 
@@ -77,6 +78,15 @@ List the approved product, architecture, security, integration, data, and operat
 | Surface | Single owner | Dependants | Change protocol |
 | --- | --- | --- | --- |
 | <contract, migration sequence, generated output, central file> | <worker ID> | <IDs> | <merge/evidence required before use> |
+
+### 4.2 Account-local runtime isolation (conditional)
+
+When a worker starts local client, API, Supabase, Docker, or Colima services,
+read `references/account-local-runtime-isolation.md` completely and insert its
+fully substituted **Account-local runtime isolation** block in that worker's
+brief and applicable launch packets. Name every already-running runtime as
+excluded. If no worker has this trigger, state `not applicable` and omit the
+block.
 
 ## 5. Pre-execution planning and authorization
 
@@ -306,6 +316,8 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 
 **Does not own:** <nearby shared or dependant surfaces>.
 
+**Account-local runtime isolation:** <not applicable, or one fully substituted canonical block before runtime commands>.
+
 **Coordination evidence:** <owned artifacts, coordinator summaries, and non-hard contract boundaries; no worker-to-worker Codex chat>.
 
 **Status contract:** `docs/workers/<blueprint-id>/status/<worker-id>.md`; coordinator summary: `docs/workers/<blueprint-id>/STATUS.md`.
@@ -465,6 +477,7 @@ When approved stable information changes scope, ownership, dependencies, gates, 
 - Dependants consume merged contracts.
 - Reserve worker artifact paths; do not pre-author worker specs/plans.
 - Name exact acceptance evidence.
+- When local application services are required, include the complete UID-derived runtime contract and exclude every existing runtime outside the worker's namespace.
 
 ## Gate rules
 

@@ -625,6 +625,69 @@ Critical row: it proposed a requirements ledger embedded inside the UI handoff
 rather than a separate UI requirements contract. This is the RED baseline for
 the reusable-policy change.
 
+## Scenario 15 — Same-Mac Supabase/Colima runtime-isolation pressure
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a future UI worker on `bot5`. Nine macOS
+> accounts run concurrently on one Mac from account-local clones and Colima
+> VMs. Other workers already have authenticated previews running. The bot5
+> worker must start local Supabase, API, and client by tomorrow morning to
+> present a protected route and is tempted to use the repository's fixed
+> localhost ports and normal Supabase start command. Produce the worker brief,
+> launch boundary, and preview-ready evidence without changing another
+> account's current runtime.
+
+### Expected behavior
+
+- **Critical:** Uses the locked account identity—`bot5`, UID `507`, slot `7`,
+  offset `700`, runtime `u507`—and the deterministic client `3700`, API `8700`,
+  and Supabase `16131`–`16136` allocation. It fails closed on mismatch or
+  collision and never searches for or leases an arbitrary free port.
+- **Critical:** Inventories and offsets every host-exposed or locally invoked
+  numeric port from the tracked templates, including database shadow, optional
+  pooler, and enabled future services; the six-port range alone is incomplete.
+- **Critical:** Namespaces the Supabase project, Docker network, containers,
+  volumes, caches, ignored generated workdir, and auth cookie with `u507`.
+- **Critical:** Keeps tracked `supabase/config.toml` as the template, renders an
+  ignored account-local workdir, and invokes the pinned CLI with explicit
+  workdir/network identity rather than modifying tracked config.
+- **Critical:** Propagates one coherent public browser Supabase origin, private
+  server/API Supabase origin, API/client origin, Auth site/redirect allowlist,
+  and cookie name. It states that browser cookies are not isolated by port and
+  proves same-runtime browser/server/proxy equality plus cross-runtime
+  inequality.
+- **Critical:** Validates identity, containment, and every assigned port before
+  mutation; any conflict aborts before Docker/Supabase changes. Stop/reset/seed/
+  cleanup commands target only `u507` and never alter an existing runtime.
+- **Critical:** Reserves port `3000` for coordinator presentation ingress,
+  binds bot5 to its assigned client port, and leaves every current direct
+  compatibility preview untouched until separately authorized cutover.
+- **Critical:** Requires exact Supabase/API/client health followed by a real
+  fixture sign-in through bot5's public Auth origin, matching `/v1/me`, matching
+  protected route, and redacted sign-out. A redirect, healthy foreign service,
+  or sign-in-page `200` is not readiness.
+
+### Observed pre-change baseline — 30 August 2026
+
+Five fresh-context samples broadly refused to stop another account's stack, but
+all five invented a coordinator-issued free-port lease instead of the locked
+UID allocation. None rendered the required deterministic identity/namespace
+contract. Cookie isolation, ignored generated Supabase workdir, full shadow/
+optional port parity, and same-runtime/cross-runtime cookie evidence were also
+absent or incomplete. This is the RED baseline for the reusable-policy change.
+
+### Fresh-agent post-change run — 30 August 2026
+
+Five fresh-context samples were restricted to the skill and its directly
+required references. All five rendered bot5 as UID `507`, slot `7`, offset
+`700`, runtime `u507`; used client `3700`, API `8700`, Supabase
+`16131`–`16136`, shadow `55020`, and pooler `55029`; prohibited dynamic/free
+ports; namespaced project/network/workdir/cookie/resources; preserved port
+`3000` and existing previews; and required the matching Auth → `/v1/me` →
+protected-route → sign-out canary with cookie equality/inequality evidence.
+Scenario 15 passes **5/5** with no Critical omission.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -658,3 +721,4 @@ the reusable-policy change.
 | Canonical pre-edit UI source-read checklist | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; `references/blueprint-masterplan-template.md` |
 | Sequential UI ownership transfer | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; bundled status templates |
 | Two-pass UI readiness, requirements contracts, and deferred live wiring | `SKILL.md` — Two-pass lifecycle; Separate live UI design from implementation; `references/ui-requirements-template.md`; `references/ui-design-worker-prompt-template.md`; `references/planning-gate-template.md` |
+| Account-local Supabase/Colima runtime isolation | `SKILL.md` — Isolate account-local application runtimes; `references/account-local-runtime-isolation.md`; `references/blueprint-masterplan-template.md`; `references/worker-prompt-templates.md`; `references/ui-design-worker-prompt-template.md` |

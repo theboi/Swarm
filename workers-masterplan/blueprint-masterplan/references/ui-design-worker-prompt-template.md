@@ -18,6 +18,10 @@ ordinary implementation prompt.
    UI-design shared-main lifecycle below.
 8. Name every repository-authoritative access runtime, health check, local
    fixture-identity source, and process that must remain alive for review.
+9. When local client/API/Supabase/Docker/Colima is required, read
+   `account-local-runtime-isolation.md` completely and insert its one fully
+   substituted block before any runtime command. Name existing previews as
+   excluded and leave them running.
 
 ## UI-design worker prompt
 
@@ -85,6 +89,8 @@ functional change, record the named decision in `<STATUS_PATH>` and
   states, push, and prove remote reachability before the next substep.
 - Never rebase or force-push published `main`, or reset, overwrite, clean, or
   stash unsafe work.
+
+<ACCOUNT_RUNTIME_ISOLATION_BLOCK_OR_NOT_APPLICABLE>
 
 Edit the actual application, reusing its established components and tokens;
 do not create a competing component library or token system. Run

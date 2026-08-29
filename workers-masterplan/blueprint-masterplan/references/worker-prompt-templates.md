@@ -30,6 +30,7 @@ phase behavior and worker instructions.
 | Git mode | `coordinator_managed_same_mac_clones` or `independent_main_clone` |
 | Same-Mac mutation lock | Exact lock name for serialized same-Mac clone mutation lifecycles |
 | Independent-clone push queue | Exact queue/lock name used only for reconciliation, verification, push, and ancestry proof |
+| Account runtime isolation | When the worker starts local client/API/Supabase/Docker/Colima, the fully substituted block from `account-local-runtime-isolation.md`; otherwise `not applicable` |
 
 The envelope records that one loopback Codex app-server runs for the selected
 account through `su - <account>`, never Codex desktop. An account may have
@@ -76,6 +77,7 @@ Before handing off a prompt:
 13. For an execution prompt, name the passed coordinator-owned planning-gate receipt and its pinned `origin/main` commit.
 14. For a visual-design package, do not adapt either ordinary prompt; use `ui-design-worker-prompt-template.md` instead.
 15. For every operative Git/integration lifecycle or actual ordinary-worker launch prompt, render the canonical **Shared-main lifecycle** block below exactly once, with every angle-bracket field replaced by its exact value. Do not render it for factual explanations, status reports, or direct answers that assign no work.
+16. When `account_runtime_required` is true, read `account-local-runtime-isolation.md` completely and render its **Account-local runtime isolation** block exactly once before any runtime command. A free-port lease or another account's stack is not a valid substitution.
 
 ### Shared-main lifecycle
 
@@ -106,6 +108,8 @@ Both paths must be inside the `<BLUEPRINT_ID>` folder. The coordinator reserved 
 Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>` using checkout/clone mode `<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are prohibited. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. In a genuinely shared checkout, read-only planning may proceed in parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem edit or Git/index operation and hold it through reconciliation, focused verification, staging, commit, push, and remote-reachability proof. If that lock cannot exist, this prompt is valid only for a normal clone on a different machine or because the shared checkout is documented incompatible; use `<MAIN_PUSH_LOCK_OR_QUEUE>` for reconciliation, affected focused verification, push, and remote-ancestry proof without imposing a global edit lock across clones. Inspect live state, preserve and report unrelated changes, pull `origin/main` when safe, and prove that the frozen blueprint, relevant authorities, brief, and approved planned-contract inputs needed for planning are integrated there. Distinguish those planning-contract inputs from `<PREREQUISITE_IDS>`: they are later hard implemented prerequisites to verify at execution readiness, not predecessor implementation required before planning. Inspect only the relevant baseline. A clean baseline means reconciled local `main` and no owned dirty state; unrelated dirt remains preserved and reported.
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
+
+<ACCOUNT_RUNTIME_ISOLATION_BLOCK_OR_NOT_APPLICABLE>
 
 Continue until you have authored, obtained approval for, committed, and integrated this task's specification and implementation plan into `origin/main`. Do not begin product implementation in this phase.
 
@@ -157,6 +161,8 @@ You are `<WORKER_ID>`, responsible for executing `<BOUNDED_OUTCOME>` to its defi
 Before editing, verify that `<PLANNING_GATE_PATH>` is passed, contains a complete row for `<WORKER_ID>`, and is pinned to reachable `origin/main` commit `<PLANNING_GATE_COMMIT>`. Stop if the receipt is open, reopened, stale, missing the worker row, or pinned to a different commit. Then work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>` using checkout/clone mode `<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are prohibited. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. In a genuinely shared checkout, read-only planning may proceed in parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem edit or Git/index operation and hold it through reconciliation, focused verification, staging, commit, push, and remote-reachability proof. If that lock cannot exist, this prompt is valid only for a normal clone on a different machine or because the shared checkout is documented incompatible; use `<MAIN_PUSH_LOCK_OR_QUEUE>` for reconciliation, affected focused verification, push, and remote-ancestry proof without imposing a global edit lock across clones. Inspect live state, preserve and report unrelated changes, pull `origin/main` when safe, prove `<PREREQUISITE_IDS>` and their evidence are integrated there, record in `<STATUS_PATH>` each authority's path, inspected `origin/main` commit, and `current` / `updated` / `blocked` result (remote-uninspected is `unverified`) for the coordinator to reflect in `<COORDINATOR_STATUS_PATH>`, and inspect only the relevant baseline without running the full suite. A clean baseline means reconciled local `main` and no owned dirty state; unrelated dirt remains preserved and reported.
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
+
+<ACCOUNT_RUNTIME_ISOLATION_BLOCK_OR_NOT_APPLICABLE>
 
 Continue until every applicable task in `<PLAN_PATH>` is implemented, reviewed, verified, integrated through `origin/main`, handed off, and leaves no owned dirty state while unrelated dirt is preserved and reported. If repository evidence invalidates the plan, revise the worker-authored artifacts and affected living authorities through their approval rules.
 
@@ -212,4 +218,5 @@ Model strength does not change ownership, review, testing, or integration respon
 - State the fallback when requested model settings are unavailable.
 - Never use Codex chat for worker-to-worker coordination; use repository state and coordinator-owned artifacts.
 - An ordinary execution prompt must name and verify a passed planning-gate receipt and pinned `origin/main` commit before editing. Route UI-design work to `ui-design-worker-prompt-template.md`, never this ordinary implementation prompt.
+- A worker that starts local application services receives the complete UID-derived account-runtime block before commands; it never receives a free-port search, shared cookie, tracked Supabase mutation, broad Colima/Docker cleanup, or authority over an existing runtime.
 - A UI-design prompt names approved upstream specification and implementation-plan paths, emits a separate UI requirements contract path and presentation-handoff path, uses fixtures/mock state only, and stops before live wiring. The named live-wiring worker's Pass 1 planning prompt consumes both UI artifacts; its Pass 2 execution prompt performs the wiring only after the global gate and implemented prerequisites pass.

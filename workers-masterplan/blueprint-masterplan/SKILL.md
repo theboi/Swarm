@@ -1,6 +1,6 @@
 ---
 name: blueprint-masterplan
-description: Use when splitting a bounded delivery objective across workers, agents, branches, worktrees, clones, or machines; flattening a dependency flowchart; assigning collision-safe ownership; or writing worker briefs, readiness rules, delivery gates, and phase-specific launch prompts.
+description: Use when splitting a bounded delivery objective across workers, agents, branches, worktrees, clones, or machines; flattening a dependency flowchart; assigning collision-safe ownership; isolating account-local runtimes; or writing worker briefs, readiness rules, delivery gates, and phase-specific launch prompts.
 ---
 
 # Blueprint Masterplan
@@ -242,6 +242,28 @@ and separate UI requirements contract. All three workers remain
 execution-blocked until the global planning gate passes and their implemented
 hard prerequisites exist.
 
+## Isolate account-local application runtimes
+
+When a worker will start, configure, stop, reset, seed, test, or present an
+EdenMind client, API, Supabase, Docker, or Colima runtime on the shared Mac,
+read [account-local runtime isolation](references/account-local-runtime-isolation.md)
+completely. Separate accounts, account-local clones, and Colima VMs do not
+isolate host-published ports or browser cookies.
+
+Set `account_runtime_required` from that observable trigger. When true, every
+affected worker brief and applicable planning, execution, or UI-design launch
+packet contains exactly one fully substituted **Account-local runtime
+isolation** block from the reference before runtime commands. The coordinator
+records the account/UID allocation and excludes every already-running runtime
+outside the worker's exact namespace.
+
+Do not substitute a free-port lease, serialize all workers behind one shared
+stack, or stop an existing runtime. Unknown account/UID mappings, occupied
+assigned ports, incomplete port inventories, shared Docker/Supabase names,
+shared cookies, tracked-config mutation, or a failed identity canary are
+`blocked` states. Future compatibility-runtime cutover is coordinator-owned and
+requires separate explicit authorization.
+
 ## Separate live UI design from implementation
 
 UI design exists when work introduces or changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy. Create a separate UI-design worker for each coherent affected surface. Pure implementation of an already accepted design is ordinary implementation and does not create another design worker.
@@ -341,6 +363,14 @@ method-compatible human decision; dangerous actions never receive a
 session-wide approval. Public ngrok access may run only from `10:00` until
 `00:00` in `Asia/Singapore`; local coordinator access remains available outside
 that public window.
+
+When a coordinator packet's worker needs an account-local application runtime,
+its launch envelope also supplies the validated UID, slot, offset, complete
+port allocation, runtime/project/network/workdir/cookie names, excluded current
+runtimes, and exact identity-canary terminal condition from
+`references/account-local-runtime-isolation.md`. The canonical packet body
+remains unchanged; the envelope renders the conditional isolation block once
+before any runtime command.
 
 ### Render operative lifecycle outputs without compression
 
@@ -535,6 +565,7 @@ Before freezing:
 - verify the coordinator-owned `PLANNING_GATE.md` has every required ordinary-worker and UI-design row, a pinned `origin/main` commit, complete reconciliation evidence, and no unresolved material contradiction before ordinary execution;
 - verify an ordinary execution worker cannot begin because only its own planning handoff is approved;
 - verify a UI-design worker is created only for the observable trigger, follows the mandatory source reads and presentation-only live-app boundary, and transfers UI ownership sequentially after its accepted handoff;
+- verify every worker that needs local client/API/Supabase/Docker/Colima uses the validated UID-derived allocation, complete namespacing and port inventory, ignored generated config, cookie isolation, fail-before-mutation preflight, and real identity canary; verify it cannot stop or reset an existing runtime;
 - verify a material change reopens the receipt, pauses affected execution safely, and requires a new passed remote-evidenced receipt;
 - verify worker-to-worker Codex chat is prohibited and repository/coordinator artifacts carry coordination;
 - verify each worker's checkout/clone mode, that shared-checkout mutation uses an exclusive main-mutation lock, and that independent clones use the required push queue without a global edit lock;
@@ -570,6 +601,7 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Worker has only its own approved plan | Keep it execution-blocked until the passed coordinator-owned planning-gate receipt and its hard implemented prerequisites are proven on `origin/main` |
 | Work changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy | Create the separate live UI-design worker and use its conditional prompt; do not give it an implementation plan |
 | Worker specification is created or changed | Consolidate approved changes into every affected product specification in the same planning substep, or record no impact |
+| Worker needs local Supabase, API, client, Docker, or Colima | Render the account-local runtime isolation block with the validated UID allocation; fail closed rather than using free ports or another account's stack |
 | Workers share one checkout | Permit parallel read-only planning; require the exclusive main-mutation lock for edits and Git/index operations through remote proof |
 | Workers use independent normal clones | Allow only different machines or an incompatible shared checkout; require the push queue, not a global edit lock |
 | Worker tries to message another worker in Codex | Ban the chat; publish through commits, owned artifacts, and coordinator summaries |
@@ -592,6 +624,7 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Design and implementation workers edit one UI surface together | Transfer mutable presentation ownership only after the accepted handoff is integrated |
 | Flat shared specs/plans roots | Use one dated folder per blueprint in both roots |
 | Treating a required shared-checkout lock as optional | Use the exclusive lock for all filesystem edits and Git/index operations; use normal clones only for the documented fallback |
+| Treating an account-local Colima VM as host-port or cookie isolation | Use the UID-derived runtime, full port/project/network/workdir/cookie namespace, and identity canary; never disturb another runtime |
 | Treating separate files, provider evidence, or free slots as a wide-frontier exception | Test coherent domain/protocol/risk/runtime/release/verification bundles and cite concrete incompatibility evidence for any exception |
 | Workers coordinate through Codex chat | Use repository evidence and coordinator-owned artifacts instead |
 | Local-only checkpoint treated as a dependency handoff | Reconcile current local/remote `main`, push the coherent commit, and prove ancestry |
