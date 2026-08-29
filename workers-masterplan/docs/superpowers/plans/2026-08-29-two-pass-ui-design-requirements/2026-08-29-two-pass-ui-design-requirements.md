@@ -557,7 +557,7 @@ npm run typecheck
 
 Expected: PASS for UI readiness from approved planning, UI artifact completeness, exact receipt rows, global coverage, and later execution gating.
 
-- [ ] **Step 7: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 7: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 cd ../..
@@ -596,14 +596,14 @@ git merge-base --is-ancestor HEAD origin/main
 - Produces: `taskArtifactLaunchMetadata(task: TaskNode, tasks: TaskNode[]): { plannedPrerequisites: string; uiRequirementsPath: string; uiHandoffPath: string }`.
 - Consumer rule: a UI task uses its own UI paths as destinations; an ordinary task derives UI inputs from its direct UI dependency; tasks without UI inputs render `not applicable` without unresolved placeholders.
 
-- [ ] **Step 1: Pull current `main`**
+- [x] **Step 1: Pull current `main`**
 
 ```bash
 git status --short --branch
 git pull --ff-only origin main
 ```
 
-- [ ] **Step 2: Write failing launch-metadata and template tests**
+- [x] **Step 2: Write failing launch-metadata and template tests**
 
 Add these `PD` and `P3` task fixtures to `launchMetadata.test.ts`, using the file's existing readiness shape:
 
@@ -669,7 +669,7 @@ npx vitest run src/server/tasks/launchMetadata.test.ts src/shared/templates.test
 
 Expected: FAIL because metadata and placeholders do not exist and the current UI packet omits the canonical checklist.
 
-- [ ] **Step 3: Implement manifest-derived artifact metadata**
+- [x] **Step 3: Implement manifest-derived artifact metadata**
 
 In `launchMetadata.ts`, add:
 
@@ -703,7 +703,7 @@ export function taskArtifactLaunchMetadata(
 
 Add the three properties to `WorkerPromptValues` and its default mapping. In `server/index.ts`, spread `taskArtifactLaunchMetadata(task, nodes)` into every rendered prompt. Keep `executionLaunchMetadata` responsible only for the gate receipt, pinned commit, and hard runtime prerequisites.
 
-- [ ] **Step 4: Replace the three canonical coordinator packet bodies**
+- [x] **Step 4: Replace the three canonical coordinator packet bodies**
 
 Update `planning.md` to list planned prerequisite artifacts and both UI inputs. State that all planning happens in Pass 1, that applicable Layer 3 planners map every UI requirement to an owning plan and amend affected upstream plans, and that no product code or UI implementation begins.
 
@@ -713,7 +713,7 @@ Update `execution.md` to read both UI artifacts when applicable and to define La
 
 Retain the direct-main checkpoint language and exact phase terminal condition token in all three files.
 
-- [ ] **Step 5: Strengthen the byte-parity evaluator**
+- [x] **Step 5: Strengthen the byte-parity evaluator**
 
 Add exact `uiRequirementsPath` and `uiHandoffPath` values to `coordinatorLaunchValues` in `verify-swarm-prompt-parity.mjs`. Add assertions that:
 
@@ -729,7 +729,7 @@ planning and UI do not authorize ordinary execution
 
 Keep byte-for-byte comparison between the reusable Blueprint entry point and the canonical swarm templates.
 
-- [ ] **Step 6: Run focused prompt tests and parity verification**
+- [x] **Step 6: Run focused prompt tests and parity verification**
 
 ```bash
 npx vitest run src/server/tasks/launchMetadata.test.ts src/shared/templates.test.ts src/server/tasks/tasks.test.ts
