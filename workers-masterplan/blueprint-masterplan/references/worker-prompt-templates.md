@@ -212,3 +212,4 @@ Model strength does not change ownership, review, testing, or integration respon
 - State the fallback when requested model settings are unavailable.
 - Never use Codex chat for worker-to-worker coordination; use repository state and coordinator-owned artifacts.
 - An ordinary execution prompt must name and verify a passed planning-gate receipt and pinned `origin/main` commit before editing. Route UI-design work to `ui-design-worker-prompt-template.md`, never this ordinary implementation prompt.
+- A UI-design prompt names approved upstream specification and implementation-plan paths, emits a separate UI requirements contract path and presentation-handoff path, uses fixtures/mock state only, and stops before live wiring. The named live-wiring worker's Pass 1 planning prompt consumes both UI artifacts; its Pass 2 execution prompt performs the wiring only after the global gate and implemented prerequisites pass.

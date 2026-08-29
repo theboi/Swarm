@@ -85,10 +85,15 @@ List the approved product, architecture, security, integration, data, and operat
 Add a separate UI-design worker only when its package introduces or changes
 visual hierarchy, layout, component treatment, responsive behavior, motion,
 interaction states, or interface copy. That worker owns only named presentation
-surfaces, edits the real app, uses the conditional live-design prompt, has no
-implementation plan, and transfers mutable UI ownership only after its accepted
-handoff is integrated. Do not add a UI-design worker when this observable trigger
-is absent.
+surfaces, uses fixtures/mock state to edit only presentation and contents in the
+real app, uses the conditional live-design prompt, has no implementation plan,
+writes a separate UI requirements contract and presentation handoff, and
+transfers mutable UI ownership only after its accepted handoff is integrated.
+It starts when upstream specifications and implementation plans are approved,
+not when predecessor implementation is complete. Do not add a UI-design worker
+when this observable trigger is absent.
+Use `references/ui-requirements-template.md` for its separate Pass 1 UI
+requirements contract.
 
 ### 5.2 Complete planning set and planning gate
 
@@ -99,12 +104,14 @@ planned-contract inputs. Planning dependencies consume approved authorities,
 briefs, and planned contracts; they do not require predecessor implementation.
 
 The coordinator reconciles the complete planning set, including each required
-UI-design handoff, at one pinned `origin/main` commit. It then owns and writes
+UI-design handoff and separate UI requirements contract, at one pinned
+`origin/main` commit. It then owns and writes
 `docs/workers/<blueprint-id>/PLANNING_GATE.md` using
 `references/planning-gate-template.md`. The gate passes only when every required
-row is approved/reconciled, every affected UI implementation plan consumes its
-accepted UI-design handoff, and no material contradiction remains. An individual
-planning handoff never authorizes execution.
+row is approved/reconciled, every affected live-wiring implementation plan
+consumes its accepted UI-design handoff and UI requirements contract, and no
+material contradiction remains. An individual planning handoff never authorizes
+execution.
 
 ### 5.3 Execution-ready predicate
 
@@ -161,7 +168,7 @@ For a multi-worker objective, target three to seven concurrently ready workers i
 
 - `planning-blocked`: a required frozen authority, brief, or approved planned contract is unavailable.
 - `planning-ready`: the frozen blueprint, brief, relevant living authorities, and approved planned contracts needed to make task decisions are available; implemented predecessor code is not required.
-- `planning-in-progress`: the worker is producing required ordinary planning artifacts or a UI-design handoff.
+- `planning-in-progress`: the worker is producing required ordinary planning artifacts, or a UI-design worker is producing its fixture/mock presentation handoff and separate UI requirements contract.
 - `planning-complete / execution-blocked`: the worker's artifacts are reconciled, but the global planning gate is open or an implemented hard prerequisite is absent.
 - `execution-ready`: the passed planning-gate receipt is pinned to the named `origin/main` commit and every hard implemented prerequisite/evidence is integrated there.
 - `unverified`: the relevant `origin/main` commit or evidence has not been inspected; do not label the worker planning-ready or execution-ready.
@@ -212,10 +219,11 @@ coordinator publishes a passed whole-blueprint planning-gate receipt.
 
 When the observable UI-design trigger applies, use
 `references/ui-design-worker-prompt-template.md` for the separate design worker.
-It edits only named presentation surfaces in the actual app, has no
-implementation plan, and supplies accepted app state, user approval, and its
-design handoff to the coordinator before ownership transfers to the named
-implementation worker.
+It uses fixtures/mock state to edit only named presentation and contents in the
+actual app, has no implementation plan or live wiring, and supplies accepted
+app state, user approval, a separate UI requirements contract, and its design
+handoff to the coordinator before ownership transfers to the named live-wiring
+worker.
 
 ### 8.3 Coordinator planning-gate reconciliation
 
@@ -285,7 +293,6 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 **UI-design workers only; otherwise remove/omit this entire block.**
 
 **Mandatory pre-edit source-read checklist** — do not abbreviate:
-
 - [ ] Completely read `claude-design/codex/AGENTS.md`.
 - [ ] Completely read `claude-design/codex/system-prompt.md`.
 - [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
@@ -313,7 +320,7 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 
 - Ordinary execution worker — Specification: `docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md`
 - Ordinary execution worker — Implementation plan: `docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md`
-- UI-design worker — Accepted app state, approval evidence, and handoff: `<path>`; implementation plan: not applicable.
+- UI-design worker — Upstream planned specification and implementation plan: `<paths>`; fixture/mock presentation accepted app state, approval evidence, separate UI requirements contract, and handoff: `<paths>`; implementation plan: not applicable.
 
 **UI-design ownership transfer:** <not applicable, or named presentation surfaces, accepted handoff, and implementation worker that receives them>.
 
@@ -344,7 +351,7 @@ continues through integrated evidence with no owned dirty state while unrelated
 dirt is preserved and reported.
 
 Only for a worker with the observable UI-design trigger, create a separate
-live-design prompt from `references/ui-design-worker-prompt-template.md`.
+Pass 1 live-design prompt from `references/ui-design-worker-prompt-template.md`.
 
 ## 10. Shared integration contracts
 

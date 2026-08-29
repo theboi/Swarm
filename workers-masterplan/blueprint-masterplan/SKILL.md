@@ -11,7 +11,7 @@ Turn current living authorities into a frozen execution contract: establish foun
 
 **Core principle:** Minimize drift while maximizing delivery. Workers never communicate with one another through Codex chats. They work their assigned surfaces alongside concurrent workers on `main`; parallel read-only planning is normal. A genuinely shared checkout has one exclusive main-mutation lock for filesystem edits and Git/index operations through remote-reachability proof. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; across clones, a push lock or queue covers reconciliation, focused verification, push, and remote-ancestry proof. Keep local `main` and `origin/main` current without discarding unrelated work. Write code and tests continuously, run only the relevant test segment after each independently testable substep, and run the full suite once at the end of all tasks owned by that worker.
 
-**GLOBAL PLANNING BARRIER:** Complete planning for the whole frozen blueprint before ordinary execution. No execution worker may begin product implementation until every execution worker's dated specification and every non-UI implementation plan, every required UI-design handoff, affected living-authority updates, and cross-plan reconciliation are approved, reachable from `origin/main`, and recorded in the coordinator-owned planning-gate receipt. A worker's own approved plan is necessary but never sufficient to start execution.
+**TWO-PASS LIFECYCLE:** First complete planning for the whole frozen blueprint; then execute it. In Pass 1, every ordinary worker authors its dated specification and implementation plan, while every required UI-design worker designs only presentation and contents against fixtures/mock state, writes a separate UI requirements contract, and integrates its accepted presentation handoff. No ordinary product execution or live wiring starts in Pass 1. The coordinator passes one global receipt only after every ordinary plan, UI requirements contract, UI handoff, authority update, and reconciliation is approved and reachable from `origin/main`. In Pass 2, ordinary workers execute only after that receipt and their hard implemented prerequisites exist. A worker's own approved plan is necessary but never sufficient to start execution.
 
 ## Mandatory response-shape preflight
 
@@ -34,9 +34,9 @@ prose is insufficient.
 | Phase | Required fact |
 | --- | --- |
 | Coordinator | Freeze the blueprint, DAG, gates, contracts, briefs, and reserved paths; do not author a worker's detailed specification or implementation plan. |
-| Worker planning | Each ordinary worker authors its own dated specification and detailed plan, integrates its planning handoff into `origin/main`, and stops before ordinary execution. |
-| Whole-blueprint gate | The coordinator passes the receipt only after the complete planning set is reconciled and reachable from `origin/main`; one worker's approved plan never authorizes execution. |
-| Worker execution | Only after that passed receipt does the ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. |
+| Pass 1 — worker planning and UI design | Each ordinary worker authors its own dated specification and detailed plan. Each UI-design worker uses fixtures/mock state to design presentation and contents, writes a separate UI requirements contract and presentation handoff, integrates its evidence into `origin/main`, and stops before live wiring. |
+| Whole-blueprint gate | The coordinator passes the receipt only after the complete Pass 1 set is reconciled and reachable from `origin/main`; one worker's approved plan or UI handoff never authorizes execution. |
+| Pass 2 — worker execution | Only after that passed receipt does an ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. The named live-wiring worker consumes the UI requirements contract and accepted handoff. |
 
 When `phase_required` is false—including non-operative, UI-only, and
 UI-exception-only answers—render zero phase blocks. If a **Shared-main lifecycle** block
@@ -82,7 +82,7 @@ The coordinator-owned masterplan contains these responsibilities in this order:
 
 Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting.
 
-The masterplan owns worker boundaries, not worker implementation detail. A worker brief defines outcome, planning and execution prerequisites, ownership, non-ownership, acceptance evidence, merge condition, and downstream unblock. It classifies the worker as ordinary execution or conditional UI design. An ordinary execution worker later authors its own dated Superpowers specification and implementation plan; a UI-design worker produces the accepted real-app presentation state, approval evidence, and design handoff instead of an implementation plan.
+The masterplan owns worker boundaries, not worker implementation detail. A worker brief defines outcome, Pass 1 and Pass 2 prerequisites, ownership, non-ownership, acceptance evidence, merge condition, and downstream unblock. It classifies the worker as ordinary execution or conditional UI design. An ordinary worker authors its own dated Superpowers specification and implementation plan in Pass 1; a UI-design worker produces a fixture/mock-backed presentation design, UI requirements contract, accepted presentation handoff, and approval evidence instead of an implementation plan. The named ordinary live-wiring worker plans against those UI outputs in Pass 1 and implements the live behavior only in Pass 2.
 
 ## Establish current authority
 
@@ -233,10 +233,14 @@ phase. A planning handoff is incomplete while an affected product specification
 masterplan is stale. It is a planning artifact, never individual authorization
 to begin ordinary implementation.
 
-UI-related ordinary implementation planning may begin from approved functional
-authorities, but it is not planning-complete until it consumes the accepted
-UI-design handoff. That consumer remains execution-blocked until the global
-planning gate passes and its implemented hard prerequisites exist.
+UI-related ordinary implementation planning may begin after its upstream
+functional specifications and implementation plans are approved on `origin/main`;
+implemented predecessor code is not a planning prerequisite. A UI-design worker
+may start at the same point, but only with fixtures/mock state and no live wiring.
+The named live-wiring worker must plan against both the accepted UI-design handoff
+and separate UI requirements contract. All three workers remain
+execution-blocked until the global planning gate passes and their implemented
+hard prerequisites exist.
 
 ## Separate live UI design from implementation
 
@@ -269,14 +273,18 @@ checks pass.
 
 The UI-design worker MUST complete the canonical checklist before editing and
 read linked supporting references required by those sources. It has no
-implementation plan. Its accepted real-app presentation state, user approval
-evidence, and design handoff replace that artifact in the planning-gate receipt.
+implementation plan. In Pass 1 it may produce only a fixture/mock-backed,
+presentation-and-contents design; it must write both an accepted presentation
+handoff and a separate UI requirements contract using
+`references/ui-requirements-template.md`. Those two artifacts, together with
+approval evidence, replace the implementation-plan artifact in the planning-gate
+receipt.
 
-The UI-design worker is the only pre-gate app-edit exception. It may edit composition, hierarchy, spacing, responsive arrangement, visual component variants, motion, interface copy, and interaction-state presentation in the actual application. It may not create or change API calls, authorization, persistence, migrations, domain rules, scoring, background processing, or other business behavior. A discovered functional need returns to ordinary specification and planning.
+The UI-design worker is the only pre-gate app-edit exception. It may edit composition, hierarchy, spacing, responsive arrangement, visual component variants, motion, interface copy, and interaction-state presentation in the actual application, but must make those states deterministic with fixtures/mock data. It may not create or change live API calls, authorization, persistence, migrations, domain rules, scoring, background processing, or other business behavior. A discovered functional need returns to ordinary specification and planning and is captured in the UI requirements contract for the named live-wiring planner.
 
 Before editing, inventory and reuse the repository's existing components, tokens, typography, spacing, icons, motion, and interaction patterns. Do not create a competing component library or token system. Start the established live development server, publish its command and URL, keep it available through iterative user feedback, and verify the rendered application in a browser. Show a working skeleton early, incorporate user feedback in the real app, and repeat until approval or a material product decision blocks design. When alternatives make feedback cheaper, use a small set of substantively different options in one temporary toggleable comparison surface backed by shared components. Remove rejected comparison-only code after approval unless the user explicitly accepts a development-only comparison control.
 
-The UI-design handoff records the accepted app-state commit reachable from `origin/main`, user approval evidence, affected routes/components and reused design-system foundations, verified applicable wide, narrow, interaction, keyboard/focus, and reduced-motion states, the development-server command and reviewed URL, retained limitations and functional decisions returned to planning, and the implementation worker that receives mutable ownership.
+The UI-design handoff records the accepted app-state commit reachable from `origin/main`, user approval evidence, affected routes/components and reused design-system foundations, verified applicable wide, narrow, interaction, keyboard/focus, and reduced-motion states, the development-server command and reviewed URL, retained limitations and functional decisions returned to planning, and the implementation worker that receives mutable ownership. The separate UI requirements contract records the required reads, commands, actor capabilities, lifecycle and error states, navigation/client state, files/exports, accessibility, deterministic fixtures, planned-contract traceability, Pass 2 acceptance mapping, and unresolved product decisions. It is the contract the Pass 1 live-wiring planner and downstream planners consume; it is not live wiring.
 
 The design worker owns the named presentation files until its accepted handoff is integrated into `origin/main`. Transfer mutable ownership to the implementation worker only afterward; the two workers never edit the same mutable UI surface concurrently.
 
@@ -370,7 +378,7 @@ transfer.
 | --- | --- |
 | planning-blocked | A required frozen authority, brief, or approved planned contract is unavailable |
 | planning-ready | The planning-readiness predicate is satisfied at an inspected `origin/main` commit; implemented predecessor code is not required |
-| planning-in-progress | The worker is producing its required planning artifacts or UI-design handoff |
+| planning-in-progress | The worker is producing its required planning artifacts, or a UI-design worker is producing its fixture/mock presentation handoff and separate UI requirements contract |
 | planning-complete / execution-blocked | The worker's planning artifacts are reconciled, but the global planning gate is open or an implemented hard prerequisite is absent |
 | execution-ready | The execution-readiness predicate is satisfied at the named `origin/main` commit |
 | unverified | The needed remote commit or evidence has not been inspected; it is neither planning-ready nor execution-ready |
@@ -379,7 +387,7 @@ transfer.
 | review | Work exists but review, evidence, or integration remains open |
 | complete | The coordinator verified final full-suite evidence, `origin/main` integration, handoff, and cleanup of any dedicated temporary lane |
 
-A feature-branch-only commit, unpushed local commit, stash, or working-tree change never satisfies a planned contract, hard prerequisite, or required evidence. The coordinator cannot pass the planning gate until the complete planning set and UI handoffs are reachable from `origin/main`; execution readiness additionally requires each worker's implemented hard prerequisites.
+A feature-branch-only commit, unpushed local commit, stash, or working-tree change never satisfies a planned contract, hard prerequisite, or required evidence. The coordinator cannot pass the planning gate until the complete Pass 1 planning set, UI requirements contracts, and UI handoffs are reachable from `origin/main`; execution readiness additionally requires each worker's implemented hard prerequisites.
 
 Use [the worker status template](references/worker-status-template.md) for each active worker and [the coordinator summary template](references/status-summary-template.md) for `STATUS.md`. A worker owns only its named status file; the coordinator alone owns the aggregate, authority-refresh record, and initial readiness table.
 
@@ -400,20 +408,21 @@ with owner and unblock criterion, and the material-change rule. It has one row
 for every ordinary execution worker with its specification path and commit,
 implementation-plan path and commit, approval, living-authority synchronization,
 and cross-plan reconciliation result. It has one row for every UI-design worker
-with accepted app-state commit, approval evidence, handoff path, completed live
-review, and sequential ownership-transfer target. `not applicable` is valid
-only for the UI-design worker implementation-plan field and only with its
-accepted design artifacts.
+with accepted presentation app-state commit, approval evidence, separate UI
+requirements path, handoff path, completed fixture/mock live review,
+requirements-to-plan reconciliation, and sequential ownership-transfer target.
+`not applicable` is valid only for the UI-design worker implementation-plan
+field and only with its accepted design artifacts.
 
 Before passing the gate, the coordinator verifies that every brief has the
 required planning artifact, producer and consumer planned interfaces agree,
 shared mutable surfaces have exactly one current owner, migration,
 generated-artifact, central-composition, and integration ordering are explicit,
-accepted UI design is reflected in affected implementation plans, affected
-living authorities and downstream documents are current, all approvals and
-review evidence are reachable from `origin/main`, and no material decision or
-cross-plan contradiction remains. The gate passes only when every required row
-is complete.
+accepted UI design and its UI requirements contract are reflected in affected
+live-wiring implementation plans, affected living authorities and downstream
+documents are current, all approvals and review evidence are reachable from
+`origin/main`, and no material decision or cross-plan contradiction remains.
+The gate passes only when every required row is complete.
 
 ## Keep every worker current on `main`
 

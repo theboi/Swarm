@@ -59,7 +59,7 @@
 - Consumes: the approved spec's Pass 1/Pass 2 lifecycle, canonical four-row UI source-read checklist, direct-main lifecycle, and three-artifact UI ownership contract.
 - Produces: reusable terms `UI requirements contract`, `ui-design-ready`, `planning-complete / execution-blocked`, and a gate row that pairs each UI handoff with requirements reconciliation and a named live-wiring owner.
 
-- [ ] **Step 1: Pull and record the RED baseline before editing the skill**
+- [x] **Step 1: Pull and record the RED baseline before editing the skill**
 
 Run:
 
@@ -77,7 +77,7 @@ Use $blueprint-masterplan for a six-path product. Every Layer 2 worker has an ap
 
 Score the current response as failing if it does any of the following: waits for implemented Layer 2 code before UI design; omits a separate UI requirements contract; lets the UI worker perform live wiring; creates replacement Layer 3 IDs; or authorizes rolling execution before one global receipt. Preserve the response in the execution handoff as RED evidence.
 
-- [ ] **Step 2: Add the failing pressure scenario to the evaluation catalog**
+- [x] **Step 2: Add the failing pressure scenario to the evaluation catalog**
 
 Append a scenario titled `Two-pass UI planning under rolling-delivery pressure` to `blueprint-masterplan-scenarios.md`. Use the exact prompt from Step 1 and these critical expectations:
 
@@ -90,7 +90,7 @@ Append a scenario titled `Two-pass UI planning under rolling-delivery pressure` 
 - Requires Pass 2 Layer 3 execution to verify the passed receipt, implemented Layer 2 predecessor, accepted UI state, handoff, requirements contract, and ownership transfer.
 ```
 
-- [ ] **Step 3: Write the UI requirements reference template**
+- [x] **Step 3: Write the UI requirements reference template**
 
 Create `ui-requirements-template.md` with a short authority explanation followed by these required headings in this order:
 
@@ -134,7 +134,7 @@ Give every section an exact completion rule:
 
 State that requirements use business/domain intent. Existing approved endpoint shapes may be cited, but the owning ordinary planner remains authoritative for APIs, authorization, domain rules, and persistence.
 
-- [ ] **Step 4: Revise the reusable skill and blueprint template**
+- [x] **Step 4: Revise the reusable skill and blueprint template**
 
 Use `superpowers:writing-skills` for this edit. Change `SKILL.md` and `blueprint-masterplan-template.md` so they say, explicitly and consistently:
 
@@ -157,7 +157,7 @@ Add all of these rules:
 
 Keep the canonical UI source-read checklist byte-for-byte unchanged and exactly once in each instantiated UI worker prompt.
 
-- [ ] **Step 5: Revise the UI, gate, status, and launch reference shapes**
+- [x] **Step 5: Revise the UI, gate, status, and launch reference shapes**
 
 Update `ui-design-worker-prompt-template.md` to include exact placeholders `<UI_REQUIREMENTS_PATH>`, `<DESIGN_HANDOFF_PATH>`, `<UPSTREAM_SPEC_PATH>`, `<UPSTREAM_PLAN_PATH>`, and `<IMPLEMENTATION_WORKER_ID>`. Require fixture/mock presentation state, forbid live wiring, require the full UI requirements sections from Step 3, and stop only after accepted presentation state plus both documents are integrated.
 
@@ -169,7 +169,7 @@ UI worker | Accepted app commit | Approval evidence | Presentation handoff | UI 
 
 Update `worker-status-template.md` and `status-summary-template.md` with separate rows for UI requirements, presentation handoff, planned predecessor evidence, requirements reconciliation, global gate state, implemented runtime predecessor evidence, and next mutable owner. Update `worker-prompt-templates.md` so ordinary Layer 3 planning and execution prompts name both UI artifacts when applicable.
 
-- [ ] **Step 6: Run the GREEN evaluation and focused contract checks**
+- [x] **Step 6: Run the GREEN evaluation and focused contract checks**
 
 Run the same fresh-context scenario from Step 1 with the revised skill. Score every critical row before continuing. Then run:
 

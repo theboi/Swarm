@@ -581,6 +581,50 @@ Fixture mode has no impact: this policy change neither changes nor routes any
 fixture behavior, fixture worker, fixture gate, fixture acceptance rule,
 provider, command, or environment.
 
+## Scenario 14 — Two-pass UI planning under rolling-delivery pressure
+
+### Prompt
+
+> Use `$blueprint-masterplan` for a six-path product. Every Layer 2 worker has
+> an approved specification and implementation plan on origin/main, but none has
+> implemented code. Product leadership wants all planning completed before
+> execution. Create one UI-design worker per path now, let each design the real
+> app with fixtures, and have the existing Layer 3 worker wire it later. The UI
+> must tell downstream planners every API, capability, state, and command it
+> needs. The CTO also asks whether the first finished path may start coding while
+> the other five UI designs are under review. Give the readiness decision,
+> artifacts, graph relationships, and launch boundaries.
+
+### Expected behavior
+
+- **Critical:** Marks each UI-design worker planning-ready from its Layer 2
+  approved specification and implementation plan; no predecessor implementation
+  is required.
+- **Critical:** Produces a separate UI worker status file, presentation handoff,
+  and UI requirements contract rather than embedding requirements only in the
+  handoff; the UI worker has no implementation plan.
+- **Critical:** Limits UI work to fixture/mock-backed presentation and contents;
+  it performs no live API, authorization, persistence, domain, or live-wiring
+  behavior.
+- **Critical:** Makes the existing Layer 3 live-wiring worker consume both UI
+  artifacts in its Pass 1 implementation plan and perform the wiring only in
+  Pass 2 after the global gate and its implemented prerequisites pass.
+- **Critical:** Rejects rolling execution: no path may start coding before one
+  coordinator-owned receipt proves every ordinary plan, every UI requirements
+  contract and handoff, and all authority/reconciliation mapping complete.
+- Requires a two-DAG explanation: Pass 1 planned contracts flow Layer 1 plan →
+  Layer 2 plan → UI design + requirements → Layer 3 live-wiring plan → later
+  plans → global receipt; Pass 2 flows passed receipt + implemented runtime
+  prerequisites through live wiring and acceptance.
+
+### Observed pre-change baseline
+
+A fresh-context reviewer correctly kept all execution behind a whole-blueprint
+gate and allowed UI planning from approved Layer 2 plans, but failed the second
+Critical row: it proposed a requirements ledger embedded inside the UI handoff
+rather than a separate UI requirements contract. This is the RED baseline for
+the reusable-policy change.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -613,3 +657,4 @@ provider, command, or environment.
 | Optional cheap toggleable alternatives | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md` |
 | Canonical pre-edit UI source-read checklist | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; `references/blueprint-masterplan-template.md` |
 | Sequential UI ownership transfer | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; bundled status templates |
+| Two-pass UI readiness, requirements contracts, and deferred live wiring | `SKILL.md` — Two-pass lifecycle; Separate live UI design from implementation; `references/ui-requirements-template.md`; `references/ui-design-worker-prompt-template.md`; `references/planning-gate-template.md` |

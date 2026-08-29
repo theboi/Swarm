@@ -51,19 +51,20 @@ planning artifacts are necessary but never sufficient on their own.
 
 ## Named worker-status contracts and complete planning manifest
 
-| Worker | Named worker-status contract | Phase | Specification path and commit | Implementation plan or accepted UI artifacts | Planning state | Cross-plan reconciliation | Authority synchronization | Gate row |
+| Worker | Named worker-status contract | Phase | Planned predecessor evidence | Specification path and commit | Implementation plan or accepted UI artifacts | UI requirements / handoff | Requirements reconciliation | Planning state | Cross-plan reconciliation | Authority synchronization | Gate row |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <ID> | `docs/workers/<blueprint-id>/status/<worker-id>.md` | planning / execution / ui-design | `<path, commit, or not applicable>` | `<path, commit, or accepted app commit + approval + handoff>` | pending / approved / reopened / not applicable | pending / complete / contradicted | current / missing / stale / no-impact with evidence | complete / incomplete |
+| <ID> | `docs/workers/<blueprint-id>/status/<worker-id>.md` | planning / execution / ui-design | `<approved upstream specification, plan, authority/no-impact, and status commit>` | `<path, commit, or approved upstream contracts>` | `<path, commit, or accepted app commit + approval>` | `<UI requirements + handoff paths, or not applicable>` | pending / complete / reopened / not applicable | pending / approved / reopened / not applicable | pending / complete / contradicted | current / missing / stale / no-impact with evidence | complete / incomplete |
 
 List every execution worker and UI-design worker. `not applicable` is valid for
 an implementation plan only for a UI-design worker whose accepted app state,
-approval evidence, and handoff are all recorded.
+approval evidence, separate UI requirements contract, and handoff are all
+recorded.
 
 ## UI-design acceptance and ownership transfer
 
-| UI-design worker | Affected presentation surfaces | Live server command and reviewed URL | Accepted app commit | User approval | Design handoff | Current → next mutable owner | Transfer state |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| <ID> | <paths> | `<command>`; `<URL>` | `<origin/main-reachable commit>` | `<evidence or pending>` | `<path>` | `<design worker> → <implementation worker>` | pending / integrated / transferred |
+| UI-design worker | Affected presentation surfaces | Live server command and reviewed URL | Fixture/mock state | Accepted app commit | User approval | UI requirements | Design handoff | Current → next mutable owner | Transfer state |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| <ID> | <paths> | `<command>`; `<URL>` | complete / pending | `<origin/main-reachable commit>` | `<evidence or pending>` | `<path>` | `<path>` | `<design worker> → <implementation worker>` | pending / integrated / transferred |
 
 ## Unresolved cross-plan contradictions
 

@@ -9,8 +9,8 @@ ordinary implementation prompt.
 
 1. Replace every literal placeholder with an exact value; remove no required boundary.
 2. Name the exact presentation surfaces and excluded functional surfaces.
-3. Set the established repository development-server command and design handoff path.
-4. Name the implementation worker that receives ownership after the accepted handoff.
+3. Set the established repository development-server command, presentation handoff path, and separate UI requirements path.
+4. Name the upstream approved specification and implementation-plan paths, and the live-wiring worker that receives ownership after the accepted handoff.
 5. Keep the worker's scope presentation-only; return a discovered functional decision to planning.
 6. Preserve the canonical four-row source-read checklist below unabridged.
 7. Set `<CHECKOUT_OR_CLONE_MODE>`, `<MAIN_MUTATION_LOCK>`, and
@@ -26,13 +26,17 @@ Read `<BLUEPRINT_PATH>` together with these relevant living masterplans:
 - `<LIVING_MASTERPLAN_PATH>`
 
 Read the UI brief for `<DESIGN_WORKER_ID>`, the existing application surface,
-and its existing design system. Do not rely on private conversation history.
+its existing design system, and these approved planned upstream contracts:
+
+- `<UPSTREAM_SPEC_PATH>`
+- `<UPSTREAM_PLAN_PATH>`
+
+Do not rely on private conversation history.
 
 You are `<DESIGN_WORKER_ID>`, responsible only for the live, presentation-only
 design of `<BOUNDED_UI_SURFACE>`.
 
 **Mandatory pre-edit source-read checklist** — do not abbreviate:
-
 - [ ] Completely read `claude-design/codex/AGENTS.md`.
 - [ ] Completely read `claude-design/codex/system-prompt.md`.
 - [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
@@ -47,10 +51,12 @@ Work directly on `main` in `<MAIN_CHECKOUT_PATH>` using checkout/clone mode
 prohibited. Your owned presentation surfaces are
 `<OWNED_PRESENTATION_SURFACES>`. You do not own
 `<EXCLUDED_FUNCTIONAL_SURFACES>`. Preserve unrelated changes and stage only
-owned paths. Do not create or change APIs, authorization, persistence,
-migrations, domain rules, scoring, background processing, or other business
-behavior. If the design needs any functional change, record the named decision
-in `<STATUS_PATH>` and return it to ordinary specification and planning.
+owned paths. This is Pass 1 design and contents work: make every state
+deterministic with fixtures/mock data and do no live wiring. Do not create or
+change live APIs, authorization, persistence, migrations, domain rules, scoring,
+background processing, or other business behavior. If the design needs any
+functional change, record the named decision in `<STATUS_PATH>` and
+`<UI_REQUIREMENTS_PATH>`, then return it to ordinary specification and planning.
 
 ## UI-design shared-main lifecycle
 
@@ -92,18 +98,27 @@ keyboard/focus, and reduced-motion state. Obtain explicit user approval. Remove
 rejected comparison-only code unless the user explicitly accepts retaining a
 development-only comparison control.
 
+Write `<UI_REQUIREMENTS_PATH>` as a separate UI requirements contract using
+`references/ui-requirements-template.md`. It must specify the surface inventory;
+actor capabilities; required reads and commands; async/lifecycle, navigation,
+file/export, and accessibility behavior; deterministic fixture scenarios;
+planned-contract traceability; Pass 2 acceptance mapping; and open product
+decisions. Name `<LIVE_WIRING_WORKER_ID>` as its consumer. Do not embed this
+contract only inside the handoff.
+
 Record the accepted app-state commit, user approval, affected routes/components,
 reused design-system foundations, verified states, development-server command
 and reviewed URL, limitations, functional decisions returned to planning, and
 ownership transfer in `<DESIGN_HANDOFF_PATH>`. Update `<STATUS_PATH>` with
-coherent progress and handoff evidence.
+coherent progress and both artifact paths.
 
 Integrate the accepted presentation state and design handoff into `origin/main`.
 Only after that integration, transfer mutable presentation ownership to
 `<IMPLEMENTATION_WORKER_ID>`; the two workers must never edit the same mutable
 UI surface concurrently.
 
-This worker never writes an implementation plan. Stop only after accepted
-design evidence is integrated into `origin/main`, or after a named functional
-decision has returned the work to ordinary planning.
+This worker never writes an implementation plan or live wiring. Stop only after
+the accepted fixture/mock presentation evidence, separate UI requirements
+contract, and handoff are integrated into `origin/main`, or after a named
+functional decision has returned the work to ordinary planning.
 ```

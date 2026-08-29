@@ -14,7 +14,7 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 | Worker planning state | pending / approved / reopened / not applicable |
 | Global planning gate | open / passed / reopened; `<receipt path>`; pinned `origin/main` commit `<commit>` |
 | Execution readiness | not assessed / blocked / ready; `<implemented-prerequisite evidence>` |
-| UI-design live review | Not applicable — ordinary worker, or `<server command>`; `<reviewed URL>`; last reviewed app commit `<commit>`; user approval `<evidence or pending>`; handoff `<path or pending>` |
+| UI-design live review | Not applicable — ordinary worker, or `<server command>`; `<reviewed URL>`; fixture/mock state; last reviewed app commit `<commit>`; user approval `<evidence or pending>`; UI requirements `<path or pending>`; handoff `<path or pending>` |
 | Mutable ownership transfer | current owner `<worker-id>`; next owner `<worker-id or none>`; handoff commit `<commit or pending>`; state pending / integrated / transferred / not applicable |
 | Checked-out branch | `main` |
 | Main checkout or clone | `<absolute path or machine identifier>` |
@@ -41,6 +41,9 @@ Use one unique file per worker at `docs/workers/<blueprint-id>/status/<worker-id
 | --- | --- | --- | --- |
 | Worker specification | `<relative path and origin/main commit>` | pending / approved / reopened / not applicable | <owner or coordinator> |
 | Implementation plan | `<relative path and origin/main commit>` | pending / approved / reopened / not applicable | <owner or coordinator> |
+| Planned predecessor evidence | `<upstream specification, implementation plan, authority/no-impact result, and status at origin/main commit>` | pending / approved / not applicable | <worker or coordinator> |
+| UI requirements contract | `<relative path and origin/main commit>` | pending / accepted / reconciled / not applicable | <UI worker, live-wiring planner, or coordinator> |
+| UI requirements reconciliation | `<consumer plan task and producer mapping>` | pending / complete / reopened / not applicable | <live-wiring planner or coordinator> |
 | Global planning-gate receipt | `docs/workers/<blueprint-id>/PLANNING_GATE.md` at `<origin/main commit>` | open / passed / reopened | <coordinator> |
 | Cross-plan and authority reconciliation | `<receipt row or review artifact>` | pending / complete / reopened | <coordinator> |
 
@@ -58,6 +61,8 @@ Complete this section for `Phase: ui-design`; mark every row `Not applicable —
 | Reviewed URL | `<URL>` | last reviewed `<timestamp>` |
 | Last reviewed app state | `<origin/main-reachable commit>` | browser-verified / pending |
 | User approval | `<approval evidence>` | approved / pending / superseded |
+| UI requirements contract | `<relative path>` | pending / integrated / accepted / reconciled |
+| Requirements-to-plan reconciliation | `<consumer plan task and producer mapping>` | pending / complete / reopened |
 | Design handoff | `<relative path>` | pending / integrated / accepted |
 | Mutable ownership | current `<worker-id>` → next `<implementation-worker-id>` | pending / integrated / transferred |
 
@@ -101,10 +106,10 @@ Mark affected downstream work blocked or not-ready until every required document
 
 Complete before final handoff:
 
-- Task specification: `<relative path>` for an ordinary worker; or `not applicable — UI-design worker` only when the accepted app-state commit, user approval evidence, and design handoff path are all present above
-- Implementation plan: `<relative path>`; or `not applicable — UI-design worker` only when the accepted app-state commit, user approval evidence, and design handoff path are all present above
+- Task specification: `<relative path>` for an ordinary worker; or `not applicable — UI-design worker` only when approved upstream planned-contract paths, accepted app-state commit, user approval evidence, UI requirements path, and design handoff path are all present above
+- Implementation plan: `<relative path>`; or `not applicable — UI-design worker` only when the accepted app-state commit, user approval evidence, UI requirements path, and design handoff path are all present above
 - Global planning-gate receipt: `docs/workers/<blueprint-id>/PLANNING_GATE.md`, state `<passed/reopened/open>`, pinned `origin/main` commit `<commit>`
-- UI-design live review and ownership transfer: `<server command, reviewed URL, accepted app commit, approval evidence, handoff path, current → next owner, transfer state; or not applicable — ordinary worker>`
+- UI-design live review and ownership transfer: `<server command, reviewed URL, fixture/mock state, accepted app commit, approval evidence, UI requirements path, handoff path, current → next owner, transfer state; or not applicable — ordinary worker>`
 - Living-authority updates: `<relative paths and commits>`
 - Final local `main` commit and reachable `origin/main` commit: `<commits>`
 - Final full-suite run after all owned tasks: `<command and result>`

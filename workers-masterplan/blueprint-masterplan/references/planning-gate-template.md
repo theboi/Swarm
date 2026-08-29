@@ -22,11 +22,11 @@ approve, or alter this whole-blueprint execution authorization.
 | --- | --- | --- | --- | --- | --- |
 | `<worker-id>` | `<spec-path-and-commit>` | `<plan-path-and-commit>` | approved / pending | `<authority-sync-evidence>` | `<reconciliation-result>` |
 
-## UI-design handoffs
+## UI-design planning set
 
-| Design worker | Implementation plan | Accepted app commit | User approval | Handoff | Live review complete | Ownership transfers to |
-| --- | --- | --- | --- | --- | --- | --- |
-| `<design-worker-id>` | not applicable — UI-design worker | `<accepted-app-commit>` | `<approval-evidence>` | `<handoff-path>` | yes / no | `<implementation-owner>` |
+| UI worker | Accepted app commit | Approval evidence | Presentation handoff | UI requirements | Live review | Requirements-to-plan reconciliation | Mutable owner transfer | Remote commit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `<design-worker-id>` | `<accepted-app-commit>` | `<approval-evidence>` | `<handoff-path>` | `<ui-requirements-path>` | fixture/mock complete / pending | `<consumer-plan mapping>` | `<implementation-owner>` | `<origin-main-commit>` |
 
 ## Unresolved contradictions
 
@@ -50,7 +50,8 @@ reconciled again, and the coordinator publishes a new passed receipt at current
 ````
 
 The gate cannot pass while any required row is pending or any contradiction is
-unresolved. Only a UI-design row may record an implementation plan as `not
-applicable`, and then only when its accepted app state, approval evidence, and
-handoff are complete. Every ordinary execution prompt must verify this receipt
-and its pinned `origin/main` commit before editing.
+unresolved. A UI-design worker has no implementation plan; its accepted
+fixture/mock presentation app state, approval evidence, separate UI requirements
+contract, handoff, live review, and requirements-to-plan reconciliation must all
+be complete. Every ordinary execution prompt must verify this receipt and its
+pinned `origin/main` commit before editing.
