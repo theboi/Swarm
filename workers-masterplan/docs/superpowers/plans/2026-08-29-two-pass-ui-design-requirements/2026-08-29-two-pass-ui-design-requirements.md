@@ -211,7 +211,7 @@ If the merge incorporates upstream changes in an affected file, rerun Step 6 bef
 - Consumes: the reusable lifecycle from Task 1 and the approved design spec.
 - Produces: one authoritative MVP3 description of the Pass 1 planned DAG, the Pass 2 implemented DAG, exact UI artifact paths, and no-impact findings for business/product authorities.
 
-- [ ] **Step 1: Pull current authority and inspect concurrent changes**
+- [x] **Step 1: Pull current authority and inspect concurrent changes**
 
 ```bash
 git status --short --branch
@@ -219,7 +219,7 @@ git pull --ff-only origin main
 git log -1 --oneline -- docs/plans/EdenMind_MVP3_Implementation_Masterplan.md workers-masterplan/docs/superpowers/specs/2026-08-26-swarm-coordinator/2026-08-26-swarm-coordinator-design.md workers-masterplan/swarm/README.md
 ```
 
-- [ ] **Step 2: Rewrite the MVP3 planning and execution sections as two separate DAGs**
+- [x] **Step 2: Rewrite the MVP3 planning and execution sections as two separate DAGs**
 
 In the MVP3 masterplan, replace rolling authorization and implemented-Layer-2 UI readiness everywhere with these exact semantics:
 
@@ -235,7 +235,7 @@ Write the failure/change rules explicitly: an out-of-scope UI requirement is dec
 
 For each UI worker, record the exact status, requirements, handoff, consumer, and planned predecessor paths from the approved spec. Define `P3/C3/Q3/A3/E3/G3` as both Pass 1 live-wiring planners and Pass 2 live-wiring executors; do not rename them.
 
-- [ ] **Step 3: Record authority impact without mutating unaffected living masterplans**
+- [x] **Step 3: Record authority impact without mutating unaffected living masterplans**
 
 Add an authority-refresh/no-impact table to the MVP3 masterplan or its revision record with these conclusions:
 
@@ -248,7 +248,7 @@ Add an authority-refresh/no-impact table to the MVP3 masterplan or its revision 
 
 Do not stage either cited masterplan.
 
-- [ ] **Step 4: Synchronize the coordinator design and README**
+- [x] **Step 4: Synchronize the coordinator design and README**
 
 Update the coordinator design and `swarm/README.md` to specify:
 
@@ -263,7 +263,7 @@ Update the coordinator design and `swarm/README.md` to specify:
 
 Update the approved spec's Status row to `Approved by the EdenMind product owner on 29 August 2026 for implementation planning` if it is not already current.
 
-- [ ] **Step 5: Verify the authority rewrite**
+- [x] **Step 5: Verify the authority rewrite**
 
 ```bash
 rg -n "Pass 1|Pass 2|UI requirements|P3|C3|Q3|A3|E3|G3|PLANNING_GATE.md" docs/plans/EdenMind_MVP3_Implementation_Masterplan.md workers-masterplan/docs/superpowers/specs/2026-08-26-swarm-coordinator/2026-08-26-swarm-coordinator-design.md workers-masterplan/swarm/README.md
@@ -274,7 +274,7 @@ git diff --name-only -- docs/plans/EdenMind_Business_Masterplan.md docs/plans/Ed
 
 Expected: the first search shows both passes and all six retained live-wiring IDs; the prohibited-language search succeeds with no matches; the final command prints no paths.
 
-- [ ] **Step 6: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 6: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 git add docs/plans/EdenMind_MVP3_Implementation_Masterplan.md workers-masterplan/docs/superpowers/specs/2026-08-26-swarm-coordinator/2026-08-26-swarm-coordinator-design.md workers-masterplan/swarm/README.md workers-masterplan/docs/superpowers/specs/2026-08-29-two-pass-ui-design-requirements/2026-08-29-two-pass-ui-design-requirements-design.md
