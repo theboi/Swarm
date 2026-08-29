@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
 import { TranscriptItemView } from "./TranscriptItemView";
@@ -57,5 +57,27 @@ describe("TranscriptItemView", () => {
     await user.click(screen.getByRole("button", { name: "Show plain text" }));
     expect(screen.getByText("**Ready** with `code`.", { selector: "pre" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Render Markdown" })).toBeVisible();
+  });
+
+  it("opens rendered chat links in a separate tab", () => {
+    render(<TranscriptItemView item={{ id: "agent-link", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "[Open docs](https://example.test/docs)" } }} onOpenMarkdown={() => undefined} />);
+
+    expect(screen.getByRole("link", { name: "Open docs" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Open docs" })).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("shows the sent time before a control that copies the raw message source", async () => {
+    const writeText = vi.fn(async () => undefined);
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<TranscriptItemView item={{ id: "agent-source", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: Date.parse("2026-08-29T03:04:00.000Z"), payload: { text: "**Raw** source" } }} onOpenMarkdown={() => undefined} />);
+
+    const time = screen.getByText((_content, element) => element?.tagName === "TIME");
+    const copy = screen.getByRole("button", { name: "Copy message source" });
+    expect(time).toHaveAttribute("datetime", "2026-08-29T03:04:00.000Z");
+    expect(time.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(copy);
+    expect(writeText).toHaveBeenCalledWith("**Raw** source");
+    expect(screen.getByRole("button", { name: "Message source copied" })).toBeVisible();
   });
 });

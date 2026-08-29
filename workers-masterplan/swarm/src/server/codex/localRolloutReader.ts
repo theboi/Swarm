@@ -1,0 +1,112 @@
+import { createReadStream } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
+
+import type { RawThreadTurn } from "./transcriptReducer.js";
+
+type CachedTurn = Omit<RawThreadTurn, "items"> & { items: Map<string, Record<string, unknown>> };
+type CachedRollout = { path: string; offset: number; pending: string; turns: Map<string, CachedTurn> };
+
+const threadIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const itemTypes: Record<string, string> = {
+  UserMessage: "userMessage", AgentMessage: "agentMessage", Reasoning: "reasoning", CommandExecution: "commandExecution",
+  FileChange: "fileChange", McpToolCall: "mcpToolCall", DynamicToolCall: "dynamicToolCall", CollabAgentToolCall: "collabAgentToolCall",
+  SubAgentActivity: "subAgentActivity", ContextCompaction: "contextCompaction",
+};
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function contentText(value: unknown): string {
+  if (!Array.isArray(value)) return typeof value === "string" ? value : "";
+  return value.flatMap((part) => typeof record(part)?.text === "string" ? [record(part)!.text as string] : []).join("");
+}
+
+function normalizeChanges(value: unknown): Array<{ path: string; kind: string }> {
+  if (Array.isArray(value)) return value.flatMap((change) => {
+    const item = record(change);
+    return typeof item?.path === "string" ? [{ path: item.path, kind: typeof item.kind === "string" ? item.kind : "changed" }] : [];
+  });
+  const changes = record(value);
+  if (!changes) return [];
+  return Object.entries(changes).map(([path, change]) => ({ path, kind: typeof record(change)?.kind === "string" ? record(change)!.kind as string : "changed" }));
+}
+
+function normalizeRolloutItem(value: unknown): Record<string, unknown> | undefined {
+  const item = record(value);
+  if (!item || typeof item.id !== "string" || typeof item.type !== "string") return undefined;
+  const type = itemTypes[item.type] ?? "opaque";
+  if (type === "userMessage") return { id: item.id, type, content: Array.isArray(item.content) ? item.content : [] };
+  if (type === "agentMessage") return { id: item.id, type, text: contentText(item.content), phase: item.phase };
+  if (type === "reasoning") return { id: item.id, type, summary: Array.isArray(item.summary_text) ? item.summary_text : [] };
+  if (type === "commandExecution") return { id: item.id, type, command: item.command, cwd: item.cwd, status: item.status, aggregatedOutput: item.aggregated_output };
+  if (type === "fileChange") return { id: item.id, type, status: item.status, changes: normalizeChanges(item.changes) };
+  if (type === "opaque") return { id: item.id, type: item.type, raw: item };
+  return { ...item, type };
+}
+
+async function findRollout(directory: string, threadId: string): Promise<string | undefined> {
+  let entries;
+  try { entries = await readdir(directory, { withFileTypes: true }); } catch { return undefined; }
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isFile() && entry.name.endsWith(`-${threadId}.jsonl`)) return path;
+    if (entry.isDirectory()) {
+      const nested = await findRollout(path, threadId);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
+}
+
+/** Read-only transcript fallback for a local rollout whose writer is owned by Codex desktop. */
+export class LocalRolloutTranscriptReader {
+  private readonly cache = new Map<string, CachedRollout>();
+  constructor(private readonly codexHome: string) {}
+
+  async readThread(threadId: string): Promise<{ thread: { id: string; turns: RawThreadTurn[] } }> {
+    if (!threadIdPattern.test(threadId)) throw new Error("Invalid local thread identifier");
+    let cached = this.cache.get(threadId);
+    if (!cached) {
+      const path = await findRollout(join(this.codexHome, "sessions"), threadId);
+      if (!path) throw new Error("Local rollout transcript not found");
+      cached = { path, offset: 0, pending: "", turns: new Map() };
+      this.cache.set(threadId, cached);
+    }
+    const size = (await stat(cached.path)).size;
+    if (size < cached.offset) { cached.offset = 0; cached.pending = ""; cached.turns.clear(); }
+    if (size > cached.offset) await this.readAppended(cached);
+    return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, itemsView: "full", items: [...turn.items.values()] })) } };
+  }
+
+  private async readAppended(cached: CachedRollout): Promise<void> {
+    const decoder = new StringDecoder("utf8");
+    for await (const chunk of createReadStream(cached.path, { start: cached.offset })) {
+      const bytes = chunk as Buffer;
+      cached.offset += bytes.byteLength;
+      const lines = `${cached.pending}${decoder.write(bytes)}`.split("\n");
+      cached.pending = lines.pop() ?? "";
+      for (const line of lines) this.consumeLine(cached, line);
+    }
+    cached.pending += decoder.end();
+  }
+
+  private consumeLine(cached: CachedRollout, line: string): void {
+    if (!line) return;
+    let envelope: Record<string, unknown> | undefined;
+    try { envelope = record(JSON.parse(line)); } catch { return; }
+    if (envelope?.type !== "event_msg") return;
+    const payload = record(envelope.payload);
+    if (payload?.type !== "item_completed" || typeof payload.turn_id !== "string") return;
+    const item = normalizeRolloutItem(payload.item);
+    if (!item || typeof item.id !== "string") return;
+    let turn = cached.turns.get(payload.turn_id);
+    if (!turn) {
+      turn = { id: payload.turn_id, startedAt: typeof payload.started_at_ms === "number" ? payload.started_at_ms / 1_000 : null, itemsView: "full", items: new Map() };
+      cached.turns.set(payload.turn_id, turn);
+    }
+    turn.items.set(item.id, item);
+  }
+}

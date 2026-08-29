@@ -71,7 +71,6 @@ export class NgrokController {
       this.forceRestart = true;
       this.options.persistence.managedTunnelId = null;
       await this.clearPublicUrl();
-      await this.reconcileOne(now);
     });
   }
 
@@ -121,7 +120,8 @@ export class NgrokController {
     }
     if (!this.running && !this.forceRestart && this.options.discover) {
       const discovered = await this.options.discover();
-      if (discovered.healthy && discovered.owned === true && discovered.id === this.options.persistence.managedTunnelId) {
+      if (discovered.healthy && discovered.owned === true && (!this.options.persistence.managedTunnelId || discovered.id === this.options.persistence.managedTunnelId)) {
+        this.options.persistence.managedTunnelId = discovered.id;
         this.running = true;
         await this.setPublicUrl(discovered.publicUrl ?? this.options.persistence.publicUrl);
       }

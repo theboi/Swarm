@@ -17,6 +17,7 @@ import { ApprovalRouter } from "./codex/approvalRouter.js";
 import { AccountManager } from "./codex/accountManager.js";
 import { AppServerClient } from "./codex/appServerClient.js";
 import { JsonRpcClient } from "./codex/jsonRpcClient.js";
+import { LocalRolloutTranscriptReader } from "./codex/localRolloutReader.js";
 import { readWorkspaceMarkdown } from "./codex/safeFileReader.js";
 import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
 import { openMacOsTerminal } from "./codex/terminalConsole.js";
@@ -162,6 +163,7 @@ async function createRuntime(config: SwarmConfig) {
     openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
+  const localRollouts = new LocalRolloutTranscriptReader(`/Users/${config.localAccount}/.codex`);
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   let accounts: AccountManager;
@@ -190,7 +192,7 @@ async function createRuntime(config: SwarmConfig) {
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     createClient: (handle) => {
       const localWorkspaceRoot = workspaceFor(handle.account);
-      const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }) });
+      const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), ...(handle.account === LOCAL_ACCOUNT_ID ? { readLockedThread: (threadId: string) => localRollouts.readThread(threadId) } : {}) });
       client.onEvent((event) => {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
         if (event.type === "turn" && event.threadId && event.turnId && event.state === "started") {
@@ -290,7 +292,7 @@ async function createRuntime(config: SwarmConfig) {
     persist: () => state.persist(),
     start: async () => {
       if (ngrokChild && !ngrokChild.killed) return { id: `pid:${ngrokChild.pid}` };
-      const args = ["http", ...(config.ngrok.url ? [`--url=${config.ngrok.url}`] : []), `127.0.0.1:${config.port}`];
+      const args = ["http", ...(config.ngrok.region ? [`--region=${config.ngrok.region}`] : []), ...(config.ngrok.url ? [`--url=${config.ngrok.url}`] : []), `127.0.0.1:${config.port}`];
       ngrokChild = spawn(config.ngrok.bin, args, { detached: true, stdio: "ignore", env: { ...process.env, ...(config.ngrok.authtoken ? { NGROK_AUTHTOKEN: config.ngrok.authtoken } : {}) } });
       absorbSpawnError(ngrokChild);
       if (!ngrokChild.pid) throw new Error("ngrok did not start");
@@ -299,11 +301,9 @@ async function createRuntime(config: SwarmConfig) {
         void ngrok.notifyProcessExit().catch((error) => logger.warn("ngrok", { event: "process_exit_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
       });
       try {
-        if (configuredNgrokUrl) {
-          const response = await fetch(configuredNgrokUrl, { signal: AbortSignal.timeout(5_000) });
-          if (response.ok) return { id: `pid:${ngrokChild.pid}`, publicUrl: configuredNgrokUrl };
-        }
-        return { id: `pid:${ngrokChild.pid}`, publicUrl: await waitForPublicNgrokUrl() };
+        const publicUrl = await waitForPublicNgrokUrl();
+        if (configuredNgrokUrl && publicUrl !== configuredNgrokUrl) throw new Error("ngrok inspector reported an unexpected public URL");
+        return { id: `pid:${ngrokChild.pid}`, publicUrl };
       } catch (error) {
         try { process.kill(-ngrokChild.pid, "SIGTERM"); } catch { /* child already stopped */ }
         ngrokChild = undefined;
@@ -311,14 +311,18 @@ async function createRuntime(config: SwarmConfig) {
       }
     },
     stop: async () => { if (!ngrokChild?.pid) return; try { process.kill(-ngrokChild.pid, "SIGTERM"); } catch { /* stopped */ } ngrokChild = undefined; },
-    isHealthy: async () => Boolean(ngrokChild && !ngrokChild.killed),
+    isHealthy: async () => {
+      if (ngrokChild && !ngrokChild.killed) return true;
+      try {
+        const publicUrl = await waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: async () => undefined, attempts: 1 });
+        return !configuredNgrokUrl || publicUrl === configuredNgrokUrl;
+      } catch { return false; }
+    },
     discover: async () => {
       try {
-        if (configuredNgrokUrl) {
-          const response = await fetch(configuredNgrokUrl, { signal: AbortSignal.timeout(5_000) });
-          if (response.ok) return { healthy: true, id: root.ngrok?.managedTunnelId ?? "configured", publicUrl: configuredNgrokUrl };
-        }
-        return { healthy: true, id: root.ngrok?.managedTunnelId ?? "", publicUrl: await waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: async () => undefined, attempts: 1 }) };
+        const publicUrl = await waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: async () => undefined, attempts: 1 });
+        if (configuredNgrokUrl && publicUrl !== configuredNgrokUrl) return { healthy: false, id: "" };
+        return { healthy: true, owned: true, id: root.ngrok?.managedTunnelId ?? `inspector:${publicUrl}`, publicUrl };
       } catch {
         return { healthy: false, id: "" };
       }

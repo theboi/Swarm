@@ -15,7 +15,7 @@ describe("ngrok window", () => {
     expect(calls).toEqual(["start", "stop"]);
   });
 
-  it("serializes concurrent reconciliation and restarts after an unexpected managed-process exit", async () => {
+  it("serializes concurrent reconciliation and defers an unexpected-exit restart to the heartbeat", async () => {
     const calls: string[] = [];
     let healthy = false;
     const controller = new NgrokController({
@@ -29,6 +29,9 @@ describe("ngrok window", () => {
     expect(calls).toEqual(["start"]);
     expect(controller.snapshot().publicUrl).toBe("https://tunnel.ngrok.app/");
     await controller.notifyProcessExit(new Date("2026-08-26T03:01:00.000Z"));
+    expect(calls).toEqual(["start"]);
+    expect(controller.snapshot().running).toBe(false);
+    await controller.reconcile(new Date("2026-08-26T03:02:00.000Z"));
     expect(calls).toEqual(["start", "start"]);
   });
 
@@ -48,6 +51,24 @@ describe("ngrok window", () => {
     expect(controller.snapshot().publicUrl).toBe("https://known.ngrok.app/");
     await controller.reconcile(new Date("2026-08-26T16:00:00.000Z"));
     expect(controller.snapshot().publicUrl).toBeNull();
+  });
+
+  it("adopts an explicitly owned inspector tunnel when persisted identity is missing", async () => {
+    const persisted: { managedTunnelId?: string | null; publicUrl?: string | null } = {};
+    let starts = 0;
+    const controller = new NgrokController({
+      timezone: "Asia/Singapore",
+      persistence: persisted,
+      discover: async () => ({ healthy: true, owned: true, id: "inspector:configured", publicUrl: "https://known.ngrok.app" }),
+      start: async () => { starts += 1; return { id: "spawned" }; },
+      stop: async () => undefined,
+    });
+
+    await controller.reconcile(new Date("2026-08-26T03:00:00.000Z"));
+
+    expect(starts).toBe(0);
+    expect(persisted.managedTunnelId).toBe("inspector:configured");
+    expect(controller.snapshot().publicUrl).toBe("https://known.ngrok.app/");
   });
 
   it("replaces an inspector tunnel whose ownership cannot be proven", async () => {

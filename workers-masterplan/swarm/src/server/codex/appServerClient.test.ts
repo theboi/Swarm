@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadStatus?: "notLoaded" | "idle" | "active" } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadResumeError?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -52,7 +52,8 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
     if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
-    if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
+    if (message.method === "thread/resume" && options.threadResumeError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadResumeError } }));
+    else if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
     if (message.method === "turn/start") reply({ turn: { id: "turn-1" } });
     if (message.method === "model/list") reply({
       data: [{ id: "gpt-5.3-codex", model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", description: "Coding", hidden: false, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "high", serviceTiers: [{ id: "standard", name: "Standard" }, { id: "priority", name: "Fast" }], defaultServiceTier: "standard", isDefault: true }],
@@ -84,7 +85,7 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
     filesystem: { async realpath(path) { if (path !== clientCwd) throw new Error(`ENOENT ${path}`); return path; } },
     requestTimeoutMs: 25,
   });
-  const client = new AppServerClient({ account: clientAccount, rpc, approvalRouter, workspaceRoot: options.workspaceRoot });
+  const client = new AppServerClient({ account: clientAccount, rpc, approvalRouter, workspaceRoot: options.workspaceRoot, readLockedThread: options.readLockedThread });
   await client.connect();
   return client;
 }
@@ -241,6 +242,28 @@ describe("AppServerClient", () => {
 
     expect(server!.received.filter((message) => message.method === "thread/resume")).toHaveLength(1);
     expect(server!.received.filter((message) => message.method === "turn/start")).toHaveLength(1);
+    await client.close();
+  });
+
+  it("resumes a persisted not-loaded chat before reading its transcript", async () => {
+    const client = await readyClient({ threadStatus: "notLoaded" });
+    await client.listAllThreads();
+    await client.readThread("thread-1", { includeTurns: true });
+
+    const methods = server!.received.map((message) => message.method);
+    expect(methods.indexOf("thread/resume")).toBeGreaterThan(methods.lastIndexOf("thread/list"));
+    expect(methods.indexOf("thread/read")).toBeGreaterThan(methods.indexOf("thread/resume"));
+    await client.close();
+  });
+
+  it("reads a desktop-owned local transcript without stealing its active writer", async () => {
+    const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: fullThreadHistory() } }));
+    const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/EdenMind", threadStatus: "notLoaded", threadResumeError: "thread thread-1 already has an active writer", readLockedThread });
+    await client.listAllThreads();
+
+    await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual(expect.objectContaining({ thread: expect.objectContaining({ turns: expect.any(Array) }) }));
+    expect(readLockedThread).toHaveBeenCalledWith("thread-1");
+    expect(client.transcriptSnapshot().items).toEqual([expect.objectContaining({ id: "item-1", type: "agentMessage" })]);
     await client.close();
   });
 

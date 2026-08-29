@@ -76,12 +76,14 @@ describe("loadConfig", () => {
       SWARM_SESSION_SECRET: "a session secret",
       SWARM_NGROK_AUTHTOKEN: "ngrok-secret",
       SWARM_NGROK_URL: "tosha-protrudent-ternately.ngrok-free.dev",
+      SWARM_NGROK_REGION: "ap",
     });
 
     expect(config.loginEmail).toBe("claudio@example.com");
     expect(config.accountPasswords.bot3).toBe("local-password-3");
     expect(config.accountPasswords.bot8).toBe("local-password-8");
     expect(config.ngrok.url).toBe("tosha-protrudent-ternately.ngrok-free.dev");
+    expect(config.ngrok.region).toBe("ap");
     expect(config.publicConfig()).not.toContain("local-password");
     expect(config.publicConfig()).not.toContain("ngrok-secret");
   });

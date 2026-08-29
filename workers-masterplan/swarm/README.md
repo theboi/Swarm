@@ -154,7 +154,9 @@ a public dashboard session cannot open a Terminal window on the host.
 ngrok is optional. When enabled, the coordinator may run it only from 10:00
 until 00:00 in `Asia/Singapore`; local access remains available outside that
 window. Set `SWARM_NGROK_URL` to a reserved hostname without `https://` and
-Swarm starts `ngrok http --url=<hostname> 127.0.0.1:4310`. The coordinator does
+Swarm starts `ngrok http --url=<hostname> 127.0.0.1:4310`. If automatic region
+selection is blocked by local routing, set `SWARM_NGROK_REGION` (for example,
+`ap`) to pin the agent connection. The coordinator does
 not offer an early or outside-window start.
 
 On an open dashboard, Swarm refreshes authenticated account usage once a

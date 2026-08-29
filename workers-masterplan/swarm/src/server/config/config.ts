@@ -16,7 +16,7 @@ export interface SwarmConfig {
   trustManagedProxy: boolean;
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
-  ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; url: string | undefined; start: string; stop: string };
+  ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; url: string | undefined; region: string | undefined; start: string; stop: string };
   localAccount: string;
   accountPasswords: Record<BotAccountId, string | undefined>;
   publicConfig(): string;
@@ -71,7 +71,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
     coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),
-    ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, url: env.SWARM_NGROK_URL?.trim() || env.SWARM_NGROK_DOMAIN?.trim() || undefined, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
+    ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, url: env.SWARM_NGROK_URL?.trim() || env.SWARM_NGROK_DOMAIN?.trim() || undefined, region: env.SWARM_NGROK_REGION?.trim() || undefined, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
     accountPasswords,
     publicConfig: () => JSON.stringify({ host: config.host, port: config.port, terminalPort: config.terminalPort, timezone: config.timezone, ngrokEnabled: config.ngrok.enabled, localAccount: config.localAccount }),
   };

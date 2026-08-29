@@ -155,8 +155,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .transcript-item__markdown pre code { background: transparent; padding: 0; }
 .transcript-item__markdown :where(table) { display: block; max-inline-size: 100%; overflow-x: auto; border-collapse: collapse; }
 .transcript-item__markdown :where(th, td) { border: 1px solid #485457; padding: 6px 8px; text-align: start; }
-.transcript-item__markdown-toggle { position: absolute; inset-inline-end: 8px; inset-block-end: 8px; display: grid; inline-size: 28px; block-size: 28px; place-items: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #8f9c94; padding: 0; }
-.transcript-item__markdown-toggle[aria-pressed="false"] { border-color: #485457; background: #263034; color: #b6f2be; }
+.transcript-item__source-actions { position: absolute; inset-inline-end: 8px; inset-block-end: 8px; display: flex; align-items: center; gap: 3px; color: #8f9c94; }
+.transcript-item__source-actions time { margin-inline-end: 3px; font-size: .68rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.transcript-item__source-actions button { display: grid; inline-size: 28px; block-size: 28px; min-block-size: 0; place-items: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #8f9c94; padding: 0; }
+.transcript-item__source-actions button[aria-pressed="false"] { border-color: #485457; background: #263034; color: #b6f2be; }
 .transcript-item__body--files[data-expanded="false"] { max-block-size: 9rem; overflow: hidden; mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); }
 .transcript-item pre { margin: 8px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; font: .82rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .transcript-item--userMessage pre, .transcript-item--agentMessage pre { max-inline-size: 72ch; font-family: inherit; font-size: .92rem; line-height: 1.6; text-wrap: pretty; }

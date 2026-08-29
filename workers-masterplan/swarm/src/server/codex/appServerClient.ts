@@ -17,6 +17,8 @@ export interface AppServerClientOptions {
   approvalRouter: ApprovalRouter;
   /** Coordinator-owned workspace path for the direct local account only. */
   workspaceRoot?: string;
+  /** Read-only fallback when Codex desktop owns the local thread's writer lock. */
+  readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>;
 }
 
 export interface AccountReadResult {
@@ -97,11 +99,13 @@ export class AppServerClient {
   private readonly eventListeners = new Set<(event: NormalizedAppServerEvent) => void>();
   private needsTranscriptRecovery = false;
   private readonly workspaceRootOverride: string | undefined;
+  private readonly readLockedThread: AppServerClientOptions["readLockedThread"];
 
   constructor(options: AppServerClientOptions) {
     this.account = options.account;
     this.rpc = options.rpc;
     this.workspaceRootOverride = options.workspaceRoot;
+    this.readLockedThread = options.readLockedThread;
     this.rpc.installApprovalHandler(options.approvalRouter);
     this.rpc.onDisconnect(() => this.markTrackedTranscriptsDisconnected());
     this.rpc.onNotification((notification) => this.applyTranscriptNotification(notification));
@@ -168,8 +172,15 @@ export class AppServerClient {
 
   async readThread(threadId: string, options: { includeTurns: true }): Promise<{ thread: Record<string, unknown> }> {
     this.requireReady();
+    let response: { thread: Record<string, unknown> };
+    try {
+      if (this.unloadedThreadIds.has(threadId)) await this.resumeThread(threadId);
+      response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
+    } catch (error) {
+      if (!this.readLockedThread || !(error instanceof Error) || !/already has an active writer/i.test(error.message)) throw error;
+      response = await this.readLockedThread(threadId);
+    }
     this.trackedThreadIds.add(threadId);
-    const response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
     this.hydrateThreadRead(threadId, response);
     return response;
   }
