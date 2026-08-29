@@ -181,7 +181,7 @@ git diff --check
 
 Expected: the GREEN response passes every critical expectation; the searches show the new contract in the skill and coupled templates; `git diff --check` exits zero.
 
-- [ ] **Step 7: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 7: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 git add workers-masterplan/blueprint-masterplan/SKILL.md workers-masterplan/blueprint-masterplan/references/blueprint-masterplan-template.md workers-masterplan/blueprint-masterplan/references/ui-design-worker-prompt-template.md workers-masterplan/blueprint-masterplan/references/ui-requirements-template.md workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md workers-masterplan/blueprint-masterplan/references/planning-gate-template.md workers-masterplan/blueprint-masterplan/references/worker-status-template.md workers-masterplan/blueprint-masterplan/references/status-summary-template.md workers-masterplan/evals/blueprint-masterplan-scenarios.md
