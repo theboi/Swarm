@@ -305,7 +305,7 @@ Rerun Step 5 if reconciliation changes an owned authority.
 - Produces: `TaskManifestTask.uiRequirementsPath?: string` and `TaskManifestTask.uiHandoffPath?: string`.
 - Validation contract: both fields are required for `kind: "ui"`; `implementationPlanPath` is forbidden for UI; all supplied paths are trimmed and repository-contained; missing future UI output files are allowed only for UI tasks.
 
-- [ ] **Step 1: Pull current `main` and install dependencies if needed**
+- [x] **Step 1: Pull current `main` and install dependencies if needed**
 
 ```bash
 git status --short --branch
@@ -314,7 +314,7 @@ cd workers-masterplan/swarm
 npm ci
 ```
 
-- [ ] **Step 2: Write failing schema tests**
+- [x] **Step 2: Write failing schema tests**
 
 Add these cases to `contracts.test.ts`:
 
@@ -349,7 +349,7 @@ it("requires both UI artifact paths and forbids a UI implementation plan", () =>
 
 Extend the malformed-path table with whitespace-only and padded values for both new fields.
 
-- [ ] **Step 3: Write failing repository-boundary tests**
+- [x] **Step 3: Write failing repository-boundary tests**
 
 In `tasks.test.ts`, extend the future-output test with a UI task whose requirements and handoff paths do not exist yet and assert `loadManifest` resolves. Then set `uiRequirementsPath: "../outside.md"` and a symlink-escaped handoff path in separate assertions and expect `outside repository`.
 
@@ -361,7 +361,7 @@ npx vitest run src/shared/contracts.test.ts src/server/tasks/tasks.test.ts
 
 Expected: FAIL because the new fields are neither typed nor validated.
 
-- [ ] **Step 4: Implement the manifest fields and role validation**
+- [x] **Step 4: Implement the manifest fields and role validation**
 
 Add to `TaskManifestTask`:
 
@@ -399,7 +399,7 @@ if (value.kind === "ui") {
 
 In `manifestLoader.ts`, validate `uiRequirementsPath` and `uiHandoffPath` with `allowMissing: task.kind === "ui"`. Keep `masterplanPath`, `coordinationRoot`, and every `statusPath` existence-required.
 
-- [ ] **Step 5: Run focused schema tests**
+- [x] **Step 5: Run focused schema tests**
 
 ```bash
 npx vitest run src/shared/contracts.test.ts src/server/tasks/tasks.test.ts

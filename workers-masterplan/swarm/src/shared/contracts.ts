@@ -66,6 +66,8 @@ export interface TaskManifestTask {
   statusPath?: string;
   specificationPath?: string;
   implementationPlanPath?: string;
+  uiRequirementsPath?: string;
+  uiHandoffPath?: string;
   promptTemplate: PromptTemplate;
   preferredAccount?: AccountId;
 }
