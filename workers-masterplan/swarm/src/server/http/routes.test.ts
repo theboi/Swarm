@@ -73,6 +73,18 @@ describe("coordinator HTTP routes", () => {
     expect(result.body.error).toMatchObject({ code: "AUTH_INVALID" });
   });
 
+  it("accepts a same-host Tailscale origin even when its address was not in the startup allowlist", async () => {
+    const { app } = await fixture();
+    const origin = "http://100.87.251.123:4310";
+
+    await request(app)
+      .post("/api/v1/auth/challenge")
+      .set("host", "100.87.251.123:4310")
+      .set("origin", origin)
+      .send({ email: "claudio@example.test", password: "correct password" })
+      .expect(200);
+  });
+
   it("does not expose terminal launch through the externally served API", async () => {
     const { app, openTerminal, origins } = await fixture();
     const agent = request.agent(app);

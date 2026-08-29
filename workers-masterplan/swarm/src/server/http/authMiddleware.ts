@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import type { SessionStore } from "../auth/sessionStore.js";
+import { isAllowedDashboardOrigin } from "./dashboardOrigins.js";
 
 export const SESSION_COOKIE = "swarm_session";
 
@@ -47,11 +48,11 @@ export function requireSession(sessions: SessionStore) {
   };
 }
 
-/** Origin is an authorization input. It is never derived from Host or forwarded host headers. */
+/** Origin is accepted only from the machine allowlist or the request's exact direct Host authority. */
 export function requireAllowedOrigin(origins: () => ReadonlySet<string>) {
   return (request: Request, response: Response, next: NextFunction): void => {
     const origin = request.headers.origin;
-    if (typeof origin !== "string" || !origins().has(origin)) {
+    if (!isAllowedDashboardOrigin(origin, request.headers.host, origins())) {
       apiError(response, 403, "AUTH_INVALID", "Request origin is not allowed");
       return;
     }
