@@ -95,19 +95,24 @@ functional change, record the named decision in `<STATUS_PATH>` and
 Edit the actual application, reusing its established components and tokens;
 do not create a competing component library or token system. Run
 `<ESTABLISHED_DEV_SERVER_COMMAND>`, publish the localhost URL to the user, and
-keep the server available while they review the work. Start every access
-dependency required by the repository's local setup, including local
-authentication/Supabase, APIs, or seed data even when the presentation uses
-fixture content. Verify each dependency at the exact endpoint configured in the
-client and prove one documented local fixture identity authenticates without
-publishing secret values. When a browser is available, complete the real sign-in
-and protected-route entry there. A protected-route redirect or `200` response
-from the sign-in page proves only that the unauthenticated shell is reachable;
-it is not login proof or a review-ready handoff. If browser integration is
-unavailable, record that visual limitation and still verify the auth service,
-documented credential, configured endpoint, and localhost process. Keep the app
-and its access dependencies running through review. Show a working skeleton
-early, then edit the real app and iterate from user feedback.
+keep the server available while they review the work. Use the repository's
+account-isolated launcher and assigned ports; prove every listener and local
+container belongs to the current worker account, and stop on an occupied shared
+port or missing required launcher instead of borrowing another account's
+healthy process. Start every access dependency required by the repository's
+local setup, including local authentication/Supabase, APIs, or seed data even
+when the presentation uses fixture content. Verify that the client Supabase
+origin and the API Supabase origin, issuer, and JWKS endpoint identify the same
+local project. Prove one documented local fixture identity authenticates without
+publishing secret values, then use the resulting application session to obtain
+an accepted API identity, enter the protected presentation route, and sign out.
+When a browser is available, complete that full journey there. A protected-route
+redirect, sign-in-page `200`, or Supabase-only password grant is not login proof
+or a review-ready handoff. If browser integration is unavailable, record that
+visual limitation and run the same endpoint-consistent canary through an
+approved non-visual interface. Keep the app and its access dependencies running
+through review. Show a working skeleton early, then edit the real app and
+iterate from user feedback.
 
 Compose each primary product surface so its visible area starts with the real
 task controls, navigation, or content inside the established application shell.
