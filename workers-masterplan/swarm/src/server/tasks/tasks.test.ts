@@ -24,6 +24,15 @@ describe("task authority", () => {
     expect(production.tasks).toHaveLength(32);
     expect(production.tasks.filter((task) => task.kind === "planning")).toHaveLength(26);
     expect(production.tasks.filter((task) => task.kind === "ui").map((task) => task.id)).toEqual(["PD", "CD", "QD", "AD", "ED", "GD"]);
+    expect(Object.fromEntries(production.tasks.filter((task) => task.kind === "ui").map((task) => [task.id, [task.uiRequirementsPath, task.uiHandoffPath]]))).toEqual({
+      PD: ["docs/design/requirements/2026-08-26-pd-platform-admin.md", "docs/design/handoffs/2026-08-26-pd-platform-admin.md"],
+      CD: ["docs/design/requirements/2026-08-26-cd-curriculum.md", "docs/design/handoffs/2026-08-26-cd-curriculum.md"],
+      QD: ["docs/design/requirements/2026-08-26-qd-content.md", "docs/design/handoffs/2026-08-26-qd-content.md"],
+      AD: ["docs/design/requirements/2026-08-26-ad-analysis-intake.md", "docs/design/handoffs/2026-08-26-ad-analysis-intake.md"],
+      ED: ["docs/design/requirements/2026-08-26-ed-evidence.md", "docs/design/handoffs/2026-08-26-ed-evidence.md"],
+      GD: ["docs/design/requirements/2026-08-26-gd-practice.md", "docs/design/handoffs/2026-08-26-gd-practice.md"],
+    });
+    expect(production.tasks.some((task) => task.id === "PG0")).toBe(false);
     expect(domainPaths.map((pathId) => production.tasks.filter((task) => task.pathId === pathId).length)).toEqual([4, 4, 4, 4, 4, 4]);
     expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
     expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);

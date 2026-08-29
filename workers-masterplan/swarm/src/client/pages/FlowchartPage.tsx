@@ -74,8 +74,46 @@ function taskEdges(tasks: TaskNode[]): Edge[] {
 function TaskInspector({ task, assignment, canReviewLaunch, onOpenChat, onReviewLaunch, threadId, onClose }: { task: TaskNode; assignment?: WorkerAssignmentRecord; canReviewLaunch: boolean; onOpenChat: () => void; onReviewLaunch: () => void; threadId: string | undefined; onClose: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => closeButton.current?.focus(), [task.id]);
-  const body = <><StatusBadge state={task.readiness.state} phase={task.readiness.phase} /><h2 id="task-inspector-title">{task.id} {task.title}</h2>{assignment ? <p>Assigned to: {assignment.accountId}{assignment.transferHistory.length ? ` · transferred ${assignment.transferHistory.length} time${assignment.transferHistory.length === 1 ? "" : "s"}` : ""}</p> : null}{task.pathId !== undefined && task.pathStep !== undefined ? <p>Path: {task.pathId} · Layer: {task.pathStep}</p> : null}<p>Dependencies: {task.dependsOn.length ? task.dependsOn.join(", ") : "None reported"}</p><h3>Readiness evidence</h3>{task.readiness.evidence.length ? <ul>{task.readiness.evidence.map((evidence) => <li key={evidence.code}>{evidence.code}: {evidence.satisfied ? "satisfied" : "not satisfied"}</li>)}</ul> : <p>No readiness evidence reported.</p>}<button type="button" aria-label={`Review launch for ${task.id}`} onClick={onReviewLaunch} disabled={!canReviewLaunch || task.readiness.state !== "ready"}>Review launch</button><button className="primary-button" type="button" onClick={onOpenChat} disabled={!threadId}>Open chat</button></>;
-  return <div className="dialog-backdrop dialog-backdrop--right" onMouseDown={onClose}><section className="flow-overlay" role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Tab") { const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled])')]; const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }}><OverlayCloseButton ref={closeButton} onClick={onClose} />{body}</section></div>;
+  const body = <>
+    <StatusBadge state={task.readiness.state} phase={task.readiness.phase} />
+    <h2 id="task-inspector-title">{task.id} {task.title}</h2>
+    {assignment ? <p>Assigned to: {assignment.accountId}{assignment.transferHistory.length ? ` · transferred ${assignment.transferHistory.length} time${assignment.transferHistory.length === 1 ? "" : "s"}` : ""}</p> : null}
+    {task.pathId !== undefined && task.pathStep !== undefined ? <p>Path: {task.pathId} · Layer: {task.pathStep}</p> : null}
+    <p>Dependencies: {task.dependsOn.length ? task.dependsOn.join(", ") : "None reported"}</p>
+    <h3>Artifact paths</h3>
+    <dl>
+      {task.statusPath ? <><dt>Status</dt><dd><code>{task.statusPath}</code></dd></> : null}
+      {task.specificationPath ? <><dt>Specification</dt><dd><code>{task.specificationPath}</code></dd></> : null}
+      {task.implementationPlanPath ? <><dt>Implementation plan</dt><dd><code>{task.implementationPlanPath}</code></dd></> : null}
+      {task.uiRequirementsPath ? <><dt>UI requirements</dt><dd><code>{task.uiRequirementsPath}</code></dd></> : null}
+      {task.uiHandoffPath ? <><dt>Presentation handoff</dt><dd><code>{task.uiHandoffPath}</code></dd></> : null}
+    </dl>
+    <h3>Readiness evidence</h3>
+    {task.readiness.evidence.length ? <ul>{task.readiness.evidence.map((evidence) => <li key={evidence.code}>{evidence.code}: {evidence.satisfied ? "satisfied" : "not satisfied"}</li>)}</ul> : <p>No readiness evidence reported.</p>}
+    <button type="button" aria-label={`Review launch for ${task.id}`} onClick={onReviewLaunch} disabled={!canReviewLaunch || task.readiness.state !== "ready"}>Review launch</button>
+    <button className="primary-button" type="button" onClick={onOpenChat} disabled={!threadId}>Open chat</button>
+  </>;
+  return <div className="dialog-backdrop dialog-backdrop--right" onMouseDown={onClose}>
+    <section className="flow-overlay" role="dialog" aria-modal="true" aria-labelledby="task-inspector-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled])')];
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }}>
+      <OverlayCloseButton ref={closeButton} onClick={onClose} />
+      {body}
+    </section>
+  </div>;
 }
 
 type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<Pick<CoordinatorApi, "listModels">>;

@@ -75,6 +75,32 @@ describe("FlowchartPage", () => {
     expect(screen.getByText("Path: P · Layer: 1")).toBeVisible();
   });
 
+  it("shows every declared artifact path in a UI task inspector", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const uiTask = {
+      ...dashboardSnapshot.tasks[1],
+      statusPath: "docs/workers/2026-08-14-mvp3/status/pd.md",
+      specificationPath: "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p2-people-admin-design.md",
+      uiRequirementsPath: "docs/design/requirements/2026-08-26-pd-platform-admin.md",
+      uiHandoffPath: "docs/design/handoffs/2026-08-26-pd-platform-admin.md",
+    };
+    render(<FlowchartPage snapshot={{ ...dashboardSnapshot, tasks: [uiTask] }} onOpenChat={() => undefined} />);
+
+    await user.click(screen.getByRole("button", { name: "U1 Coordinator UI ready" }));
+
+    const inspector = screen.getByRole("dialog", { name: "U1 Coordinator UI" });
+    expect(within(inspector).getByRole("heading", { name: "Artifact paths" })).toBeVisible();
+    expect(within(inspector).getByText("Status", { selector: "dt" })).toBeVisible();
+    expect(within(inspector).getByText("docs/workers/2026-08-14-mvp3/status/pd.md", { selector: "code" })).toBeVisible();
+    expect(within(inspector).getByText("Specification", { selector: "dt" })).toBeVisible();
+    expect(within(inspector).getByText("docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p2-people-admin-design.md", { selector: "code" })).toBeVisible();
+    expect(within(inspector).getByText("UI requirements", { selector: "dt" })).toBeVisible();
+    expect(within(inspector).getByText("docs/design/requirements/2026-08-26-pd-platform-admin.md", { selector: "code" })).toBeVisible();
+    expect(within(inspector).getByText("Presentation handoff", { selector: "dt" })).toBeVisible();
+    expect(within(inspector).getByText("docs/design/handoffs/2026-08-26-pd-platform-admin.md", { selector: "code" })).toBeVisible();
+  });
+
   it("keeps the graph as the full-page surface and opens task details as an overlay", async () => {
     setViewport(1440);
     const user = userEvent.setup();
