@@ -774,7 +774,7 @@ git merge-base --is-ancestor HEAD origin/main
 - Consumes: the schema from Task 3 and prompt metadata from Task 5.
 - Produces: six UI task output pairs and an accessible inspector view of every declared artifact path.
 
-- [ ] **Step 1: Pull current `main` and read the applicable UI skills**
+- [x] **Step 1: Pull current `main` and read the applicable UI skills**
 
 ```bash
 git status --short --branch
@@ -783,7 +783,7 @@ git pull --ff-only origin main
 
 Before editing the React inspector, completely read `better-accessibility` and `better-ui`.
 
-- [ ] **Step 2: Write failing production topology and inspector tests**
+- [x] **Step 2: Write failing production topology and inspector tests**
 
 In `tasks.test.ts`, preserve the assertions for 32 total tasks, 26 planning tasks, and six UI IDs. Add this exact mapping assertion:
 
@@ -811,11 +811,11 @@ npx vitest run src/server/tasks/tasks.test.ts src/client/pages/FlowchartPage.tes
 
 Expected: FAIL because the production UI tasks lack both output paths and the inspector does not display artifacts.
 
-- [ ] **Step 3: Add the six production artifact pairs**
+- [x] **Step 3: Add the six production artifact pairs**
 
 Add `uiRequirementsPath` and `uiHandoffPath` to `PD`, `CD`, `QD`, `AD`, `ED`, and `GD` using the exact mapping from Step 2. Keep each UI task dependent only on its path's Layer 2 planning node. Keep each Layer 3 planning task dependent on both Layer 2 and the matching UI task. Do not add a gate or execution node to this Pass 1 manifest.
 
-- [ ] **Step 4: Add an accessible artifact-path definition list**
+- [x] **Step 4: Add an accessible artifact-path definition list**
 
 Refactor `TaskInspector` for readability and add:
 
@@ -832,7 +832,7 @@ Refactor `TaskInspector` for readability and add:
 
 Preserve dialog labelling, initial close-button focus, Escape handling, focus trapping, launch enablement, and viewport restoration.
 
-- [ ] **Step 5: Run focused topology and UI tests**
+- [x] **Step 5: Run focused topology and UI tests**
 
 ```bash
 npx vitest run src/server/tasks/tasks.test.ts src/client/pages/FlowchartPage.test.tsx
@@ -841,7 +841,7 @@ npm run typecheck
 
 Expected: PASS with 32 tasks, all exact path pairs, no `PG0`, and accessible inspector labels.
 
-- [ ] **Step 6: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 6: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 cd ../..
