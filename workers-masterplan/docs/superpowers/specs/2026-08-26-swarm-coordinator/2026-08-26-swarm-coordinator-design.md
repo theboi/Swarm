@@ -230,6 +230,8 @@ type TaskManifest = {
     statusPath?: string;
     specificationPath?: string;
     implementationPlanPath?: string;
+    uiRequirementsPath?: string;
+    uiHandoffPath?: string;
     promptTemplate: "planning" | "execution" | "ui";
     preferredAccount?: string;
   }>;
@@ -245,11 +247,13 @@ the coordinator never guesses an execution order from malformed input.
 
 The manifest is a frozen projection of an authoritative Blueprint Masterplan,
 not a second planning authority. `masterplanPath`, `coordinationRoot`, every
-worker status path, and every gate receipt path must resolve inside the
-repository and match the blueprint ID. A planning worker's specification and
-implementation-plan destinations may be absent before that worker authors
-them, but their destination and nearest existing ancestor must remain inside
-the repository; non-planning referenced artifacts remain existence-required.
+worker status path, UI artifact path, and every gate receipt path must resolve
+inside the repository and match the blueprint ID. A planning worker's
+specification and implementation-plan destinations may be absent before that
+worker authors them. A UI worker's requirements and handoff destinations may
+likewise be absent until it authors them. Every such future path and its nearest
+existing ancestor must remain inside the repository; worker status, blueprint,
+and coordination-root artifacts remain existence-required.
 The readiness service parses the authoritative blueprint/status/receipt
 formats, fetches `origin/main`, and records the remote commit that supplies each
 piece of evidence. Local-only claims never satisfy a dependency.
@@ -257,19 +261,29 @@ piece of evidence. Local-only claims never satisfy a dependency.
 Task readiness is derived from literal phase predicates:
 
 - planning requires every hard planned prerequisite to be remotely complete;
-- the planning gate requires every planning worker's remotely reachable status,
-  specification, implementation plan, and required authority-sync evidence;
+- UI planning requires its Layer 2 specification, implementation plan,
+  authority/no-impact finding, and planning status—not Layer 2 implementation;
+- a Layer 3 planning node requires its Layer 2 planner and its UI designer's
+  requirements and handoff evidence;
+- the one planning gate requires every ordinary planning worker's remotely
+  reachable status, specification, implementation plan, authority-sync, and
+  reconciliation evidence, plus every UI worker's status, accepted app state,
+  approval, UI requirements, handoff, live review, reconciliation, and
+  ownership-transfer evidence;
 - execution requires a passed gate receipt plus every hard implemented
   prerequisite named by the blueprint; and
 - completion requires terminal status and remote-reachability evidence.
 
 The approved MVP3 Implementation Masterplan is projected into the production
-manifest as 26 planning workers: shared `F0`, six paths of four workers, and
-shared `X0`. The initial projection makes only `F0` dependency-ready and omits
-execution and UI-design launch nodes. Those phases enter the manifest only
-after their worker-authored plans, rolling receipts, implemented prerequisites,
-and applicable accepted UI handoffs are remotely evidenced. The coordinator
-must not infer additional work or execution readiness from interim prose.
+manifest as 32 Pass 1 tasks: 26 ordinary planning workers (shared `F0`, six
+paths of four workers, and shared `X0`) plus six UI-design workers. A UI node
+depends on its Layer 2 planning node; a Layer 3 planning node depends on that
+Layer 2 planning node and its UI-design worker. No execution projection is
+imported or launchable while the coordinator-owned
+`docs/workers/2026-08-14-mvp3/PLANNING_GATE.md` is open. After it passes, later
+execution projections retain the same worker IDs and require hard implemented
+predecessors independently from Pass 1 planning evidence. The coordinator must
+not infer additional work or execution readiness from interim prose.
 
 ### 7.2 Prompt templates
 
@@ -281,6 +295,13 @@ Planning prompts terminate after the worker-authored specification,
 product-spec synchronization or evidence-backed no-impact finding, detailed
 implementation plan, authority updates, downstream propagation, status update,
 and remote-reachability proof. They explicitly prohibit implementation.
+
+UI prompts are Pass 1 presentation-and-contents packets: they name approved
+upstream planning paths, write a separate UI requirements contract and
+presentation handoff, use explicit fixture/mock state, and forbid live wiring.
+The named Layer 3 planning prompt consumes both UI artifacts; its later
+execution prompt performs live wiring only after the passed global receipt and
+implemented runtime prerequisites.
 
 Execution prompts verify the passed planning-gate receipt and hard implemented
 prerequisites before editing. They require TDD, Terra High/Xhigh implementation

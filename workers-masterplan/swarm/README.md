@@ -66,19 +66,28 @@ uses the next port (`4311` by default) for the local dashboard's **Open
 Terminal** action. A signed-in browser session remains valid for 30 days of
 inactivity before another password-and-TOTP login is required.
 
-`manifests/mvp3.json` is the production default. It projects the approved MVP3
-Blueprint Masterplan as 26 planning workers across six four-step paths, with
-shared foundation and convergence nodes. Optional `pathId` and `pathStep`
-metadata control graph layout only; `dependsOn` remains the scheduling
-authority. Initially only `F0` is planning-ready. Execution and UI-design
-launches remain absent until the required worker plans, rolling receipts,
-implemented prerequisites, and accepted UI handoffs exist.
+`manifests/mvp3.json` is the production default. It is the 32-task **Pass 1**
+projection of the approved MVP3 Blueprint Masterplan: 26 ordinary planning
+workers across six four-step paths plus six UI-design workers. Optional `pathId`
+and `pathStep` metadata control graph layout only; `dependsOn` remains the
+scheduling authority. A UI-design task becomes planning-ready from its Layer 2
+worker's approved specification, implementation plan, authority/no-impact
+finding, and planning status on `origin/main`; it does not wait for Layer 2
+implementation. It writes a separate UI requirements contract and presentation
+handoff with fixture/mock-backed presentation only. Each existing Layer 3 worker
+plans against both documents in Pass 1 and performs the live wiring in Pass 2.
 
-Worker-owned specification and implementation-plan destinations may be absent
-before their planning chat authors them. The blueprint, coordination root, and
-worker status files must already exist, and all paths remain repository-
-contained. `manifests/example-ready.json` is a fixture-only graph for tests;
-never select it as the production manifest.
+`docs/workers/2026-08-14-mvp3/PLANNING_GATE.md` is one coordinator-owned global
+receipt, not a 33rd dispatchable task. No execution projection is imported or
+launchable while that receipt is open. After it passes, later execution
+projections keep the existing IDs and still require their hard implemented
+predecessors; planned evidence never substitutes for runtime implementation.
+
+Worker-owned specification, implementation-plan, UI requirements, and
+presentation-handoff destinations may be absent before their owner authors
+them. The blueprint, coordination root, and worker status files must already
+exist, and all paths remain repository-contained. `manifests/example-ready.json`
+is a fixture-only graph for tests; never select it as the production manifest.
 
 ## Run and verify
 
