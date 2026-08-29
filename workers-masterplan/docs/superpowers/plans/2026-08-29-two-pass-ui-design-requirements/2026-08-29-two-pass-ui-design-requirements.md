@@ -408,7 +408,7 @@ npm run typecheck
 
 Expected: PASS with the new UI contract and path-escape cases.
 
-- [ ] **Step 6: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 6: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 cd ../..
