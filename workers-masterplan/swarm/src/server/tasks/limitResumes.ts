@@ -72,11 +72,13 @@ export class LimitResumeManifest {
     await this.mutate(() => { record.state = state; record.updatedAt = now; });
   }
 
-  async completeTransfer(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    const record = this.records.get(key(accountId, threadId));
-    if (!record || record.state !== "transferring") return;
-    await this.mutate(() => { record.state = "transferred"; record.updatedAt = now; });
+  async markTransferred(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
+    await this.mutate(() => {
+      this.records.set(key(accountId, threadId), { accountId, threadId, state: "transferred", updatedAt: now });
+    });
   }
+
+  async completeTransfer(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> { await this.markTransferred(accountId, threadId, now); }
 
   private async mutate(operation: () => void): Promise<void> {
     const prior = this.list();

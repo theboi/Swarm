@@ -218,7 +218,7 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   </div>;
 }
 
-export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = new Set<string>(), activeTurnIds = new Map<string, string>(), markTurnActive = () => undefined, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; onRefresh?: () => Promise<void> }) {
+export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = new Set<string>(), activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = new Set<string>(), markTurnActive = () => undefined, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
   const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
@@ -514,8 +514,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
   const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
-  const waitingResume = selectedThread && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === selectedThread.id && record.state === "waiting_for_limit") : undefined;
-  const limitExhausted = Boolean(selectedThread && activeTurnKey && waitingResume);
+  const resumeRecord = selectedThread && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === selectedThread.id) : undefined;
+  const transferredAway = selectedThread && accountId ? snapshot.workerAssignments?.some((assignment) => assignment.transferHistory.some((transfer) => transfer.fromAccountId === accountId && transfer.fromThreadId === selectedThread.id)) : false;
+  const liveLimitExhausted = Boolean(activeTurnKey && limitExhaustedTurnKeys.has(activeTurnKey));
+  const limitExhausted = Boolean(selectedThread && activeTurnKey && (resumeRecord?.state === "waiting_for_limit" || (liveLimitExhausted && resumeRecord?.state !== "transferred" && !transferredAway)));
   const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
   const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
   const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);

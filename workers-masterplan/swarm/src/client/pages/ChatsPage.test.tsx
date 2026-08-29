@@ -464,6 +464,14 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
+  it("shows the resume controls immediately from the live limit event before the durable snapshot refresh finishes", () => {
+    setViewport(1440);
+    render(<ChatsPage snapshot={{ ...chatSnapshot, workerAssignments: [], limitResumes: [] }} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
+    expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
+  });
+
   it("does not show a stale resume notice after the durable assignment moved away", () => {
     setViewport(1440);
     const transferredSnapshot = {

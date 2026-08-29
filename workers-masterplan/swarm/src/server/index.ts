@@ -536,14 +536,14 @@ async function createRuntime(config: SwarmConfig) {
         const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
         await target.startTurn({ threadId: thread.id, clientUserMessageId, text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`, attachments: [{ name: filename, path }], settings: settings ?? dispatch?.settings });
         targetAccepted = true;
-        if (sourceResume) await limitResumes.completeTransfer(sourceAccountId, threadId);
+        await limitResumes.markTransferred(sourceAccountId, threadId);
         if (sourceAssignment) await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
         await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
         publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
         return thread;
       } catch (error) {
         if (sourceResume && priorResumeState) {
-          if (targetAccepted) await limitResumes.completeTransfer(sourceAccountId, threadId);
+          if (targetAccepted) await limitResumes.markTransferred(sourceAccountId, threadId);
           else {
             await limitResumes.restoreTransfer(sourceAccountId, threadId, priorResumeState);
             if (priorResumeState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);

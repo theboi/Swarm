@@ -38,6 +38,16 @@ describe("LimitResumeManifest", () => {
     expect(manifest.forThread("bot6", "thread-1")).toMatchObject({ state: "resuming", resumeClientUserMessageId: "resume-1" });
   });
 
+  it("tombstones a successful transfer even when the durable wait arrived late", async () => {
+    const manifest = new LimitResumeManifest([]);
+
+    await manifest.markTransferred("bot6", "late-thread", 20);
+    await manifest.markWaiting("bot6", "late-thread", 30);
+
+    expect(manifest.forThread("bot6", "late-thread")?.state).toBe("transferred");
+    expect(manifest.waitingForAccount("bot6")).toEqual([]);
+  });
+
   it("restores a failed resume or transfer to the durable waiting state", async () => {
     const manifest = new LimitResumeManifest([]);
     await manifest.markWaiting("bot6", "thread-1", 10);
