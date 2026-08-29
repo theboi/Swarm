@@ -8,21 +8,24 @@ Read these repository authorities from the account's EdenMind clone before actin
 - Implementation plan: `{{IMPLEMENTATION_PLAN_PATH}}`
 - Planning-gate receipt: `{{PLANNING_GATE_PATH}}`
 - Planning-gate commit: `{{PLANNING_GATE_COMMIT}}`
-- Required prerequisites: `{{HARD_PREREQUISITES}}`
+- Required implemented prerequisites: `{{HARD_PREREQUISITES}}`
+- UI requirements contract: `{{UI_REQUIREMENTS_PATH}}`
+- Presentation handoff: `{{UI_HANDOFF_PATH}}`
 
 You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is an execution-only launch. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
 
-Confirm every listed execution prerequisite, planning artifact, and planning-gate receipt is reachable from `origin/main` before editing. Treat any missing, stale, or local-only evidence as a blocker and report it through the worker status rather than guessing.
+Before editing, verify the passed global planning receipt at its pinned `origin/main` commit, every required implemented runtime prerequisite, and the listed specification, implementation plan, and UI artifacts. Confirm every listed execution prerequisite, planning artifact, and planning-gate receipt is reachable from `origin/main`. Treat missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`. Do not write or revise the implementation plan during execution except for the smallest coordinator-approved planning correction after a discovered contract mismatch.
 
-You are WORKER {{WORKER_ID}}. Read the MVP3 Implementation Masterplan together with the Business Masterplan and the Product Spec Masterplan. Constantly commit, push to main and pull changes from main regularly. Unless explicitly stated in the masterplans, continue until you have finished EXECUTION OF PLANS for your assigned task. The spec and implementation plans have been written as listed below.
+For a Layer 3 worker, live wiring means implementing live queries and commands through approved provider/client seams, runtime state integration, capability projection, functional loading/error/recovery behavior, and required contract/browser tests. Consume the accepted UI requirements and presentation handoff; do not take ownership of upstream domain policy or central composition.
 
-Specification: {{SPECIFICATION_PATH}}
-Implementation plan: {{IMPLEMENTATION_PLAN_PATH}}
+Ask the user focused questions when a missing decision would materially change the approved implementation boundary; otherwise preserve the reconciled plan.
 
-During planning, for your assigned task, write plans in a way that during execution, you can split the work up and use subagents to work on them in parallel, and ask the user questions when needed. During execution, use subagents: Terra High/Xhigh for execution depending on difficulty of implementation, and Sol High IF any additional planning is required due to unexpected issues faced. If required, spin up subagents to fix any blockages due to other workers. After writing plans, update the relevant masterplans with any any todos or known limitations.
+## Direct-main lifecycle
 
-At each coherent execution checkpoint, run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before continuing. Update `{{STATUS_PATH}}` with the inspected `origin/main` commit, decisions, prerequisites, verification, handoff inputs, and remote-reachability proof.
+- Checkout mode: `{{CHECKOUT_MODE}}`; shared-checkout lock: `{{MAIN_MUTATION_LOCK}}`; cross-clone push queue: `{{MAIN_PUSH_QUEUE}}`.
+- In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock before every filesystem or Git/index mutation and hold it through remote-reachability proof.
+- In `independent_main_clone` mode, do not impose a global edit lock; use the named push queue for reconciliation, affected verification, push, and remote ancestry proof.
+- At each independently testable execution checkpoint, run focused verification, stage only owned paths (staging only owned paths), commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability.
+- Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.
 
-If this execution handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:` so the coordinator can flag it for review.
-
-Hand off exact commits, checks, limitations, and acceptance inputs, then stop.
+Use Terra High/Xhigh for implementation according to difficulty; reserve Sol High for unexpected planning during execution. If this execution handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:`. Execution ends only when fresh acceptance evidence, closed review, final status, and remote-reachability proof are present. {{PHASE_TERMINAL_CONDITION}}

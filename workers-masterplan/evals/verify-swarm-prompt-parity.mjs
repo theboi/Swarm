@@ -19,7 +19,7 @@ const templateIds = ["planning", "execution", "ui"];
 const phaseStopRules = {
   planning: "Do not implement product code, UI, migrations, or runtime behavior in this phase.",
   execution: "Execution ends only when fresh acceptance evidence, closed review, final status, and remote-reachability proof are present.",
-  ui: "Stop at Claudio's review boundary.",
+  ui: "UI design stops after the accepted presentation handoff and UI requirements contract are integrated on `origin/main`.",
 };
 const lifecycleFacts = [
   "focused verification",
@@ -52,6 +52,7 @@ const coordinatorLaunchValues = {
   mainMutationLock: "swarm-main-mutation-lock",
   mainPushQueue: "swarm-main-push-queue",
   ownedSurfaces: "workers-masterplan/swarm/src/client/**",
+  plannedPrerequisites: "W2: specification docs/specs/w2.md implementation plan docs/plans/w2.md\nWD: UI requirements docs/design/requirements/wd.md presentation handoff docs/design/handoffs/wd.md",
   phase: "execution",
   phaseTerminalCondition: "Stop after the worker's phase handoff is integrated on origin/main.",
   planningGateCommit: "0123456789abcdef0123456789abcdef01234567",
@@ -62,6 +63,8 @@ const coordinatorLaunchValues = {
   taskId: "W3",
   taskTitle: "Coordinator launch contract",
   workerId: "W3",
+  uiRequirementsPath: "docs/design/requirements/wd.md",
+  uiHandoffPath: "docs/design/handoffs/wd.md",
 };
 const blueprintLaunchValues = Object.fromEntries(
   Object.entries(coordinatorLaunchValues).map(([key, value]) => [
@@ -183,6 +186,23 @@ for (const templateId of templateIds) {
   }
   if (templateId !== "ui" && checklistCount !== 0) {
     throw new Error(`${templateId} must not render the UI-design source-read checklist`);
+  }
+  if (templateId === "ui") {
+    for (const expected of [coordinatorLaunchValues.uiRequirementsPath, coordinatorLaunchValues.uiHandoffPath, "fixture/mock-backed state", "Do not add or change live wiring"]) {
+      if (!renderedPacket.includes(expected)) throw new Error(`ui does not render required two-pass UI contract: ${expected}`);
+    }
+    if (!renderedPacket.includes("This UI design does not authorize ordinary execution.")) throw new Error("ui authorizes ordinary execution");
+  }
+  if (templateId === "planning") {
+    for (const expected of [coordinatorLaunchValues.plannedPrerequisites, coordinatorLaunchValues.uiRequirementsPath, coordinatorLaunchValues.uiHandoffPath]) {
+      if (!renderedPacket.includes(expected)) throw new Error(`planning does not consume required two-pass input: ${expected}`);
+    }
+    if (!renderedPacket.includes("A planning handoff never authorizes ordinary execution")) throw new Error("planning authorizes ordinary execution");
+  }
+  if (templateId === "execution") {
+    for (const expected of [coordinatorLaunchValues.planningGatePath, coordinatorLaunchValues.uiRequirementsPath, coordinatorLaunchValues.uiHandoffPath, "live wiring"]) {
+      if (!renderedPacket.includes(expected)) throw new Error(`execution does not render required live-wiring input: ${expected}`);
+    }
   }
 
   process.stdout.write(

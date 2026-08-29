@@ -24,6 +24,15 @@ describe("task authority", () => {
     expect(production.tasks).toHaveLength(32);
     expect(production.tasks.filter((task) => task.kind === "planning")).toHaveLength(26);
     expect(production.tasks.filter((task) => task.kind === "ui").map((task) => task.id)).toEqual(["PD", "CD", "QD", "AD", "ED", "GD"]);
+    expect(Object.fromEntries(production.tasks.filter((task) => task.kind === "ui").map((task) => [task.id, [task.uiRequirementsPath, task.uiHandoffPath]]))).toEqual({
+      PD: ["docs/design/requirements/2026-08-26-pd-platform-admin.md", "docs/design/handoffs/2026-08-26-pd-platform-admin.md"],
+      CD: ["docs/design/requirements/2026-08-26-cd-curriculum.md", "docs/design/handoffs/2026-08-26-cd-curriculum.md"],
+      QD: ["docs/design/requirements/2026-08-26-qd-content.md", "docs/design/handoffs/2026-08-26-qd-content.md"],
+      AD: ["docs/design/requirements/2026-08-26-ad-analysis-intake.md", "docs/design/handoffs/2026-08-26-ad-analysis-intake.md"],
+      ED: ["docs/design/requirements/2026-08-26-ed-evidence.md", "docs/design/handoffs/2026-08-26-ed-evidence.md"],
+      GD: ["docs/design/requirements/2026-08-26-gd-practice.md", "docs/design/handoffs/2026-08-26-gd-practice.md"],
+    });
+    expect(production.tasks.some((task) => task.id === "PG0")).toBe(false);
     expect(domainPaths.map((pathId) => production.tasks.filter((task) => task.pathId === pathId).length)).toEqual([4, 4, 4, 4, 4, 4]);
     expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
     expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);
@@ -184,10 +193,11 @@ describe("task authority", () => {
   });
 
   it("renders the canonical template with exact worker values", async () => {
-    const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
+    const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", plannedPrerequisites: "none", uiRequirementsPath: "not applicable", uiHandoffPath: "not applicable", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
     expect(prompt).toContain("You are WORKER T0.");
     expect(prompt).toContain("finished WRITING SPEC AND IMPLEMENTATION PLANS");
     expect(prompt).toContain("Terra High/Xhigh");
+    expect(prompt).toContain("UI requirements contract: `not applicable`");
     expect(prompt).not.toContain("{{WORKER_ID}}");
   });
 
@@ -228,6 +238,42 @@ describe("task authority", () => {
     expect(execution).toContain("Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main.");
     expect(ui).toContain("this is a UI-only launch");
     expect(ui).toContain("Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.");
+  });
+
+  it("renders UI destinations and Layer 3 UI inputs without unresolved placeholders", async () => {
+    const common = {
+      workerId: "P3",
+      accountId: "bot3" as const,
+      taskId: "P3",
+      taskTitle: "Platform live wiring",
+      phase: "planning",
+      phaseTerminalCondition: "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation.",
+      blueprintPath: "docs/blueprint.md",
+      masterplanPath: "docs/blueprint.md",
+      coordinationRoot: "docs/workers/mvp3",
+      statusPath: "docs/workers/mvp3/p3.md",
+      specificationPath: "docs/p3-spec.md",
+      implementationPlanPath: "docs/p3-plan.md",
+      plannedPrerequisites: "P2: specification docs/p2-spec.md implementation plan docs/p2-plan.md\nPD: UI requirements docs/design/requirements/pd.md presentation handoff docs/design/handoffs/pd.md",
+      uiRequirementsPath: "docs/design/requirements/pd.md",
+      uiHandoffPath: "docs/design/handoffs/pd.md",
+      checkoutMode: "independent_main_clone" as const,
+      mainMutationLock: "not-applicable-for-independent-clones",
+      mainPushQueue: "swarm-main-push-queue",
+      edenmindClonePath: "/Users/bot3/Dev/EdenMind",
+      ownedSurfaces: "src/p3",
+      excludedSurfaces: "src/other",
+    };
+    const [planning, ui] = await Promise.all([
+      renderWorkerPrompt("planning", common),
+      renderWorkerPrompt("ui", { ...common, workerId: "PD", taskId: "PD", taskTitle: "Platform design", phase: "ui", phaseTerminalCondition: "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main." }),
+    ]);
+
+    for (const packet of [planning, ui]) {
+      expect(packet).toContain("docs/design/requirements/pd.md");
+      expect(packet).toContain("docs/design/handoffs/pd.md");
+      expect(packet).not.toMatch(/{{[A-Z_]+}}/);
+    }
   });
 
   it("uses the independent-clone queue for separate macOS-account workspaces", () => {

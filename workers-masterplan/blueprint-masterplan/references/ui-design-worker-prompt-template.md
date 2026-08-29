@@ -109,6 +109,16 @@ documented credential, configured endpoint, and localhost process. Keep the app
 and its access dependencies running through review. Show a working skeleton
 early, then edit the real app and iterate from user feedback.
 
+Compose each primary product surface so its visible area starts with the real
+task controls, navigation, or content inside the established application shell.
+When the shell already identifies the route, retain one accessible page heading
+as visually hidden and give the visible space to the task. The default rendered
+shape contains no extra workspace eyebrow, repeated page title, descriptive
+introduction, welcome banner, or summary-card strip above the actual content.
+Include a visible task header only when the approved surface contract assigns it
+distinct changing state, context, or actions that cannot live with the content
+controls. Verify this shape before requesting presentation review.
+
 When alternatives make feedback cheaper, you may offer a small set of
 substantively different options in one temporary toggleable comparison surface
 backed by shared components. Do not duplicate full pages or build independent
