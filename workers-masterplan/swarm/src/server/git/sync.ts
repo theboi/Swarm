@@ -1,6 +1,6 @@
-import { BOT_ACCOUNT_IDS, type BotAccountId, type GitSyncStatus } from "../../shared/contracts.js";
+import { BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type GitSyncStatus } from "../../shared/contracts.js";
 
-type GitSyncTarget = "local" | BotAccountId;
+export type GitSyncTarget = "local" | BotAccountId;
 type GitAction = GitSyncStatus["action"];
 
 export interface GitSynchronizerDependencies {
@@ -22,9 +22,9 @@ export class GitMergeConflictError extends Error {
 
 /** Suppresses repeated LLM steering while the same unresolved conflict remains. */
 export class MergeConflictSteerGate {
-  private readonly notified = new Set<BotAccountId>();
+  private readonly notified = new Set<AccountId>();
 
-  shouldSteer(target: BotAccountId, status: GitSyncStatus): boolean {
+  shouldSteer(target: AccountId, status: GitSyncStatus): boolean {
     if (status.errorCode !== "MERGE_CONFLICT") {
       this.notified.delete(target);
       return false;
@@ -33,6 +33,10 @@ export class MergeConflictSteerGate {
     this.notified.add(target);
     return true;
   }
+}
+
+export function accountForGitSyncTarget(target: GitSyncTarget): AccountId {
+  return target === "local" ? LOCAL_ACCOUNT_ID : target;
 }
 
 function initial(action: GitAction): GitSyncStatus {

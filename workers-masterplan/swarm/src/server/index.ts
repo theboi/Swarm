@@ -27,7 +27,7 @@ import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
 import { GitCommandRunner } from "./git/commandRunner.js";
-import { GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
+import { accountForGitSyncTarget, GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
 import { NgrokController } from "./ngrok/controller.js";
 import { waitForNgrokPublicUrl } from "./ngrok/localApi.js";
 import { createCoordinatorApp } from "./app.js";
@@ -241,16 +241,17 @@ async function createRuntime(config: SwarmConfig) {
   });
   const mergeConflictSteerGate = new MergeConflictSteerGate();
   gitSynchronizer.onChange((target, status) => {
+    const syncAccount = accountForGitSyncTarget(target);
     if (target === "local") localWorkspace.gitSync = status;
-    else accounts.updateSnapshot(target, { gitSync: status });
+    accounts.updateSnapshot(syncAccount, { gitSync: status });
     publishRuntimeEvent("git_sync", { target, state: status.state, action: status.action });
-    if (target !== "local" && mergeConflictSteerGate.shouldSteer(target, status)) {
-      for (const assignment of assignments.list().filter((item) => item.accountId === target && item.state === "assigned")) {
-        const turnId = activeTurnIds.get(activeTurnKey(target, assignment.threadId));
-        const client = accounts.client(target);
+    if (mergeConflictSteerGate.shouldSteer(syncAccount, status)) {
+      for (const assignment of assignments.list().filter((item) => item.accountId === syncAccount && item.state === "assigned")) {
+        const turnId = activeTurnIds.get(activeTurnKey(syncAccount, assignment.threadId));
+        const client = accounts.client(syncAccount);
         if (!turnId || !(client instanceof AppServerClient) || !client.isConnected()) continue;
         void client.steerTurn({ threadId: assignment.threadId, turnId, clientUserMessageId: randomUUID(), text: "Pull origin/main and merge the incoming changes. Resolve any merge conflicts, run the affected checks, then continue." })
-          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: target, error: error instanceof Error ? error.message : "failed" }));
+          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: syncAccount, error: error instanceof Error ? error.message : "failed" }));
       }
     }
   });

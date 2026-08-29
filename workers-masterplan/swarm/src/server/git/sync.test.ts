@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { GitMergeConflictError, GitSynchronizer, MergeConflictSteerGate } from "./sync.js";
+import { accountForGitSyncTarget, GitMergeConflictError, GitSynchronizer, MergeConflictSteerGate } from "./sync.js";
 
 describe("GitSynchronizer", () => {
   it("pulls local first, then pulls bots in account order", async () => {
@@ -57,5 +57,10 @@ describe("GitSynchronizer", () => {
     expect(gate.shouldSteer("bot4", { ...conflict, lastAttemptAt: 3 })).toBe(true);
     expect(gate.shouldSteer("bot3", recovered)).toBe(false);
     expect(gate.shouldSteer("bot3", { ...conflict, lastAttemptAt: 4 })).toBe(true);
+  });
+
+  it("maps the local checkout conflict to the claudiothe account", () => {
+    expect(accountForGitSyncTarget("local")).toBe("claudiothe");
+    expect(accountForGitSyncTarget("bot8")).toBe("bot8");
   });
 });
