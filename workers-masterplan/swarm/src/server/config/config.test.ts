@@ -40,6 +40,30 @@ describe("loadConfig", () => {
 
     expect(config.masterplanPath).toBe("manifests/mvp3.json");
     expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
+    expect(config.terminalPort).toBe(config.port + 1);
+  });
+
+  it("has no global concurrency setting or public limit", async () => {
+    const config = await loadConfig({
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+      SWARM_DEFAULT_CONCURRENCY: "0",
+    });
+
+    expect(config).not.toHaveProperty("defaultConcurrency");
+    expect(config.publicConfig()).not.toContain("defaultConcurrency");
+  });
+
+  it("requires a main port that leaves a valid adjacent loopback terminal port", async () => {
+    await expect(loadConfig({
+      SWARM_LOGIN_EMAIL: "claudio@example.com",
+      SWARM_LOGIN_PASSWORD_HASH: "hash",
+      SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+      SWARM_SESSION_SECRET: "session",
+      SWARM_PORT: "65535",
+    })).rejects.toThrow("SWARM_PORT must leave a valid adjacent loopback terminal port");
   });
 
   it("reads bot credentials only from named SWARM_USER slots and keeps passwords out of its public view", async () => {
@@ -51,11 +75,13 @@ describe("loadConfig", () => {
       SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
       SWARM_SESSION_SECRET: "a session secret",
       SWARM_NGROK_AUTHTOKEN: "ngrok-secret",
+      SWARM_NGROK_URL: "tosha-protrudent-ternately.ngrok-free.dev",
     });
 
     expect(config.loginEmail).toBe("claudio@example.com");
     expect(config.accountPasswords.bot3).toBe("local-password-3");
     expect(config.accountPasswords.bot8).toBe("local-password-8");
+    expect(config.ngrok.url).toBe("tosha-protrudent-ternately.ngrok-free.dev");
     expect(config.publicConfig()).not.toContain("local-password");
     expect(config.publicConfig()).not.toContain("ngrok-secret");
   });

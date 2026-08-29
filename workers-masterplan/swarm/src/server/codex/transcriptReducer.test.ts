@@ -50,6 +50,18 @@ describe("transcriptReducer", () => {
     expect(state.items[0]?.payload.aggregatedOutput).toBe("first second second");
   });
 
+  it("streams reasoning-summary deltas into the live reasoning item without exposing raw reasoning text", () => {
+    let state = reduceTranscriptEvent(initialTranscriptState, {
+      method: "item/started",
+      params: { ...scope, turnId: "turn-1", startedAtMs: 1_000, item: { type: "reasoning", id: "reason-1", summary: [] } },
+    });
+    state = reduceTranscriptEvent(state, { method: "item/reasoning/summaryTextDelta", params: { ...scope, turnId: "turn-1", itemId: "reason-1", delta: "Checked the launch response." } });
+    state = reduceTranscriptEvent(state, { method: "item/reasoning/textDelta", params: { ...scope, turnId: "turn-1", itemId: "reason-1", delta: "private reasoning must not appear" } });
+
+    expect(state.items[0]).toMatchObject({ type: "reasoning", payload: { summary: ["Checked the launch response."] } });
+    expect(JSON.stringify(state.items)).not.toContain("private reasoning");
+  });
+
   it("marks a disconnect incomplete then replaces one scope from authoritative thread history", () => {
     let state = hydrateTranscript(initialTranscriptState, {
       ...scope,

@@ -1,10 +1,13 @@
-import type { AccountId, AccountSnapshot } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type AccountSnapshot, type RateLimitWindow } from "../../shared/contracts.js";
 import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
+import { codexLoginCommand } from "./terminalConsole.js";
 
-const ACCOUNTS = new Set<AccountId>(["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
+const ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
 
 export interface ManagedAppServerClient {
   connect(): Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>;
+  isConnected(): boolean;
+  readRateLimitWindows(): Promise<RateLimitWindow[]>;
   close(): Promise<void>;
 }
 
@@ -12,11 +15,12 @@ export interface AccountManagerOptions {
   launcher: SuLauncher;
   createClient(handle: LaunchHandle): ManagedAppServerClient;
   codexBin: string;
+  onRateLimitReadError?: (account: AccountId, error: unknown) => void;
 }
 
 export interface ConnectAccountInput {
   account: AccountId;
-  password: string;
+  password?: string;
 }
 
 type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient };
@@ -33,9 +37,10 @@ export class AccountManager {
 
   connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
-    if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted bot1 through bot8 accounts may be connected"));
+    if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
     const existing = this.connections.get(input.account);
-    if (existing) return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing?.client.isConnected()) return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing) return this.disconnect(input.account).then(() => this.connect(input));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
 
@@ -50,7 +55,7 @@ export class AccountManager {
   }
 
   snapshotsList(): AccountSnapshot[] {
-    return (["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as AccountId[]).map((account) => this.requireSnapshot(account));
+    return ACCOUNT_IDS.map((account) => this.requireSnapshot(account));
   }
 
   /** Returns a live app-server client only after account authentication completed. */
@@ -58,12 +63,17 @@ export class AccountManager {
     return this.connections.get(account)?.client;
   }
 
+  async openTerminal(account: AccountId): Promise<void> {
+    if (this.connections.has(account)) await this.options.launcher.openTerminal(account);
+    else await this.options.launcher.openLoginTerminal(account, this.options.codexBin);
+  }
+
   onChange(listener: (snapshot: AccountSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync">): AccountSnapshot {
+  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange">): AccountSnapshot {
     return this.setSnapshot(account, patch);
   }
 
@@ -89,9 +99,17 @@ export class AccountManager {
       handle = await this.options.launcher.launch({ account: input.account, password: input.password, codexBin: this.options.codexBin });
       const client = this.options.createClient(handle);
       const account = await client.connect();
-      if (!account.account || account.requiresOpenaiAuth) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      let rateLimits = this.requireSnapshot(input.account).rateLimits;
+      let usageUnavailable = false;
+      try {
+        rateLimits = await client.readRateLimitWindows();
+      } catch (error) {
+        this.options.onRateLimitReadError?.(input.account, error);
+        usageUnavailable = true;
+      }
       this.connections.set(input.account, { handle, client });
-      return this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", terminalCommand: undefined, errorCode: undefined });
+      return this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined, errorCode: usageUnavailable ? "USAGE_UNAVAILABLE" : undefined });
     } catch (error) {
       await handle?.stop();
       this.setSnapshot(input.account, {
@@ -105,7 +123,7 @@ export class AccountManager {
   }
 
   private manualLoginCommand(account: AccountId): string {
-    return `/usr/bin/su - ${account} -c '${this.options.codexBin.replaceAll("'", "'\\''")} login'`;
+    return codexLoginCommand(account, this.options.codexBin);
   }
 
   private requireSnapshot(account: AccountId): AccountSnapshot {

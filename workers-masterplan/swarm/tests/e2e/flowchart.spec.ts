@@ -28,6 +28,9 @@ test.describe("Flowchart", () => {
       const surface = page.getByTestId("flowchart-surface");
       await expect(surface).toBeVisible();
       await expect(page.getByRole("button", { name: "T0 Graph planning running" })).toBeVisible();
+      await expect(surface.locator(".react-flow__handle-left.target")).not.toHaveCount(0);
+      await expect(surface.locator(".react-flow__handle-right.source")).not.toHaveCount(0);
+      await expect(surface.locator(".react-flow__edge path[marker-end]")).not.toHaveCount(0);
       await page.locator(".react-flow__controls-zoomin").click();
       await expect(surface).not.toHaveAttribute("data-viewport", "0,0,1");
 
@@ -39,16 +42,20 @@ test.describe("Flowchart", () => {
     });
   }
 
-  test("shows a launch-disabled desktop inspector with readiness evidence", async ({ page }) => {
+  test("keeps the desktop graph full-width and overlays task details", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     await page.getByRole("button", { name: "Flowchart" }).click();
     await page.getByRole("button", { name: "Show blocked tasks" }).click();
     await page.getByRole("button", { name: "I0 Integration blocked" }).click();
 
-    await expect(page.getByRole("heading", { name: "I0 Integration" })).toBeVisible();
+    const surfaceBox = await page.getByTestId("flowchart-surface").boundingBox();
+    expect(surfaceBox?.width).toBeGreaterThan(1_100);
+    const inspector = page.getByRole("dialog", { name: "I0 Integration" });
+    await expect(inspector).toBeVisible();
+    await expect(inspector.getByRole("button", { name: "Close" })).toHaveClass(/overlay-close-button/);
     await expect(page.getByText("MASTERPLAN_NOT_READY: not satisfied")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Launch I0" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Review launch for I0" })).toBeDisabled();
   });
 
   test("opens a mobile task overlay and hands off to its chat", async ({ page }) => {
@@ -60,9 +67,10 @@ test.describe("Flowchart", () => {
 
     const inspector = page.getByRole("dialog", { name: "T0 Graph planning" });
     await expect(inspector).toBeVisible();
-    await expect(page.getByRole("button", { name: "Launch T0" })).toBeDisabled();
+    await expect(inspector.getByRole("button", { name: "Close" })).toHaveClass(/overlay-close-button/);
+    await expect(page.getByRole("button", { name: "Review launch for T0" })).toBeDisabled();
     await page.getByRole("button", { name: "Open chat" }).click();
-    await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();
   });
 });

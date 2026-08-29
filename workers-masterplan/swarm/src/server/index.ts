@@ -2,10 +2,12 @@ import { access, realpath } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { createHash, randomUUID } from "node:crypto";
 import dotenv from "dotenv";
+import { spawn as spawnPty } from "node-pty";
 
-import type { AccountId, CoordinatorSnapshot, DispatchRecord, HealthSnapshot, LocalWorkspaceSnapshot, NgrokSnapshot, TaskManifest, TaskNode, ThreadSummary } from "../shared/contracts.js";
+import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LocalWorkspaceSnapshot, type NgrokSnapshot, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -17,22 +19,27 @@ import { AppServerClient } from "./codex/appServerClient.js";
 import { JsonRpcClient } from "./codex/jsonRpcClient.js";
 import { readWorkspaceMarkdown } from "./codex/safeFileReader.js";
 import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
-import { normalizeThreadCapabilities } from "./codex/threadCapabilities.js";
+import { openMacOsTerminal } from "./codex/terminalConsole.js";
+import { workspaceRoot } from "./codex/protocol.js";
+import { normalizeThreadActivity, normalizeThreadCapabilities } from "./codex/threadCapabilities.js";
 import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
 import { GitCommandRunner } from "./git/commandRunner.js";
-import { GitSynchronizer } from "./git/sync.js";
+import { GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
 import { NgrokController } from "./ngrok/controller.js";
 import { waitForNgrokPublicUrl } from "./ngrok/localApi.js";
 import { createCoordinatorApp } from "./app.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, rankAccounts } from "./scheduler/accountScheduler.js";
+import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
+import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
+import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -41,21 +48,58 @@ import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 type DurableState = {
   auth?: { challenges?: Record<string, unknown>; sessions?: Record<string, unknown>; loginThrottle?: Record<string, { failures: number; retryAt: number }>; usedTotp?: Record<string, true> };
   dispatches?: DispatchRecord[];
+  workerAssignments?: WorkerAssignmentRecord[];
+  completedTaskIds?: string[];
   approvals?: ApprovalJournalEntry[];
   ngrok?: { suppressUntil?: number; publicUrl?: string | null; managedTunnelId?: string | null };
+  notifications?: { breakingChangeAccounts?: AccountId[] };
+  accountRateLimits?: Partial<Record<AccountId, RateLimitWindow[]>>;
 };
 
-const accountIds = ["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as const;
+const accountIds = ACCOUNT_IDS;
 function accountId(value: string): AccountId { if (!(accountIds as readonly string[]).includes(value)) throw new Error("ACCOUNT_OFFLINE"); return value as AccountId; }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringAt(value: unknown, field: string): string | undefined { const result = object(value)[field]; return typeof result === "string" && result ? result : undefined; }
-function asThread(account: AccountId, source: Record<string, unknown>): ThreadSummary {
+function isWorkspaceThread(cwd: unknown, workspace: string | undefined): boolean {
+  if (typeof cwd !== "string" || !workspace) return false;
+  try {
+    const path = cwd.startsWith("file:") ? fileURLToPath(cwd) : cwd;
+    return resolve(path) === resolve(workspace);
+  } catch {
+    return false;
+  }
+}
+function asThread(account: AccountId, source: Record<string, unknown>, workspace?: string): ThreadSummary {
   const id = stringAt(source, "id");
   if (!id) throw new Error("App-server did not return a thread identifier");
   const updated = source.updatedAt;
-  return { id, accountId: account, name: typeof source.name === "string" ? source.name : null, archived: source.archived === true, updatedAt: typeof updated === "number" ? updated : Date.now(), capabilities: normalizeThreadCapabilities(source) };
+  return { id, accountId: account, name: typeof source.name === "string" ? source.name : null, archived: source.archived === true, isEdenMindProject: isWorkspaceThread(source.cwd, workspace), updatedAt: typeof updated === "number" ? updated : Date.now(), activity: normalizeThreadActivity(source), capabilities: normalizeThreadCapabilities(source) };
 }
 function responseThread(value: unknown): Record<string, unknown> { const response = object(value); return response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? object(response.thread) : response; }
+
+function handoffSource(threadId: string, thread: Record<string, unknown>): { jsonl: string; originalPrompt: string } {
+  const turns = Array.isArray(thread.turns) ? thread.turns.filter((turn): turn is Record<string, unknown> => Boolean(turn) && typeof turn === "object" && !Array.isArray(turn)) : [];
+  let originalPrompt: string | undefined;
+  const lines: string[] = [];
+  for (const turn of turns) {
+    const turnId = stringAt(turn, "id") ?? "unknown";
+    const items = Array.isArray(turn.items) ? turn.items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+    for (const item of items) {
+      lines.push(JSON.stringify({ threadId, turnId, startedAt: turn.startedAt ?? null, item }));
+      if (!originalPrompt && item.type === "userMessage") {
+        const content = Array.isArray(item.content) ? item.content : [];
+        const text = content.map((part) => object(part)).filter((part): part is Record<string, unknown> => Boolean(part)).map((part) => typeof part.text === "string" ? part.text : "").join("").trim();
+        if (text) originalPrompt = text;
+      }
+    }
+  }
+  return { jsonl: `${lines.join("\n")}${lines.length ? "\n" : ""}`, originalPrompt: originalPrompt ?? "Continue the work in the attached previous session." };
+}
+
+function handoffFilename(account: AccountId, threadId: string): string {
+  const suffix = createHash("sha256").update(`${account}\u0000${threadId}`).digest("hex").slice(0, 12);
+  return `swarm-handoff-${account}-${suffix}.jsonl`;
+}
 
 async function leasePort(): Promise<PortLease> {
   const listener = createNetServer();
@@ -63,6 +107,18 @@ async function leasePort(): Promise<PortLease> {
   const address = listener.address();
   if (!address || typeof address === "string") throw new Error("Could not reserve a loopback port");
   return { port: address.port, release: async () => new Promise<void>((resolveClose) => listener.close(() => resolveClose())) };
+}
+
+/** The ngrok inspector is optional infrastructure and must never block local startup. */
+export async function fetchNgrokInspector(fetcher: typeof fetch = fetch): Promise<unknown> {
+  const response = await fetcher("http://127.0.0.1:4040/api/tunnels", { signal: AbortSignal.timeout(1_000) });
+  if (!response.ok) throw new Error("ngrok loopback inspector is unavailable");
+  return response.json();
+}
+
+/** A failed optional ngrok spawn emits `error`; listening prevents Node from terminating Swarm. */
+export function absorbSpawnError(child: { once(event: "error", listener: (error: Error) => void): unknown }): void {
+  child.once("error", () => undefined);
 }
 
 function taskNode(manifest: TaskManifest, readiness: ReturnType<typeof evaluateTaskReadiness>): TaskNode[] {
@@ -76,28 +132,54 @@ async function createRuntime(config: SwarmConfig) {
   const root = state.root();
   root.auth ??= {};
   root.ngrok ??= {};
+  root.notifications ??= {};
+  root.notifications.breakingChangeAccounts ??= [];
   const sessions = new SessionStore(config.sessionSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const throttle = new LoginThrottle({ persistence: root.auth as never, persist: () => state.persist() });
   const verifyTotp = createTotpVerifier(config.totpSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
   const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
+  const assignments = new WorkerAssignmentManifest(root.workerAssignments ?? [], async (records) => state.mutate((value) => { value.workerAssignments = records; }));
+  const completedTaskIds = new Set([...(root.completedTaskIds ?? []), ...(root.dispatches ?? []).filter((record) => record.state === "completed").map((record) => record.taskId)]);
+  const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
+  const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
+  const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
+  const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
+  const activeTurnIds = new Map<string, string>();
+  const activeTurnKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
+  let scheduleLimitResume: (account: AccountId, threadId: string) => Promise<void> = async () => undefined;
   const launcher = new SuLauncher({
-    spawn: (file, args, options) => spawn(file, args, options) as never,
+    spawnPty: (file, args, options) => spawnPty(file, args, options),
     allocatePort: leasePort,
     pathExists: async (path) => access(path).then(() => true).catch(() => false),
     verifyCodexBinary: async (path) => access(path).then(() => true).catch(() => false),
     waitForReady: async (endpoint, capabilityToken) => { const probe = new JsonRpcClient({ launch: { endpoint, capabilityToken } }); await probe.connect(); await probe.close(); },
+    // A cold local Codex profile can exceed the normal 30-second app-server startup.
+    startupTimeoutMs: 120_000,
     killProcessGroup: (pid, signal) => { try { process.kill(pid, signal); } catch { /* process already gone */ } },
+    openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   let accounts: AccountManager;
+  const breakingChangeAccounts = new Set<AccountId>(root.notifications.breakingChangeAccounts);
+  const recordBreakingChange = (account: AccountId) => {
+    accounts.updateSnapshot(account, { hasBreakingChange: true });
+    void state.mutate((value) => {
+      value.notifications ??= {};
+      value.notifications.breakingChangeAccounts ??= [];
+      if (!value.notifications.breakingChangeAccounts.includes(account)) value.notifications.breakingChangeAccounts.push(account);
+    }).catch((error) => logger.warn("notifications", { event: "breaking_change_persist_failed", account, error: error instanceof Error ? error.message : "failed" }));
+  };
   const settleCompletedLaunchThread = async (account: AccountId, threadId: string) => {
+    await assignments.complete(account, threadId);
     const record = await outbox.completeAcceptedForThread(account, threadId);
     if (!record) return;
+    completedTaskIds.add(record.taskId);
+    await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
     completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
     const snapshot = accounts.snapshot(account);
     accounts.updateSnapshot(account, { activeTurns: Math.max(0, snapshot.activeTurns - 1) });
@@ -105,49 +187,101 @@ async function createRuntime(config: SwarmConfig) {
   accounts = new AccountManager({
     launcher,
     codexBin: config.codexBin,
+    onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     createClient: (handle) => {
-      const client = new AppServerClient({ account: handle.account, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account), journal }) });
+      const localWorkspaceRoot = workspaceFor(handle.account);
+      const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }) });
       client.onEvent((event) => {
+        if (event.type === "breaking_change") recordBreakingChange(event.accountId);
+        if (event.type === "turn" && event.threadId && event.turnId && event.state === "started") {
+          activeTurnIds.set(activeTurnKey(event.accountId, event.threadId), event.turnId);
+          void assignments.markAssigned(event.accountId, event.threadId).catch((error) => logger.warn("assignments", { event: "mark_assigned_failed", error: error instanceof Error ? error.message : "failed" }));
+        }
+        if (event.type === "turn" && event.threadId && event.state === "limit_exhausted") {
+          const exhaustedThreadId = event.threadId;
+          activeTurnIds.delete(activeTurnKey(event.accountId, exhaustedThreadId));
+          void (async () => {
+            await assignments.markWaitingForLimit(event.accountId, exhaustedThreadId);
+            try { await gitRunner.checkpointAndPush(event.accountId); }
+            catch {
+              const status = { state: "warning" as const, action: "push" as const, lastAttemptAt: Date.now(), message: "Git push failed. Push manually before transferring this worker." };
+              if (event.accountId === LOCAL_ACCOUNT_ID) localWorkspace.gitSync = status;
+              else accounts.updateSnapshot(event.accountId, { gitSync: status });
+              publishRuntimeEvent("git_sync", { target: event.accountId, state: status.state, action: status.action });
+            }
+            await scheduleLimitResume(event.accountId, exhaustedThreadId);
+            publishRuntimeEvent("task", { taskId: assignments.forThread(event.accountId, exhaustedThreadId)?.taskId ?? "" });
+          })().catch((error) => logger.warn("assignments", { event: "limit_wait_failed", error: error instanceof Error ? error.message : "failed" }));
+        }
         if (event.type === "turn" && event.state === "completed" && event.threadId) {
+          activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
           const key = completedLaunchThreadKey(event.accountId, event.threadId);
           if (outbox.list().some((record) => record.accountId === event.accountId && record.threadId === event.threadId && (record.state === "submitting" || record.state === "accepted"))) {
             completedLaunchThreads.add(key);
-            void settleCompletedLaunchThread(event.accountId, event.threadId).catch((error) => logger.warn("dispatch", { event: "complete_failed", account: event.accountId, threadId: event.threadId, error: error instanceof Error ? error.message : "failed" }));
+            void settleCompletedLaunchThread(event.accountId, event.threadId)
+              .then(() => refreshTasks(true))
+              .then(() => publishRuntimeEvent("task", { taskId: outbox.list().find((record) => record.accountId === event.accountId && record.threadId === event.threadId)?.taskId ?? "" }))
+              .catch((error) => logger.warn("dispatch", { event: "complete_failed", account: event.accountId, threadId: event.threadId, error: error instanceof Error ? error.message : "failed" }));
           }
         }
+        if (event.type === "turn" && event.threadId && (event.state === "failed" || event.state === "interrupted")) activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
         publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}) });
       });
       return client;
     },
   });
+  for (const id of accountIds) {
+    const rateLimits = root.accountRateLimits?.[id];
+    if (rateLimits?.length) accounts.updateSnapshot(id, { rateLimits });
+  }
+  for (const id of breakingChangeAccounts) accounts.updateSnapshot(id, { hasBreakingChange: true });
   const gitSynchronizer = new GitSynchronizer({
-    pullLocal: () => new GitCommandRunner(resolve(process.cwd(), "../.."), config.accountPasswords).pullLocal(),
-    pushBot: (account) => new GitCommandRunner(resolve(process.cwd(), "../.."), config.accountPasswords).pushBot(account),
+    pullLocal: () => gitRunner.pullLocal(),
+    pullBot: (account) => gitRunner.pullAccount(account),
   });
+  const mergeConflictSteerGate = new MergeConflictSteerGate();
   gitSynchronizer.onChange((target, status) => {
     if (target === "local") localWorkspace.gitSync = status;
     else accounts.updateSnapshot(target, { gitSync: status });
     publishRuntimeEvent("git_sync", { target, state: status.state, action: status.action });
+    if (target !== "local" && mergeConflictSteerGate.shouldSteer(target, status)) {
+      for (const assignment of assignments.list().filter((item) => item.accountId === target && item.state === "assigned")) {
+        const turnId = activeTurnIds.get(activeTurnKey(target, assignment.threadId));
+        const client = accounts.client(target);
+        if (!turnId || !(client instanceof AppServerClient) || !client.isConnected()) continue;
+        void client.steerTurn({ threadId: assignment.threadId, turnId, clientUserMessageId: randomUUID(), text: "Pull origin/main and merge the incoming changes. Resolve any merge conflicts, run the affected checks, then continue." })
+          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: target, error: error instanceof Error ? error.message : "failed" }));
+      }
+    }
   });
   let manifest: TaskManifest | undefined;
   let nodes: TaskNode[] = [];
   let manifestError: string | undefined;
-  const refreshTasks = async () => {
-    if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; return; }
-    try {
-      manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
-      nodes = taskNode(manifest, evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest)));
-      manifestError = undefined;
-    } catch (error) { manifest = undefined; nodes = []; manifestError = error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID"; }
+  let tasksRefreshedAt = 0;
+  let taskRefreshPromise: Promise<void> | undefined;
+  const refreshTasks = async (force = true) => {
+    if (!force && Date.now() - tasksRefreshedAt < 15_000) return;
+    if (taskRefreshPromise) return taskRefreshPromise;
+    taskRefreshPromise = (async () => {
+      if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
+      try {
+        manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
+        const readiness = evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
+        let completionChanged = false;
+        for (const task of readiness) if (task.state === "complete" && !completedTaskIds.has(task.taskId)) { completedTaskIds.add(task.taskId); completionChanged = true; }
+        if (completionChanged || !root.completedTaskIds) await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
+        nodes = taskNode(manifest, readiness);
+        manifestError = undefined;
+      } catch (error) { manifest = undefined; nodes = []; manifestError = error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID"; }
+      finally { tasksRefreshedAt = Date.now(); }
+    })();
+    try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
   await refreshTasks();
   let ngrokChild: ReturnType<typeof spawn> | undefined;
   const ngrokTarget = `http://127.0.0.1:${config.port}`;
-  const inspectNgrok = async () => {
-    const response = await fetch("http://127.0.0.1:4040/api/tunnels");
-    if (!response.ok) throw new Error("ngrok loopback inspector is unavailable");
-    return response.json();
-  };
+  const configuredNgrokUrl = config.ngrok.url ? (config.ngrok.url.startsWith("http") ? config.ngrok.url : `https://${config.ngrok.url}`) : undefined;
+  const inspectNgrok = () => fetchNgrokInspector();
   const waitForPublicNgrokUrl = () => waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: () => new Promise((resolveSleep) => setTimeout(resolveSleep, 250)) });
   const ngrok = new NgrokController({
     timezone: config.timezone,
@@ -155,12 +289,19 @@ async function createRuntime(config: SwarmConfig) {
     persist: () => state.persist(),
     start: async () => {
       if (ngrokChild && !ngrokChild.killed) return { id: `pid:${ngrokChild.pid}` };
-      const args = ["http", `127.0.0.1:${config.port}`];
-      if (config.ngrok.domain) args.push("--domain", config.ngrok.domain);
+      const args = ["http", ...(config.ngrok.url ? [`--url=${config.ngrok.url}`] : []), `127.0.0.1:${config.port}`];
       ngrokChild = spawn(config.ngrok.bin, args, { detached: true, stdio: "ignore", env: { ...process.env, ...(config.ngrok.authtoken ? { NGROK_AUTHTOKEN: config.ngrok.authtoken } : {}) } });
+      absorbSpawnError(ngrokChild);
       if (!ngrokChild.pid) throw new Error("ngrok did not start");
-      ngrokChild.once("exit", () => { ngrokChild = undefined; void ngrok.notifyProcessExit(); });
+      ngrokChild.once("exit", () => {
+        ngrokChild = undefined;
+        void ngrok.notifyProcessExit().catch((error) => logger.warn("ngrok", { event: "process_exit_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
+      });
       try {
+        if (configuredNgrokUrl) {
+          const response = await fetch(configuredNgrokUrl, { signal: AbortSignal.timeout(5_000) });
+          if (response.ok) return { id: `pid:${ngrokChild.pid}`, publicUrl: configuredNgrokUrl };
+        }
         return { id: `pid:${ngrokChild.pid}`, publicUrl: await waitForPublicNgrokUrl() };
       } catch (error) {
         try { process.kill(-ngrokChild.pid, "SIGTERM"); } catch { /* child already stopped */ }
@@ -172,29 +313,56 @@ async function createRuntime(config: SwarmConfig) {
     isHealthy: async () => Boolean(ngrokChild && !ngrokChild.killed),
     discover: async () => {
       try {
+        if (configuredNgrokUrl) {
+          const response = await fetch(configuredNgrokUrl, { signal: AbortSignal.timeout(5_000) });
+          if (response.ok) return { healthy: true, id: root.ngrok?.managedTunnelId ?? "configured", publicUrl: configuredNgrokUrl };
+        }
         return { healthy: true, id: root.ngrok?.managedTunnelId ?? "", publicUrl: await waitForNgrokPublicUrl({ target: ngrokTarget, fetchJson: inspectNgrok, sleep: async () => undefined, attempts: 1 }) };
       } catch {
         return { healthy: false, id: "" };
       }
     },
+    onError: (error) => logger.warn("ngrok", { event: "heartbeat_reconcile_failed", error: error instanceof Error ? error.message : "failed" }),
   });
-  if (config.ngrok.enabled) { ngrok.startHeartbeat(); await ngrok.reconcile().catch((error) => logger.warn("ngrok", { event: "reconcile_failed", error: error instanceof Error ? error.message : "failed" })); }
+  if (config.ngrok.enabled) { ngrok.startHeartbeat(); void ngrok.reconcile().catch((error) => logger.warn("ngrok", { event: "reconcile_failed", error: error instanceof Error ? error.message : "failed" })); }
 
-  const liveClient = (id: AccountId): AppServerClient => {
+  const liveClient = async (id: AccountId): Promise<AppServerClient> => {
     const client = accounts.client(id);
-    if (!(client instanceof AppServerClient)) throw new Error("ACCOUNT_OFFLINE");
-    return client;
+    if (client instanceof AppServerClient && client.isConnected()) return client;
+    await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+    const recovered = accounts.client(id);
+    if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("ACCOUNT_OFFLINE");
+    return recovered;
   };
   const accountSnapshot = () => accounts.snapshotsList();
   const updateRateLimits = async (id: AccountId) => {
-    const client = liveClient(id);
+    const client = await liveClient(id);
     const rateLimits = mergeRateLimits(accounts.snapshot(id).rateLimits, await client.readRateLimitWindows());
     return accounts.updateSnapshot(id, { rateLimits });
   };
-  const threads = async (id: AccountId): Promise<ThreadSummary[]> => (await liveClient(id).listAllThreads()).map((thread) => asThread(id, thread));
+  const threads = async (id: AccountId): Promise<ThreadSummary[]> => (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id)));
+  const refreshAllRateLimits = async () => {
+    await Promise.allSettled(accountSnapshot().filter((account) => account.connection === "connected" && account.authentication === "authenticated").map((account) => updateRateLimits(account.id)));
+    return accountSnapshot();
+  };
   const ngrokSnapshot = async (): Promise<NgrokSnapshot> => { const current = ngrok.snapshot(); return { state: (config.ngrok.enabled ? current.state : "disabled") as NgrokSnapshot["state"], publicUrl: current.publicUrl, message: current.error, nextBoundaryAt: current.nextBoundaryAt }; };
   const health = async (): Promise<HealthSnapshot> => ({ server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: manifestError ? "degraded" : "ok", ...(manifestError ? { message: manifestError } : {}) }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: (await ngrokSnapshot()).state === "error" ? "error" : "ok" }, accounts: { state: accountSnapshot().some((item) => item.connection === "error") ? "degraded" : "ok" } });
-  const snapshot = async (): Promise<CoordinatorSnapshot> => ({ generatedAt: Date.now(), activeTurnLimit: config.defaultConcurrency, accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: nodes, dispatches: outbox.list(), threads: (await Promise.all(accountSnapshot().filter((item) => item.connection === "connected").map((item) => threads(item.id).catch(() => [])))).flat(), pendingApprovals: journal.pending().map((entry) => entry.pending), ngrok: await ngrokSnapshot(), health: await health() });
+  const reconcileAssignments = async (threadSummaries: ThreadSummary[]) => {
+    for (const node of nodes) {
+      if (assignments.forTask(node.id)) continue;
+      const thread = latestUnarchivedTaskThread(threadSummaries, node.id);
+      if (!thread) continue;
+      await assignments.assign(node.id, thread.accountId, thread.id, thread.updatedAt);
+      if (node.readiness.state === "complete") await assignments.complete(thread.accountId, thread.id, thread.updatedAt);
+    }
+  };
+  const snapshot = async (): Promise<CoordinatorSnapshot> => {
+    await refreshTasks(false);
+    const dispatches = outbox.list();
+    const threadSummaries = (await Promise.all(accountSnapshot().filter((item) => item.connection === "connected").map((item) => threads(item.id).catch(() => [])))).flat();
+    await reconcileAssignments(threadSummaries);
+    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: projectDispatchState(nodes, dispatches, threadSummaries, assignments.list(), completedTaskIds), dispatches, workerAssignments: assignments.list(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), ngrok: await ngrokSnapshot(), health: await health() };
+  };
   const allowedOrigins = () => {
     const values = new Set([`http://127.0.0.1:${config.port}`, `http://localhost:${config.port}`]);
     const url = ngrok.snapshot().publicUrl;
@@ -203,10 +371,15 @@ async function createRuntime(config: SwarmConfig) {
   };
   const createPrompt = async (task: TaskNode, id: AccountId) => {
     const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task) : {};
-    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at Claudio's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, ...launchGitMetadata(id), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, ...launchGitMetadata(id, workspaceFor(id)), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
   };
-  const suggested = (requested?: AccountId) => requested ?? rankAccounts(accountSnapshot(), Date.now())[0]?.id;
+  const launchAccounts = async () => {
+    const current = accountSnapshot();
+    const visibleThreads = await Promise.all(current.filter((account) => account.connection === "connected").map((account) => threads(account.id).catch(() => [])));
+    return rankLaunchAccounts(current, visibleThreads.flat());
+  };
   const rateWaitTimers = new Map<string, NodeJS.Timeout>();
+  const limitResumeTimers = new Map<string, NodeJS.Timeout>();
   const clearRateWait = (dispatchId: string) => { const timer = rateWaitTimers.get(dispatchId); if (timer) clearTimeout(timer); rateWaitTimers.delete(dispatchId); };
   const scheduleRateWait = async (record: DispatchRecord) => {
     clearRateWait(record.id);
@@ -224,7 +397,7 @@ async function createRuntime(config: SwarmConfig) {
           const task = nodes.find((candidate) => candidate.id === active.taskId);
           if (!task || task.readiness.state !== "ready") { await outbox.abandon(active.id); return; }
           await outbox.markSubmitting(active.id);
-          await liveClient(active.accountId).startTurn({ threadId: active.threadId, clientUserMessageId: active.clientUserMessageId, text: await createPrompt(task, active.accountId) });
+          await (await liveClient(active.accountId)).startTurn({ threadId: active.threadId, clientUserMessageId: active.clientUserMessageId, text: await createPrompt(task, active.accountId), settings: active.settings });
           await outbox.markAccepted(active.id);
           accounts.updateSnapshot(active.accountId, { activeTurns: accounts.snapshot(active.accountId).activeTurns + 1, lastAssignedAt: Date.now() });
           if (completedLaunchThreads.has(completedLaunchThreadKey(active.accountId, active.threadId))) await settleCompletedLaunchThread(active.accountId, active.threadId);
@@ -234,13 +407,35 @@ async function createRuntime(config: SwarmConfig) {
     timer.unref();
     rateWaitTimers.set(record.id, timer);
   };
+  scheduleLimitResume = async (account, threadId) => {
+    const key = activeTurnKey(account, threadId);
+    const existing = limitResumeTimers.get(key);
+    if (existing) clearTimeout(existing);
+    await updateRateLimits(account).catch(() => undefined);
+    const next = nextRateLimitCheck(accounts.snapshot(account).rateLimits, key);
+    const timer = setTimeout(() => {
+      limitResumeTimers.delete(key);
+      void (async () => {
+        const assignment = assignments.forThread(account, threadId);
+        if (!assignment || assignment.state !== "waiting_for_limit") return;
+        await updateRateLimits(account).catch(() => undefined);
+        if (!rankAccounts([accounts.snapshot(account)], Date.now()).length) { await scheduleLimitResume(account, threadId); return; }
+        const dispatch = outbox.list().find((record) => record.accountId === account && record.threadId === threadId);
+        await (await liveClient(account)).startTurn({ threadId, clientUserMessageId: randomUUID(), text: "Continue from where you stopped after the usage limit reset.", settings: dispatch?.settings });
+        await assignments.markAssigned(account, threadId);
+        publishRuntimeEvent("task", { taskId: assignment.taskId });
+      })().catch((error) => logger.warn("resume", { event: "limit_resume_failed", account, threadId, error: error instanceof Error ? error.message : "failed" }));
+    }, Math.max(0, next.at - Date.now()));
+    timer.unref();
+    limitResumeTimers.set(key, timer);
+  };
   const services: CoordinatorRouteServices = {
     config: { ...config, secureCookies: config.trustManagedProxy && (ngrok.snapshot().publicUrl?.startsWith("https:") ?? false) }, sessions, throttle, verifyTotp,
     snapshot, health,
     connectAccount: async (id) => {
-      const connected = await accounts.connect({ account: id, password: config.accountPasswords[id] ?? "" });
+      const connected = await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
       await outbox.recover({ readThread: async (record) => {
-        const result = await liveClient(record.accountId).readThread(record.threadId, { includeTurns: true });
+        const result = await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true });
         const turns = Array.isArray(object(result).thread && object(object(result).thread).turns) ? object(object(result).thread).turns as Array<Record<string, unknown>> : [];
         return { turns: turns.map((turn) => ({ clientUserMessageId: typeof turn.clientUserMessageId === "string" ? turn.clientUserMessageId : undefined })) };
       } });
@@ -248,29 +443,37 @@ async function createRuntime(config: SwarmConfig) {
       return connected;
     },
     disconnectAccount: (id) => accounts.disconnect(id),
+    openTerminal: (id) => accounts.openTerminal(id),
     refreshRateLimits: updateRateLimits,
+    refreshAllRateLimits,
+    listModels: async (id) => (await liveClient(id)).listModels(),
     previewLaunch: async (taskId, requested) => {
       await refreshTasks();
       if (!manifest) throw new Error(manifestError ?? "MASTERPLAN_NOT_READY");
       const task = nodes.find((candidate) => candidate.id === taskId);
       if (!task || task.readiness.state !== "ready") throw new Error(task?.readiness.blockingCodes[0] ?? "TASK_NOT_READY");
-      const selected = suggested(requested);
+      let options = await launchAccounts();
+      let selected = requested ? options.find((account) => account.id === requested && account.available) : options.find((account) => account.available);
+      if (!selected && !requested) {
+        await accounts.connect({ account: LOCAL_ACCOUNT_ID, password: undefined }).catch(() => undefined);
+        options = await launchAccounts();
+        selected = options.find((account) => account.available);
+      }
       if (!selected) throw new Error("ACCOUNT_OFFLINE");
-      return { task, accountId: selected, prompt: await createPrompt(task, selected), dependencies: task.dependsOn, concurrencyImpact: `${outbox.list().filter((item) => item.state === "submitting" || item.state === "accepted").length} / ${config.defaultConcurrency}` };
+      return { task, accountId: selected.id, prompt: await createPrompt(task, selected.id), dependencies: task.dependsOn, accounts: options };
     },
     launch: async (taskId, input) => {
       const preview = await services.previewLaunch(taskId, input.accountId) as { task: TaskNode; accountId: AccountId; prompt: string };
-      const active = outbox.list().filter((item) => item.state === "submitting" || item.state === "accepted").length;
-      if (active >= config.defaultConcurrency && !input.overrideConcurrency) throw new Error("GLOBAL_CONCURRENCY_REACHED");
-      const client = liveClient(preview.accountId);
+      const client = await liveClient(preview.accountId);
       const rawThread = await client.startThread();
-      const thread = asThread(preview.accountId, responseThread(rawThread));
+      const thread = asThread(preview.accountId, responseThread(rawThread), projectWorkspaceFor(preview.accountId));
       await client.setThreadName(thread.id, `${preview.task.id} · ${preview.task.title}`);
       const now = Date.now();
-      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null };
+      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
       await outbox.enqueue(record);
+      await assignments.assign(taskId, preview.accountId, thread.id, now);
       await outbox.markSubmitting(record.id);
-      try { await client.startTurn({ threadId: thread.id, clientUserMessageId: record.clientUserMessageId, text: preview.prompt }); }
+      try { await client.startTurn({ threadId: thread.id, clientUserMessageId: record.clientUserMessageId, text: input.prompt ?? preview.prompt, settings: input.settings }); }
       catch (error) {
         if (error instanceof Error && /rate.?limit/i.test(error.message)) { await scheduleRateWait(record); return outbox.get(record.id); }
         await outbox.fail(record.id, "DISPATCH_FAILED");
@@ -282,13 +485,46 @@ async function createRuntime(config: SwarmConfig) {
       return outbox.get(record.id);
     },
     listThreads: threads,
-    readTranscript: async (id, threadId) => { const client = liveClient(id); await client.readThread(threadId, { includeTurns: true }); return client.transcriptSnapshot().items.filter((item) => item.threadId === threadId); },
-    startThread: async (id) => asThread(id, responseThread(await liveClient(id).startThread())),
-    archiveThread: async (id, threadId) => { await liveClient(id).archiveThread(threadId); },
-    startTurn: async (id, threadId, input) => liveClient(id).startTurn({ threadId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }),
-    steerTurn: async (id, threadId, input) => { await liveClient(id).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },
-    interruptTurn: async (id, threadId, input) => { await liveClient(id).interruptTurn(threadId, input.turnId); },
-    readMarkdown: async (id, path) => { const file = await readWorkspaceMarkdown({ account: id, requestedPath: path, appServer: liveClient(id) }); return { filename: file.filename, content: file.text }; },
+    readTranscript: async (id, threadId) => { const client = await liveClient(id); await client.readThread(threadId, { includeTurns: true }); return client.transcriptSnapshot().items.filter((item) => item.threadId === threadId); },
+    startThread: async (id) => asThread(id, responseThread(await (await liveClient(id)).startThread()), projectWorkspaceFor(id)),
+    moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId) => {
+      try { await gitRunner.checkpointAndPush(sourceAccountId); }
+      catch { throw new Error(`GIT_HANDOFF_PUSH_FAILED: Push ${sourceAccountId}'s changes manually, then try moving this worker again.`); }
+      const source = await liveClient(sourceAccountId);
+      const sourceResult = await source.readThread(threadId, { includeTurns: true });
+      const sourceThread = sourceResult.thread;
+      const handoff = handoffSource(threadId, sourceThread);
+      const target = await liveClient(targetAccountId);
+      const rawThread = await target.startThread();
+      const thread = asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId));
+      const filename = handoffFilename(sourceAccountId, threadId);
+      const path = resolve(workspaceRoot(targetAccountId, workspaceFor(targetAccountId)), filename);
+      await target.writeFile(path, handoff.jsonl);
+      await target.setThreadName(thread.id, `Continuation · ${typeof sourceThread.name === "string" && sourceThread.name ? sourceThread.name : "previous session"}`);
+      const clientUserMessageId = randomUUID();
+      const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
+      const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
+      await target.startTurn({
+        threadId: thread.id,
+        clientUserMessageId,
+        text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.`,
+        attachments: [{ name: filename, path }],
+        settings: dispatch?.settings,
+      });
+      const resumeKey = activeTurnKey(sourceAccountId, threadId);
+      const resumeTimer = limitResumeTimers.get(resumeKey);
+      if (resumeTimer) clearTimeout(resumeTimer);
+      limitResumeTimers.delete(resumeKey);
+      await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
+      await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
+      publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
+      return thread;
+    },
+    archiveThread: async (id, threadId) => { await (await liveClient(id)).archiveThread(threadId); },
+    startTurn: async (id, threadId, input) => (await liveClient(id)).startTurn({ threadId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID(), settings: input.settings }),
+    steerTurn: async (id, threadId, input) => { await (await liveClient(id)).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },
+    interruptTurn: async (id, threadId, input) => { await (await liveClient(id)).interruptTurn(threadId, input.turnId); },
+    readMarkdown: async (id, path) => { const file = await readWorkspaceMarkdown({ account: id, requestedPath: path, workspaceRoot: workspaceFor(id), appServer: await liveClient(id) }); return { filename: file.filename, content: file.text }; },
     decideApproval: async (id, input) => {
       const kind = input.decision === "grant_turn" || input.decision === "grant_turn_strict" ? input.decision : input.decision === "accept" || input.decision === "decline" || input.decision === "cancel" ? input.decision : input.decision === "deny" ? "deny" : undefined;
       if (!kind) throw new Error("HUMAN_APPROVAL_REQUIRED");
@@ -298,11 +534,42 @@ async function createRuntime(config: SwarmConfig) {
     stopNgrokEarly: () => ngrok.stopEarly(),
     allowedOrigins,
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); gitSynchronizer.stop(); for (const id of rateWaitTimers.keys()) clearRateWait(id); await accounts.shutdown(); await ngrok.shutdown().catch(() => undefined); } });
+  const accountRetryTimers = new Map<AccountId, NodeJS.Timeout>();
+  const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
+  gitStartTimer.unref();
+  const connectWithRetry = async (id: AccountId): Promise<void> => {
+    try {
+      await services.connectAccount(id);
+      await reconcileAssignments(await threads(id));
+      const timer = accountRetryTimers.get(id);
+      if (timer) clearTimeout(timer);
+      accountRetryTimers.delete(id);
+    } catch {
+      if (accountRetryTimers.has(id)) return;
+      const timer = setTimeout(() => { accountRetryTimers.delete(id); void connectWithRetry(id); }, 30_000);
+      timer.unref();
+      accountRetryTimers.set(id, timer);
+    }
+  };
+  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); clearTimeout(gitStartTimer); gitSynchronizer.stop(); for (const timer of accountRetryTimers.values()) clearTimeout(timer); for (const id of rateWaitTimers.keys()) clearRateWait(id); for (const timer of limitResumeTimers.values()) clearTimeout(timer); await accounts.shutdown(); await ngrok.shutdown().catch(() => undefined); } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
-  accounts.onChange(() => coordinator.hub.publish("account", {} as Record<string, unknown>));
-  for (const id of accountIds) void services.connectAccount(id).catch(() => undefined);
-  gitSynchronizer.start();
+  accounts.onChange((snapshot) => {
+    coordinator.hub.publish("account", {} as Record<string, unknown>);
+    if (!snapshot.rateLimits.length) return;
+    const prior = root.accountRateLimits?.[snapshot.id];
+    if (JSON.stringify(prior) === JSON.stringify(snapshot.rateLimits)) return;
+    void state.mutate((value) => {
+      value.accountRateLimits ??= {};
+      value.accountRateLimits[snapshot.id] = snapshot.rateLimits.map((window) => ({ ...window }));
+    }).catch((error) => logger.warn("accounts", { event: "rate_limits_persist_failed", account: snapshot.id, error: error instanceof Error ? error.message : "failed" }));
+  });
+  void (async () => {
+    for (let index = 0; index < accountIds.length; index += 2) {
+      await Promise.all(accountIds.slice(index, index + 2).map((id) => connectWithRetry(id)));
+    }
+    await snapshot().catch((error) => logger.warn("assignments", { event: "startup_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
+    gitSynchronizer.start();
+  })();
   return coordinator;
 }
 

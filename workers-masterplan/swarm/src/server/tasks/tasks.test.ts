@@ -15,17 +15,22 @@ const manifest: TaskManifest = { blueprintId: "mvp3", title: "MVP3", masterplanP
 ] };
 
 describe("task authority", () => {
-  it("loads the production MVP3 planning topology with six four-step paths", async () => {
+  it("loads every ordinary and UI-design worker from the production MVP3 topology", async () => {
     const repositoryRoot = resolve(process.cwd(), "../..");
     const production = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
     const domainPaths = ["P", "C", "Q", "A", "E", "G"];
 
     expect(production.blueprintId).toBe("2026-08-14-mvp3");
-    expect(production.tasks).toHaveLength(26);
-    expect(production.tasks.every((task) => task.kind === "planning")).toBe(true);
+    expect(production.tasks).toHaveLength(32);
+    expect(production.tasks.filter((task) => task.kind === "planning")).toHaveLength(26);
+    expect(production.tasks.filter((task) => task.kind === "ui").map((task) => task.id)).toEqual(["PD", "CD", "QD", "AD", "ED", "GD"]);
     expect(domainPaths.map((pathId) => production.tasks.filter((task) => task.pathId === pathId).length)).toEqual([4, 4, 4, 4, 4, 4]);
     expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
     expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);
+    for (const [designId, layerTwoId, layerThreeId] of [["PD", "P2", "P3"], ["CD", "C2", "C3"], ["QD", "Q2", "Q3"], ["AD", "A2", "A3"], ["ED", "E2", "E3"], ["GD", "G2", "G3"]]) {
+      expect(production.tasks.find((task) => task.id === designId)?.dependsOn).toEqual([layerTwoId]);
+      expect(production.tasks.find((task) => task.id === layerThreeId)?.dependsOn).toEqual([layerTwoId, designId]);
+    }
   });
 
   it("loads manifests only when every path stays under the repository root", async () => {
@@ -134,11 +139,49 @@ describe("task authority", () => {
 
   it("renders the canonical template with exact worker values", async () => {
     const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
-    expect(prompt).toContain("worker `T0`");
-    expect(prompt).toContain("macOS account\n`bot3`");
-    expect(prompt).toContain("Stop after the approved planning handoff.");
-    expect(prompt).toContain("swarm-main-mutation-lock");
+    expect(prompt).toContain("You are WORKER T0.");
+    expect(prompt).toContain("finished WRITING SPEC AND IMPLEMENTATION PLANS");
+    expect(prompt).toContain("Terra High/Xhigh");
     expect(prompt).not.toContain("{{WORKER_ID}}");
+  });
+
+  it("renders per-worker repository authorities and phase boundaries for every launch type", async () => {
+    const common = {
+      workerId: "C3",
+      accountId: "bot8" as const,
+      taskId: "C3",
+      taskTitle: "Curriculum UI",
+      blueprintPath: "docs/plans/EdenMind_MVP3_Implementation_Masterplan.md",
+      masterplanPath: "docs/plans/EdenMind_MVP3_Implementation_Masterplan.md",
+      coordinationRoot: "docs/workers/2026-08-14-mvp3",
+      statusPath: "docs/workers/2026-08-14-mvp3/status/c3.md",
+      specificationPath: "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c3-curriculum-ui-design.md",
+      implementationPlanPath: "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c3-curriculum-ui.md",
+      checkoutMode: "independent_main_clone" as const,
+      mainMutationLock: "not-applicable-for-independent-clones",
+      mainPushQueue: "swarm-main-push-queue",
+      edenmindClonePath: "/Users/bot8/Dev/EdenMind",
+      ownedSurfaces: "Assigned task surfaces only",
+      excludedSurfaces: "Other workers' owned surfaces",
+    };
+    const [planning, execution, ui] = await Promise.all([
+      renderWorkerPrompt("planning", { ...common, phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." }),
+      renderWorkerPrompt("execution", { ...common, phase: "execution", phaseTerminalCondition: "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main.", planningGatePath: "docs/workers/2026-08-14-mvp3/status/g0.md", planningGateCommit: "abc123", hardPrerequisites: "C3" }),
+      renderWorkerPrompt("ui", { ...common, phase: "ui", phaseTerminalCondition: "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main." }),
+    ]);
+
+    for (const prompt of [planning, execution, ui]) {
+      expect(prompt).toContain("Read these repository authorities from the account's EdenMind clone before acting:");
+      expect(prompt).toContain("`docs/workers/2026-08-14-mvp3/status/c3.md`");
+      expect(prompt).toContain("Your task is `C3` — `Curriculum UI`.");
+      expect(prompt).not.toMatch(/{{[A-Z_]+}}/);
+    }
+    expect(planning).toContain("this is a planning-only launch");
+    expect(planning).toContain("Do not implement product code, UI, migrations, or runtime behavior in this phase.");
+    expect(execution).toContain("this is an execution-only launch");
+    expect(execution).toContain("Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main.");
+    expect(ui).toContain("this is a UI-only launch");
+    expect(ui).toContain("Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.");
   });
 
   it("uses the independent-clone queue for separate macOS-account workspaces", () => {

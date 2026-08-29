@@ -2,7 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 const configuredPort = process.env.SWARM_E2E_PORT
   ? Number.parseInt(process.env.SWARM_E2E_PORT, 10)
   : undefined;
-const port = configuredPort ?? 4311;
+// Keep the browser fixture clear of Swarm's loopback terminal controller
+// (which uses the production dashboard port plus one).
+const port = configuredPort ?? 4312;
 
 export default defineConfig({
   testDir: "./tests/e2e",

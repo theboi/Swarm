@@ -14,13 +14,15 @@
     "smoke:app-server": "tsx scripts/smoke-app-server.ts",
     "auth:hash": "tsx scripts/hash-password.ts",
     "auth:totp": "tsx scripts/generate-totp-secret.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "postinstall": "node scripts/prepare-node-pty.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
+    "node-pty": "^1.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
@@ -46,5 +48,8 @@
     "typescript": "^5.8.3",
     "vite": "^7.0.0",
     "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
   }
 }

@@ -33,6 +33,15 @@ describe("validateTaskManifest", () => {
     });
   });
 
+  it("accepts claudiothe as a preferred full account", () => {
+    const localPreferred = {
+      ...validManifest,
+      tasks: [{ ...validManifest.tasks[0], preferredAccount: "claudiothe" }],
+    };
+
+    expect(validateTaskManifest(localPreferred)).toEqual({ ok: true, data: localPreferred });
+  });
+
   it("rejects a dependency cycle", () => {
     const result = validateTaskManifest({
       blueprintId: "2026-08-14-mvp3",

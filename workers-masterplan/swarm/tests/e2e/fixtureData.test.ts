@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { createFixtureState } from "./fixtureData.js";
 
 describe("E2E fixture data", () => {
-  it("defaults to a deterministic eight-account blocked MVP3 state", () => {
+  it("defaults to a deterministic nine-account local-first blocked MVP3 state", () => {
     const state = createFixtureState();
 
-    expect(state.snapshot.activeTurnLimit).toBe(3);
-    expect(state.snapshot.accounts.map((account) => account.id)).toEqual(["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
+    expect(state.snapshot).not.toHaveProperty("activeTurnLimit");
+    expect(state.snapshot.accounts.map((account) => account.id)).toEqual(["claudiothe", "bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
     expect(state.snapshot.tasks).toEqual([]);
     expect(state.snapshot.accounts.find((account) => account.id === "bot1")).toMatchObject({
       connection: "action_required",

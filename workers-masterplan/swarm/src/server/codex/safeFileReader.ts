@@ -13,7 +13,7 @@ export interface ReadWorkspaceMarkdownInput {
   account: AccountId;
   requestedPath: string;
   appServer: MarkdownFileClient;
-  /** Test-only override; production callers use the assigned account clone. */
+  /** Coordinator-owned root for the direct local account; bots use their assigned clone. */
   workspaceRoot?: string;
 }
 

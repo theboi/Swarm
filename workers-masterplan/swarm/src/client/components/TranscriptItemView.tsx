@@ -1,3 +1,9 @@
+import { Bot, Braces, Brain, ChevronDown, ChevronUp, Code2, FileDiff, ListChecks, Network, SquareTerminal, UserRound, type LucideIcon } from "lucide-react";
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
+
 import type { TranscriptItem } from "../../shared/contracts.js";
 
 const markdownPathPattern = /(?:^|[\s(])((?:\.{1,2}\/|\/)?[A-Za-z0-9_./-]+?\.(?:md|markdown))(?=$|[\s,)\]])/gi;
@@ -23,14 +29,48 @@ function markdownPaths(values: string[]): string[] {
   return [...paths];
 }
 
-export function TranscriptItemView({ item, onOpenMarkdown }: { item: TranscriptItem; onOpenMarkdown: (path: string) => void }) {
-  const values = stringValues(item);
+function fileChangeValues(item: TranscriptItem): string[] {
+  if (item.type !== "fileChange" || !Array.isArray(item.payload.changes)) return [];
+  return item.payload.changes.flatMap((change) => {
+    if (!change || typeof change !== "object" || Array.isArray(change)) return [];
+    const record = change as Record<string, unknown>;
+    const path = typeof record.path === "string" ? record.path : undefined;
+    if (!path) return [];
+    const kind = typeof record.kind === "string" ? record.kind : "changed";
+    return [`${kind} ${path}`];
+  });
+}
+
+const itemPresentation: Record<string, { label: string; icon: LucideIcon }> = {
+  userMessage: { label: "You", icon: UserRound },
+  agentMessage: { label: "Codex", icon: Bot },
+  plan: { label: "Plan", icon: ListChecks },
+  reasoning: { label: "Thinking", icon: Brain },
+  commandExecution: { label: "Command", icon: SquareTerminal },
+  fileChange: { label: "Files changed", icon: FileDiff },
+  subAgentActivity: { label: "Worker activity", icon: Network },
+  opaque: { label: "Event", icon: Braces },
+};
+
+export function TranscriptItemView({ item, onOpenMarkdown, active = false }: { item: TranscriptItem; onOpenMarkdown: (path: string) => void; active?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [renderMarkdown, setRenderMarkdown] = useState(true);
+  const changes = fileChangeValues(item);
+  const values = changes.length ? changes : stringValues(item);
   const paths = markdownPaths(values);
+  const presentation = itemPresentation[item.type] ?? { label: "Event", icon: Braces };
+  const Icon = presentation.icon;
+  const visibleStatus = item.status && item.status !== "completed" ? item.status : null;
+  const collapsible = item.type !== "userMessage" && item.type !== "agentMessage";
+  const supportsMarkdown = item.type === "userMessage" || item.type === "agentMessage" || item.type === "plan" || item.type === "reasoning";
+  const bodyId = `transcript-body-${item.id}`;
+  const isExpanded = active || expanded;
   return (
-    <article className={`transcript-item transcript-item--${item.type}`} aria-label={item.type}>
-      <header><strong>{item.type}</strong>{item.status ? <span>{item.status}</span> : null}</header>
-      {values.map((value, index) => <pre key={`${item.id}-${index}`}>{value}</pre>)}
-      {paths.map((path) => <a href={`#markdown-${encodeURIComponent(path)}`} key={path} onClick={(event) => { event.preventDefault(); onOpenMarkdown(path); }}>{path}</a>)}
+    <article className={`transcript-item transcript-item--${item.type}${active ? " transcript-item--active" : ""}`} aria-label={item.type}>
+      <header className="transcript-item__header"><span className="transcript-item__identity">{active ? <span className="loading-spinner" aria-label="Thinking in progress" /> : <Icon aria-hidden="true" size={16} strokeWidth={1.75} />}<strong>{presentation.label}</strong></span><span className="transcript-item__header-actions">{visibleStatus ? <span className="transcript-item__status">{visibleStatus}</span> : null}{collapsible ? <button className="transcript-item__expand" type="button" aria-label={isExpanded ? `Collapse ${presentation.label}` : `Expand ${presentation.label}`} title={isExpanded ? "Collapse" : "Expand"} aria-controls={bodyId} aria-expanded={isExpanded} onClick={() => setExpanded((value) => !value)}>{isExpanded ? <ChevronUp aria-hidden="true" size={14} /> : <ChevronDown aria-hidden="true" size={14} />}</button> : null}</span></header>
+      <div id={bodyId} className={`transcript-item__body${collapsible && !isExpanded ? " transcript-item__body--collapsed" : ""}`}>{supportsMarkdown && renderMarkdown ? values.map((value, index) => <div className="transcript-item__markdown markdown-content" key={`${item.id}-${index}`}><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{value}</ReactMarkdown></div>) : values.map((value, index) => <pre key={`${item.id}-${index}`}>{value}</pre>)}</div>
+      {paths.length ? <div className="transcript-item__links">{paths.map((path) => <a href={`#markdown-${encodeURIComponent(path)}`} key={path} onClick={(event) => { event.preventDefault(); onOpenMarkdown(path); }}>{path}</a>)}</div> : null}
+      {supportsMarkdown ? <button className="transcript-item__markdown-toggle" type="button" aria-label={renderMarkdown ? "Show plain text" : "Render Markdown"} title={renderMarkdown ? "Show plain text" : "Render Markdown"} aria-pressed={renderMarkdown} onClick={() => setRenderMarkdown((enabled) => !enabled)}><Code2 aria-hidden="true" size={14} strokeWidth={1.75} /></button> : null}
     </article>
   );
 }

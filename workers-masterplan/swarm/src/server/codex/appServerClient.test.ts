@@ -5,6 +5,7 @@ import { createApprovalContext, type ApprovalFilesystem } from "../safety/approv
 import { ApprovalRouter } from "./approvalRouter.js";
 import { AppServerClient } from "./appServerClient.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
+import type { AccountId } from "../../shared/contracts.js";
 
 const token = "one-time-loopback-capability-token";
 const tokenDigest = createHash("sha256").update(token).digest("hex");
@@ -42,18 +43,24 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient() {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadStatus?: "notLoaded" | "idle" | "active" } = {}) {
+  const clientAccount = options.account ?? account;
+  const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
   await server.start();
   server.onMessage((message, peer) => {
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
-    if (message.method === "account/read") reply({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: false });
-    if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho());
+    if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
+    if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
     if (message.method === "turn/start") reply({ turn: { id: "turn-1" } });
+    if (message.method === "model/list") reply({
+      data: [{ id: "gpt-5.3-codex", model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", description: "Coding", hidden: false, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "high", serviceTiers: [{ id: "standard", name: "Standard" }, { id: "priority", name: "Fast" }], defaultServiceTier: "standard", isDefault: true }],
+      nextCursor: null,
+    });
     if (message.method === "thread/list") {
       const cursor = (message.params as { cursor?: string }).cursor;
-      reply(cursor ? { data: [{ id: "thread-2", name: "Later" }], nextCursor: null } : { data: [{ id: "thread-1", name: "First" }], nextCursor: "page-2" });
+      reply(cursor ? { data: [{ id: "thread-2", name: "Later" }], nextCursor: null } : { data: [{ id: "thread-1", name: "First", ...(options.threadStatus ? { status: { type: options.threadStatus } } : {}) }], nextCursor: "page-2" });
     }
     if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: threadHistory } });
     if (message.method === "account/rateLimits/read") reply({
@@ -64,17 +71,20 @@ async function readyClient() {
       },
     });
     if (message.method === "fs/readFile") reply({ dataBase64: Buffer.from("# Checked\n", "utf8").toString("base64") });
-    if (["thread/archive", "thread/name/set", "turn/steer", "turn/interrupt"].includes(message.method ?? "")) reply({});
+    if (message.method === "fs/writeFile") reply({});
+    if (message.method === "thread/name/set" && options.threadNameError) {
+      peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadNameError } }));
+    } else if (["thread/archive", "thread/name/set", "turn/steer", "turn/interrupt"].includes(message.method ?? "")) reply({});
   });
   const rpc = new JsonRpcClient({ launch: { endpoint: server.url, capabilityToken: token }, requestTimeoutMs: 100 });
   approvalJournal = { append: vi.fn(async () => undefined), waitForDecision: vi.fn(async () => ({ kind: "cancel" })) };
   const approvalRouter = new ApprovalRouter({
-    context: createApprovalContext(account),
+    context: createApprovalContext(clientAccount, options.workspaceRoot),
     journal: approvalJournal,
-    filesystem: approvalFilesystem,
+    filesystem: { async realpath(path) { if (path !== clientCwd) throw new Error(`ENOENT ${path}`); return path; } },
     requestTimeoutMs: 25,
   });
-  const client = new AppServerClient({ account, rpc, approvalRouter });
+  const client = new AppServerClient({ account: clientAccount, rpc, approvalRouter, workspaceRoot: options.workspaceRoot });
   await client.connect();
   return client;
 }
@@ -108,6 +118,14 @@ describe("AppServerClient", () => {
 
     expect(client.accountInfo).toEqual({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: false });
     expect(server!.received.map((message) => message.method)).toEqual(["initialize", "initialized", "account/read"]);
+    await client.close();
+  });
+
+  it("keeps a returned account available when the app server recommends OpenAI authentication", async () => {
+    const client = await readyClient({ requiresOpenaiAuth: true });
+
+    expect(client.accountInfo).toEqual({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: true });
+    await expect(client.readRateLimitWindows()).resolves.toHaveLength(3);
     await client.close();
   });
 
@@ -174,6 +192,31 @@ describe("AppServerClient", () => {
     await unsafe.close();
   });
 
+  it("accepts Codex's safe no-network acknowledgement for a workspace-write thread start", async () => {
+    const client = await readyClient({ threadStartNetworkAccess: false });
+
+    await expect(client.startThread()).resolves.toEqual(expect.objectContaining({ thread: { id: "thread-1" } }));
+
+    await client.close();
+  });
+
+  it("accepts Codex's empty writable-root acknowledgement when it is bound to the requested cwd", async () => {
+    const client = await readyClient({ threadStartWritableRoots: [] });
+
+    await expect(client.startThread()).resolves.toEqual(expect.objectContaining({ thread: { id: "thread-1" } }));
+
+    await client.close();
+  });
+
+  it("treats Codex's fresh-thread no-rollout title error as non-fatal", async () => {
+    const client = await readyClient({ threadNameError: "no rollout found for thread id thread-1" });
+
+    await client.startThread();
+    await expect(client.setThreadName("thread-1", "T1 · Worker task")).resolves.toEqual({});
+
+    await client.close();
+  });
+
   it("repeats the exact stable-v2 single-root workspace-write envelope on every turn", async () => {
     const client = await readyClient();
     await client.startTurn({ threadId: "thread-1", clientUserMessageId: "dispatch-1", text: "Proceed with the approved task." });
@@ -182,12 +225,68 @@ describe("AppServerClient", () => {
     expect(turn?.params).toEqual({
       threadId: "thread-1",
       clientUserMessageId: "dispatch-1",
-      input: [{ type: "text", text: "Proceed with the approved task." }],
+      input: [{ type: "text", text: "Proceed with the approved task.", text_elements: [] }],
       cwd,
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandboxPolicy: { type: "workspaceWrite", writableRoots: [cwd], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
     });
+    await client.close();
+  });
+
+  it("resumes a persisted not-loaded chat before starting its next turn", async () => {
+    const client = await readyClient({ threadStatus: "notLoaded" });
+    await client.listAllThreads();
+    await client.startTurn({ threadId: "thread-1", clientUserMessageId: "resume-before-turn", text: "Continue." });
+
+    expect(server!.received.filter((message) => message.method === "thread/resume")).toHaveLength(1);
+    expect(server!.received.filter((message) => message.method === "turn/start")).toHaveLength(1);
+    await client.close();
+  });
+
+  it("uses the account-provided model settings and only grants full access when explicitly selected", async () => {
+    const client = await readyClient();
+
+    await expect(client.listModels()).resolves.toEqual([{
+      model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", supportedEfforts: ["low", "high"], defaultEffort: "high", serviceTiers: [{ id: "standard", name: "Standard" }, { id: "priority", name: "Fast" }], defaultServiceTier: "standard", isDefault: true,
+    }]);
+    await client.startTurn({
+      threadId: "thread-1", clientUserMessageId: "dispatch-full", text: "Proceed.",
+      settings: { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" },
+    });
+
+    expect(server!.received.find((message) => message.method === "turn/start")?.params).toEqual({
+      threadId: "thread-1",
+      clientUserMessageId: "dispatch-full",
+      input: [{ type: "text", text: "Proceed.", text_elements: [] }],
+      cwd,
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      model: "gpt-5.3-codex",
+      effort: "high",
+      serviceTier: "priority",
+    });
+
+    await client.startTurn({ threadId: "thread-1", clientUserMessageId: "dispatch-ask", text: "Check with me first.", settings: { permissionMode: "ask_me" } });
+    expect(server!.received.filter((message) => message.method === "turn/start").at(-1)?.params).toEqual(expect.objectContaining({
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "workspaceWrite", writableRoots: [cwd], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
+    }));
+    await client.close();
+  });
+
+  it("uses the configured coordinator workspace for claudiothe rather than a bot clone", async () => {
+    const localWorkspace = "/Users/claudiothe/Dev/EdenMind";
+    const client = await readyClient({ account: "claudiothe", workspaceRoot: localWorkspace });
+    await client.startThread();
+    await client.startTurn({ threadId: "thread-1", clientUserMessageId: "dispatch-local", text: "Proceed." });
+
+    const start = server!.received.find((message) => message.method === "thread/start");
+    const turn = server!.received.find((message) => message.method === "turn/start");
+    expect(start?.params).toMatchObject({ cwd: localWorkspace });
+    expect(turn?.params).toMatchObject({ cwd: localWorkspace, sandboxPolicy: { writableRoots: [localWorkspace] } });
     await client.close();
   });
 
@@ -202,10 +301,15 @@ describe("AppServerClient", () => {
     await client.interruptTurn("thread-1", "turn-1");
     await expect(client.readRateLimits()).resolves.toEqual(expect.objectContaining({ rateLimitsByLimitId: expect.any(Object) }));
     await expect(client.readFile(`${cwd}/notes.md`)).resolves.toEqual({ dataBase64: "IyBDaGVja2VkCg==" });
+    await client.writeFile(`${cwd}/handoff.jsonl`, "{\"turn\":1}\n");
 
-    expect(server!.received.filter((message) => message.method === "thread/list").map((message) => message.params)).toEqual([{ archived: null, cursor: null }, { archived: null, cursor: "page-2" }]);
+    expect(server!.received.filter((message) => message.method === "thread/list").map((message) => message.params)).toEqual([
+      { archived: null, cursor: null, cwd, limit: 100, sortDirection: "desc", sortKey: "updated_at", useStateDbOnly: true },
+      { archived: null, cursor: "page-2", cwd, limit: 100, sortDirection: "desc", sortKey: "updated_at", useStateDbOnly: true },
+    ]);
     expect(server!.received.find((message) => message.method === "thread/read")?.params).toEqual({ threadId: "thread-1", includeTurns: true });
-    expect(server!.received.find((message) => message.method === "turn/steer")?.params).toEqual({ threadId: "thread-1", expectedTurnId: "turn-1", clientUserMessageId: "steer-1", input: [{ type: "text", text: "Focus on tests." }] });
+    expect(server!.received.find((message) => message.method === "turn/steer")?.params).toEqual({ threadId: "thread-1", expectedTurnId: "turn-1", clientUserMessageId: "steer-1", input: [{ type: "text", text: "Focus on tests.", text_elements: [] }] });
+    expect(server!.received.find((message) => message.method === "fs/writeFile")?.params).toEqual({ path: `${cwd}/handoff.jsonl`, dataBase64: "eyJ0dXJuIjoxfQo=" });
     await client.close();
   });
 
@@ -230,6 +334,52 @@ describe("AppServerClient", () => {
 
     expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-1", state: "started" });
     expect(JSON.stringify(events)).not.toContain("secret transcript");
+    await client.close();
+  });
+
+  it("recovers active-turn state from a thread read when the browser opens after the turn started", async () => {
+    threadHistory = [{
+      id: "turn-live",
+      status: "inProgress",
+      startedAt: 10,
+      itemsView: "full",
+      items: [{ type: "reasoning", id: "reason-1", summary: ["Working"] }],
+    }];
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.readThread("thread-1", { includeTurns: true });
+
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-live", state: "started" });
+    await client.close();
+  });
+
+  it("uses the nested v2 turn record for activity and marks an exhausted session", async () => {
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    server!.send({ method: "turn/started", params: { threadId: "thread-1", turn: { id: "turn-live" } } });
+    server!.send({ method: "turn/completed", params: { threadId: "thread-1", turn: { id: "turn-live", error: { codexErrorInfo: "sessionBudgetExceeded" } } } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-live", state: "started" });
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-live", state: "limit_exhausted" });
+    await client.close();
+  });
+
+  it("emits a transcript revision for a tracked chat without sending its contents to the browser event", async () => {
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+    await client.readThread("thread-1", { includeTurns: true });
+
+    server!.send({ method: "item/reasoning/summaryTextDelta", params: { threadId: "thread-1", turnId: "turn-1", itemId: "reason-1", delta: "secret summary" } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(events).toContainEqual(expect.objectContaining({ type: "transcript", accountId: account, threadId: "thread-1", state: "updated" }));
+    expect(JSON.stringify(events)).not.toContain("secret summary");
     await client.close();
   });
 });

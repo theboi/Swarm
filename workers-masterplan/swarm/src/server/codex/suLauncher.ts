@@ -1,15 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { AccountId } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId } from "../../shared/contracts.js";
+import { codexLoginCommand, tmuxAttachCommand, tmuxServerCommand } from "./terminalConsole.js";
 
-const ALLOWED_ACCOUNTS = new Set<AccountId>(["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
+const ALLOWED_ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
+const BOT_ACCOUNTS = new Set<string>(BOT_ACCOUNT_IDS);
 
-export interface SpawnedChild {
-  pid?: number;
-  stdin?: { write(value: string): boolean };
-  stdout?: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
-  stderr?: { on(event: "data", listener: (chunk: Buffer | string) => void): unknown };
-  on(event: "exit", listener: (code: number | null, signal?: string | null) => void): unknown;
-  on(event: "error", listener: (error: Error) => void): unknown;
+export interface SpawnedPty {
+  pid: number;
+  write(value: string): void;
+  onData(listener: (data: string) => void): { dispose(): void };
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
 }
 
 export interface PortLease {
@@ -25,19 +25,20 @@ export interface LaunchHandle {
 }
 
 export interface SuLauncherDependencies {
-  spawn(file: string, args: string[], options: { detached: true; stdio: ["pipe", "pipe", "pipe"] }): SpawnedChild;
+  spawnPty(file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }): SpawnedPty;
   allocatePort(): Promise<PortLease>;
   pathExists(path: string): Promise<boolean>;
   verifyCodexBinary(path: string): Promise<boolean>;
   waitForReady(endpoint: string, capabilityToken: string): Promise<void>;
   killProcessGroup(pid: number, signal: "SIGTERM" | "SIGKILL"): void;
+  openTerminal(command: string): Promise<void>;
   log(entry: Record<string, unknown>): void;
   startupTimeoutMs?: number;
 }
 
 export interface LaunchAccountOptions {
   account: AccountId;
-  password: string;
+  password?: string;
   codexBin: string;
 }
 
@@ -50,6 +51,14 @@ function isPasswordPrompt(value: string): boolean {
   return /(?:^|[\r\n])Password:\s*$/.test(value);
 }
 
+function ptyEnvironment(): Record<string, string> {
+  return {
+    PATH: process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    LANG: process.env.LANG ?? "en_US.UTF-8",
+    TERM: "xterm-256color",
+  };
+}
+
 /** PTY-backed, account-isolated app-server launcher. It never persists credentials or tokens. */
 export class SuLauncher {
   private readonly active = new Set<LaunchHandle>();
@@ -57,9 +66,10 @@ export class SuLauncher {
   constructor(private readonly dependencies: SuLauncherDependencies) {}
 
   async launch(options: LaunchAccountOptions): Promise<LaunchHandle> {
-    if (!ALLOWED_ACCOUNTS.has(options.account)) throw new Error("Only allowlisted bot1 through bot8 accounts may be launched");
-    let credential = options.password;
-    if (!credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
+    if (!ALLOWED_ACCOUNTS.has(options.account)) throw new Error("Only allowlisted Swarm accounts may be launched");
+    const isBot = BOT_ACCOUNTS.has(options.account);
+    let credential = options.password ?? "";
+    if (isBot && !credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
     if (!options.codexBin.startsWith("/")) throw new Error("Configured Codex binary must be an absolute path");
     const codexHome = `/Users/${options.account}/.codex`;
     if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
@@ -71,18 +81,28 @@ export class SuLauncher {
       throw new Error("Launcher received an invalid allocated port");
     }
 
+    let leaseReleased = false;
+    const releaseLease = async () => {
+      if (leaseReleased) return;
+      leaseReleased = true;
+      await lease.release();
+    };
     let token: string | undefined = randomBytes(32).toString("base64url");
     const digest = createHash("sha256").update(token).digest("hex");
     const endpoint = `ws://127.0.0.1:${lease.port}`;
-    const command = `${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`;
-    const child = this.dependencies.spawn(
-      "/usr/bin/script",
-      ["-q", "/dev/null", "/usr/bin/su", "-", options.account, "-c", command],
-      { detached: true, stdio: ["pipe", "pipe", "pipe"] },
-    );
-    if (!child.pid) {
+    const command = tmuxServerCommand(options.account, `${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`);
+    let child: SpawnedPty;
+    try {
+      // Codex owns this listener, so the short-lived reservation must be released
+      // before its app-server command attempts to bind the selected port.
+      await releaseLease();
+      const ptyOptions = { name: "xterm-256color", cols: 120, rows: 40, cwd: process.cwd(), env: ptyEnvironment() };
+      child = options.account === LOCAL_ACCOUNT_ID
+        ? this.dependencies.spawnPty("/bin/zsh", ["-lc", command], ptyOptions)
+        : this.dependencies.spawnPty("/usr/bin/su", ["-", options.account, "-c", command], ptyOptions);
+    } catch {
       token = undefined;
-      await lease.release();
+      await releaseLease();
       throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
 
@@ -98,8 +118,9 @@ export class SuLauncher {
     const release = async () => {
       if (timer) clearTimeout(timer);
       timer = undefined;
+      credential = "";
       token = undefined;
-      await lease.release();
+      await releaseLease();
     };
     const fail = (reason: string) => {
       if (settled) return;
@@ -116,7 +137,7 @@ export class SuLauncher {
     const stop = async () => {
       if (stopped) return;
       stopped = true;
-      if (child.pid) this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
+      this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
       await release();
       this.active.delete(handle);
     };
@@ -131,12 +152,28 @@ export class SuLauncher {
     };
     this.active.add(handle);
 
-    child.on("exit", () => {
-      if (!stopped) fail("child_exit");
+    child.onExit(() => {
+      if (!stopped) {
+        stopped = true;
+        fail("child_exit");
+      }
       this.active.delete(handle);
     });
-    child.on("error", () => fail("child_error"));
-    const receivePtyOutput = (chunk: Buffer | string) => {
+    const waitForAppServer = (currentToken: string) => {
+      void this.dependencies.waitForReady(endpoint, currentToken).then(() => {
+        if (settled || stopped) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+        this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_ready", outcome: "ok" });
+        resolveLaunch!(handle);
+      }).catch(() => {
+        if (settled || stopped) return;
+        const retry = setTimeout(() => waitForAppServer(currentToken), 100);
+        retry.unref();
+      });
+    };
+    const receivePtyOutput = (chunk: string) => {
       if (prompted || settled) return;
       terminalTail = `${terminalTail}${String(chunk)}`.slice(-256);
       if (!isPasswordPrompt(terminalTail)) return;
@@ -145,26 +182,31 @@ export class SuLauncher {
       const password = credential;
       credential = "";
       if (!password) return fail("missing_password");
-      child.stdin?.write(`${password}\n`);
+      child.write(`${password}\n`);
       const currentToken = token;
       if (!currentToken) return fail("missing_token");
-      void this.dependencies.waitForReady(endpoint, currentToken).then(() => {
-        if (settled || stopped) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        timer = undefined;
-        this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_ready", outcome: "ok" });
-        resolveLaunch!(handle);
-      }).catch(() => fail("readiness_failed"));
+      waitForAppServer(currentToken);
     };
-    child.stdout?.on("data", receivePtyOutput);
-    child.stderr?.on("data", (chunk) => {
-      this.dependencies.log({ component: "suLauncher", account: options.account, event: "pty_stderr", outcome: "redacted" });
-      receivePtyOutput(chunk);
-    });
     timer = setTimeout(() => fail("startup_timeout"), this.dependencies.startupTimeoutMs ?? 30_000);
     timer.unref();
+    if (options.account === LOCAL_ACCOUNT_ID) {
+      const currentToken = token;
+      if (!currentToken) fail("missing_token");
+      else waitForAppServer(currentToken);
+    } else {
+      child.onData(receivePtyOutput);
+    }
     return result;
+  }
+
+  async openTerminal(account: AccountId): Promise<void> {
+    if (!ALLOWED_ACCOUNTS.has(account) || ![...this.active].some((handle) => handle.account === account)) throw new Error("ACCOUNT_OFFLINE");
+    await this.dependencies.openTerminal(tmuxAttachCommand(account));
+  }
+
+  async openLoginTerminal(account: AccountId, codexBin: string): Promise<void> {
+    if (!ALLOWED_ACCOUNTS.has(account)) throw new Error("ACCOUNT_OFFLINE");
+    await this.dependencies.openTerminal(codexLoginCommand(account, codexBin));
   }
 
   async shutdown(): Promise<void> {

@@ -1,7 +1,13 @@
 import { isNgrokWindowOpen, nextNgrokBoundary, nextNgrokStart } from "./window.js";
 export { isNgrokWindowOpen, nextNgrokBoundary } from "./window.js";
 
-interface TunnelDiscovery { healthy: boolean; id: string; publicUrl?: string | null }
+interface TunnelDiscovery {
+  healthy: boolean;
+  id: string;
+  publicUrl?: string | null;
+  /** Inspector metadata alone does not establish ownership of a tunnel. */
+  owned?: boolean;
+}
 interface PersistedNgrokState { suppressUntil?: number; publicUrl?: string | null; managedTunnelId?: string | null }
 interface StartedTunnel { id: string; publicUrl?: string | null }
 
@@ -34,6 +40,8 @@ export class NgrokController {
     stop(): Promise<void>;
     isHealthy?: () => Promise<boolean>;
     discover?: () => Promise<TunnelDiscovery>;
+    /** Reports background reconciliation failures that have no caller to await them. */
+    onError?: (error: unknown) => void;
     clock?: () => Date;
     timer?: { setEveryMinute(callback: () => void): unknown; clear(handle: unknown): void };
   }) {
@@ -73,7 +81,9 @@ export class NgrokController {
       setEveryMinute: (callback: () => void) => setInterval(callback, 60_000),
       clear: (handle: unknown) => clearInterval(handle as NodeJS.Timeout),
     };
-    this.heartbeat = timer.setEveryMinute(() => { void this.reconcile(); });
+    this.heartbeat = timer.setEveryMinute(() => {
+      void this.reconcile().catch((error) => this.options.onError?.(error));
+    });
   }
 
   stopHeartbeat(): void {
@@ -111,7 +121,7 @@ export class NgrokController {
     }
     if (!this.running && !this.forceRestart && this.options.discover) {
       const discovered = await this.options.discover();
-      if (discovered.healthy && discovered.id === this.options.persistence.managedTunnelId) {
+      if (discovered.healthy && discovered.owned === true && discovered.id === this.options.persistence.managedTunnelId) {
         this.running = true;
         await this.setPublicUrl(discovered.publicUrl ?? this.options.persistence.publicUrl);
       }

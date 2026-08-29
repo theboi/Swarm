@@ -38,7 +38,7 @@ describe("ngrok window", () => {
     const controller = new NgrokController({
       timezone: "Asia/Singapore",
       persistence: persisted,
-      discover: async () => ({ healthy: true, id: "managed-1", publicUrl: "https://known.ngrok.app" }),
+      discover: async () => ({ healthy: true, owned: true, id: "managed-1", publicUrl: "https://known.ngrok.app" }),
       start: async () => { starts += 1; return { id: "managed-1" }; },
       stop: async () => undefined,
     });
@@ -48,6 +48,22 @@ describe("ngrok window", () => {
     expect(controller.snapshot().publicUrl).toBe("https://known.ngrok.app/");
     await controller.reconcile(new Date("2026-08-26T16:00:00.000Z"));
     expect(controller.snapshot().publicUrl).toBeNull();
+  });
+
+  it("replaces an inspector tunnel whose ownership cannot be proven", async () => {
+    let starts = 0;
+    const controller = new NgrokController({
+      timezone: "Asia/Singapore",
+      persistence: { managedTunnelId: "managed-1" },
+      discover: async () => ({ healthy: true, id: "managed-1", publicUrl: "https://stale.ngrok.app" }),
+      start: async () => { starts += 1; return { id: "managed-2", publicUrl: "https://swarm.ngrok.app" }; },
+      stop: async () => undefined,
+    });
+
+    await controller.reconcile(new Date("2026-08-26T03:00:00.000Z"));
+
+    expect(starts).toBe(1);
+    expect(controller.snapshot().publicUrl).toBe("https://swarm.ngrok.app/");
   });
 
   it("reconciles missed boundaries through its one-minute heartbeat", async () => {
@@ -67,6 +83,27 @@ describe("ngrok window", () => {
     scheduled[0]!();
     await new Promise((resolve) => setImmediate(resolve));
     expect(calls).toEqual(["start"]);
+    controller.stopHeartbeat();
+  });
+
+  it("reports heartbeat reconciliation errors instead of leaving a rejected promise", async () => {
+    const scheduled: Array<() => void> = [];
+    const errors: unknown[] = [];
+    const controller = new NgrokController({
+      timezone: "Asia/Singapore",
+      persistence: {},
+      clock: () => new Date("2026-08-26T03:00:00.000Z"),
+      timer: { setEveryMinute: (callback) => { scheduled.push(callback); return 1; }, clear: () => undefined },
+      start: async () => { throw new Error("ngrok unavailable"); },
+      stop: async () => undefined,
+      onError: (error) => errors.push(error),
+    });
+    controller.startHeartbeat();
+    scheduled[0]!();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(errors).toHaveLength(1);
+    expect((errors[0] as Error).message).toBe("ngrok unavailable");
     controller.stopHeartbeat();
   });
 

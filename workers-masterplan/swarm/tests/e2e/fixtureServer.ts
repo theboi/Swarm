@@ -176,6 +176,17 @@ function selectedThread(state: FixtureState, accountId: AccountId, threadId: str
   return state.snapshot.threads.find((thread) => thread.accountId === accountId && thread.id === threadId);
 }
 
+function launchAccounts(state: FixtureState) {
+  return state.snapshot.accounts.map((account) => ({
+    id: account.id,
+    activeWorkers: state.snapshot.threads.filter((thread) => thread.accountId === account.id && !thread.archived).length,
+    available: account.connection === "connected" && account.authentication === "authenticated",
+  })).sort((left, right) => Number(right.available) - Number(left.available)
+    || left.activeWorkers - right.activeWorkers
+    || Number(right.id === "claudiothe") - Number(left.id === "claudiothe")
+    || left.id.localeCompare(right.id));
+}
+
 function attachFixtureApi(app: Express, state: FixtureState): void {
   app.use(express.json());
   const challengeId = "fixture-login-challenge";
@@ -206,10 +217,15 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
     };
     sendData(response, state.snapshot.ngrok);
   });
+  app.post("/api/v1/accounts/rate-limits/refresh", (_request, response) => sendData(response, state.snapshot.accounts));
   app.post("/api/v1/tasks/:taskId/preview", (request, response) => {
     const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);
     if (!task || task.readiness.state !== "ready") return sendError(response, 409, task?.readiness.blockingCodes[0] ?? "MASTERPLAN_NOT_READY");
-    sendData(response, { task, accountId: task.readiness.suggestedAccount ?? "bot3", prompt: `Fixture ${task.promptTemplate} prompt for ${task.id}`, dependencies: task.dependsOn, concurrencyImpact: "1 / 3" });
+    const options = launchAccounts(state);
+    const requested = typeof request.body?.accountId === "string" ? request.body.accountId : undefined;
+    const selected = requested ? options.find((account) => account.id === requested && account.available) : options.find((account) => account.available);
+    if (!selected) return sendError(response, 409, "ACCOUNT_OFFLINE");
+    sendData(response, { task, accountId: selected.id, prompt: `Fixture ${task.promptTemplate} prompt for ${task.id}`, dependencies: task.dependsOn, accounts: options });
   });
   app.post("/api/v1/tasks/:taskId/launch", (request, response) => {
     const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);

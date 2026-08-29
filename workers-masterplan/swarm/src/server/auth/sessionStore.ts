@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
-const IDLE_TTL_MS = 12 * 60 * 60_000;
+const IDLE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 interface Challenge { email: string; expiresAt: number; used: boolean }
 interface Session { email: string; idleDeadline: number; signature: string }

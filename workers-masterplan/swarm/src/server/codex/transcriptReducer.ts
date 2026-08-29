@@ -109,6 +109,22 @@ function upsert(state: TranscriptState, item: TranscriptItem): TranscriptState {
   return { ...state, items };
 }
 
+function reasoningItemIndex(state: TranscriptState, scope: TranscriptScope, turnId: string | null, itemId: string): number {
+  return state.items.findIndex((item) => itemKey(item) === itemKey({ ...scope, turnId, id: itemId }) && item.type === "reasoning");
+}
+
+function appendReasoningSummary(state: TranscriptState, scope: TranscriptScope, turnId: string | null, itemId: string, delta: string, summaryIndex?: number): TranscriptState {
+  const index = reasoningItemIndex(state, scope, turnId, itemId);
+  if (index < 0) return state;
+  const item = state.items[index];
+  const summary = Array.isArray(item.payload.summary) ? item.payload.summary.filter((part): part is string => typeof part === "string") : [];
+  const targetIndex = typeof summaryIndex === "number" && summaryIndex >= 0 && Number.isInteger(summaryIndex) ? summaryIndex : Math.max(0, summary.length - 1);
+  while (summary.length <= targetIndex) summary.push("");
+  summary[targetIndex] = `${summary[targetIndex]}${delta}`;
+  const updated: TranscriptItem = { ...item, payload: { ...item.payload, summary } };
+  return { ...state, items: state.items.map((candidate, candidateIndex) => candidateIndex === index ? updated : candidate) };
+}
+
 /**
  * Replaces a single scope solely from a full `thread/read(includeTurns: true)`
  * payload. This deliberately does not attempt output-delta deduplication:
@@ -159,6 +175,23 @@ export function reduceTranscriptEvent(state: TranscriptState, event: { method: s
     const updated: TranscriptItem = { ...target, payload: { ...target.payload, aggregatedOutput: `${output}${delta}` } };
     const items = state.items.map((item, itemIndex) => itemIndex === index ? updated : item);
     return { ...state, items };
+  }
+
+  if (event.method === "item/reasoning/summaryPartAdded") {
+    const itemId = typeof params.itemId === "string" ? params.itemId : undefined;
+    const part = asRecord(params.part);
+    const text = typeof part.text === "string" ? part.text : typeof params.text === "string" ? params.text : "";
+    const summaryIndex = typeof params.summaryIndex === "number" ? params.summaryIndex : undefined;
+    if (!itemId) return state;
+    return appendReasoningSummary(state, typedScope, turnId, itemId, text, summaryIndex);
+  }
+
+  if (event.method === "item/reasoning/summaryTextDelta") {
+    const itemId = typeof params.itemId === "string" ? params.itemId : undefined;
+    const delta = typeof params.delta === "string" ? params.delta : undefined;
+    const summaryIndex = typeof params.summaryIndex === "number" ? params.summaryIndex : undefined;
+    if (!itemId || delta === undefined) return state;
+    return appendReasoningSummary(state, typedScope, turnId, itemId, delta, summaryIndex);
   }
 
   return state;

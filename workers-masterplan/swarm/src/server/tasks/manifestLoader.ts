@@ -51,7 +51,7 @@ export async function loadManifest(path: string, repositoryRoot: string): Promis
   for (const task of result.data.tasks) {
     for (const field of [task.specificationPath, task.implementationPlanPath]) {
       if (!field) continue;
-      await validateRepositoryPath(root, field, task.kind === "planning");
+      await validateRepositoryPath(root, field, task.kind === "planning" || task.kind === "ui");
     }
   }
   return result.data;

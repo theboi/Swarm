@@ -1,7 +1,7 @@
-import type { AccountId, RateLimitWindow } from "../../shared/contracts.js";
+import type { AccountId, ChatExecutionSettings, ChatModelOption, RateLimitWindow } from "../../shared/contracts.js";
 import type { ApprovalRouter } from "./approvalRouter.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
-import { clonePath, safeThreadSettings, safeTurnSettings } from "./protocol.js";
+import { safeThreadSettings, safeTurnSettings, workspaceRoot } from "./protocol.js";
 import {
   hydrateTranscript,
   initialTranscriptState,
@@ -15,6 +15,8 @@ export interface AppServerClientOptions {
   account: AccountId;
   rpc: JsonRpcClient;
   approvalRouter: ApprovalRouter;
+  /** Coordinator-owned workspace path for the direct local account only. */
+  workspaceRoot?: string;
 }
 
 export interface AccountReadResult {
@@ -26,6 +28,8 @@ export interface StartTurnInput {
   threadId: string;
   clientUserMessageId: string;
   text: string;
+  settings?: ChatExecutionSettings;
+  attachments?: Array<{ name: string; path: string }>;
 }
 
 export interface SteerTurnInput {
@@ -36,11 +40,43 @@ export interface SteerTurnInput {
 }
 
 export interface NormalizedAppServerEvent {
-  type: "turn" | "thread" | "rate_limit" | "account" | "connection";
+  type: "turn" | "thread" | "rate_limit" | "account" | "connection" | "transcript" | "breaking_change";
   accountId: AccountId;
   threadId?: string;
   turnId?: string;
   state?: string;
+}
+
+function object(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function turnLimitExhausted(value: unknown): boolean {
+  const error = object(object(value)?.error);
+  return error?.codexErrorInfo === "sessionBudgetExceeded" || error?.codexErrorInfo === "usageLimitExceeded";
+}
+
+function turnActivityState(turn: Record<string, unknown>): "started" | "completed" | "failed" | "interrupted" | "limit_exhausted" | undefined {
+  const status = typeof turn.status === "string" ? turn.status : object(turn.status)?.type;
+  if (typeof status !== "string") return undefined;
+  switch (status.replace(/[ _-]/g, "").toLowerCase()) {
+    case "active":
+    case "inprogress":
+    case "running":
+    case "started":
+      return "started";
+    case "completed":
+    case "complete":
+      return turnLimitExhausted(turn) ? "limit_exhausted" : "completed";
+    case "failed":
+      return "failed";
+    case "interrupted":
+    case "cancelled":
+    case "canceled":
+      return "interrupted";
+    default:
+      return undefined;
+  }
 }
 
 type ThreadSettingsEcho = {
@@ -57,12 +93,15 @@ export class AppServerClient {
   accountInfo: AccountReadResult | undefined;
   private transcript = initialTranscriptState;
   private readonly trackedThreadIds = new Set<string>();
+  private readonly unloadedThreadIds = new Set<string>();
   private readonly eventListeners = new Set<(event: NormalizedAppServerEvent) => void>();
   private needsTranscriptRecovery = false;
+  private readonly workspaceRootOverride: string | undefined;
 
   constructor(options: AppServerClientOptions) {
     this.account = options.account;
     this.rpc = options.rpc;
+    this.workspaceRootOverride = options.workspaceRoot;
     this.rpc.installApprovalHandler(options.approvalRouter);
     this.rpc.onDisconnect(() => this.markTrackedTranscriptsDisconnected());
     this.rpc.onNotification((notification) => this.applyTranscriptNotification(notification));
@@ -72,7 +111,7 @@ export class AppServerClient {
     try {
       await this.rpc.connect();
       const account = await this.rpc.initializeAndReadAccount<AccountReadResult>();
-      if (!account.account || account.requiresOpenaiAuth) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
       this.accountInfo = account;
       await this.recoverTrackedTranscripts();
       return account;
@@ -91,6 +130,8 @@ export class AppServerClient {
 
   close(): Promise<void> { return this.rpc.close(); }
 
+  isConnected(): boolean { return this.rpc.isConnected(); }
+
   onEvent(listener: (event: NormalizedAppServerEvent) => void): () => void {
     this.eventListeners.add(listener);
     return () => this.eventListeners.delete(listener);
@@ -98,16 +139,30 @@ export class AppServerClient {
 
   async listAllThreads(): Promise<Array<Record<string, unknown>>> {
     this.requireReady();
+    const cwd = workspaceRoot(this.account, this.workspaceRootOverride);
     const threads: Array<Record<string, unknown>> = [];
     const seenCursors = new Set<string>();
     let cursor: string | null = null;
     do {
-      const page: { data: Array<Record<string, unknown>>; nextCursor: string | null } = await this.rpc.request("thread/list", { archived: null, cursor });
+      const page: { data: Array<Record<string, unknown>>; nextCursor: string | null } = await this.rpc.request("thread/list", {
+        archived: null,
+        cursor,
+        cwd,
+        limit: 100,
+        sortDirection: "desc",
+        sortKey: "updated_at",
+        useStateDbOnly: true,
+      });
       threads.push(...page.data);
       cursor = page.nextCursor;
       if (cursor && seenCursors.has(cursor)) throw new Error("App-server returned a repeated thread pagination cursor");
       if (cursor) seenCursors.add(cursor);
     } while (cursor);
+    for (const thread of threads) {
+      const status = object(thread.status);
+      if (typeof thread.id === "string" && status?.type === "notLoaded") this.unloadedThreadIds.add(thread.id);
+      else if (typeof thread.id === "string") this.unloadedThreadIds.delete(thread.id);
+    }
     return threads;
   }
 
@@ -121,15 +176,16 @@ export class AppServerClient {
 
   async startThread(): Promise<Record<string, unknown>> {
     this.requireReady();
-    const response = await this.rpc.request<Record<string, unknown>>("thread/start", safeThreadSettings(this.account));
+    const response = await this.rpc.request<Record<string, unknown>>("thread/start", safeThreadSettings(this.account, this.workspaceRootOverride));
     this.assertSafeThreadEcho(response);
     return response;
   }
 
   async resumeThread(threadId: string): Promise<Record<string, unknown>> {
     this.requireReady();
-    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadSettings(this.account) });
+    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadSettings(this.account, this.workspaceRootOverride) });
     this.assertSafeThreadEcho(response);
+    this.unloadedThreadIds.delete(threadId);
     return response;
   }
 
@@ -138,19 +194,42 @@ export class AppServerClient {
     return this.rpc.request("thread/archive", { threadId });
   }
 
-  setThreadName(threadId: string, name: string): Promise<Record<string, never>> {
+  async setThreadName(threadId: string, name: string): Promise<Record<string, never>> {
     this.requireReady();
-    return this.rpc.request("thread/name/set", { threadId, name });
+    try {
+      return await this.rpc.request("thread/name/set", { threadId, name });
+    } catch (error) {
+      // Codex creates the thread before its rollout exists. A title set in that
+      // small window is cosmetic, so it must not cancel a dispatched worker.
+      if (error instanceof Error && /no rollout found for thread id/i.test(error.message)) return {};
+      throw error;
+    }
   }
 
-  startTurn(input: StartTurnInput): Promise<{ turn: Record<string, unknown> }> {
+  async startTurn(input: StartTurnInput): Promise<{ turn: Record<string, unknown> }> {
     this.requireReady();
+    if (this.unloadedThreadIds.has(input.threadId)) await this.resumeThread(input.threadId);
     return this.rpc.request("turn/start", {
       threadId: input.threadId,
       clientUserMessageId: input.clientUserMessageId,
-      input: [{ type: "text", text: input.text }],
-      ...safeTurnSettings(this.account),
+      input: [{ type: "text", text: input.text, text_elements: [] }, ...(input.attachments ?? []).map((attachment) => ({ type: "mention", name: attachment.name, path: attachment.path }))],
+      ...safeTurnSettings(this.account, this.workspaceRootOverride, input.settings),
     });
+  }
+
+  async listModels(): Promise<ChatModelOption[]> {
+    this.requireReady();
+    const models: ChatModelOption[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const page: { data?: unknown; nextCursor?: unknown } = await this.rpc.request("model/list", { cursor, limit: 50 });
+      if (Array.isArray(page.data)) models.push(...page.data.map(normalizeModelOption).filter((model): model is ChatModelOption => model !== undefined));
+      cursor = typeof page.nextCursor === "string" && page.nextCursor ? page.nextCursor : null;
+      if (cursor && seenCursors.has(cursor)) throw new Error("App-server returned a repeated model pagination cursor");
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    return models;
   }
 
   steerTurn(input: SteerTurnInput): Promise<Record<string, never>> {
@@ -159,7 +238,7 @@ export class AppServerClient {
       threadId: input.threadId,
       expectedTurnId: input.turnId,
       clientUserMessageId: input.clientUserMessageId,
-      input: [{ type: "text", text: input.text }],
+      input: [{ type: "text", text: input.text, text_elements: [] }],
     });
   }
 
@@ -206,6 +285,11 @@ export class AppServerClient {
     return this.rpc.request("fs/readFile", { path });
   }
 
+  writeFile(path: string, text: string): Promise<Record<string, never>> {
+    this.requireReady();
+    return this.rpc.request("fs/writeFile", { path, dataBase64: Buffer.from(text, "utf8").toString("base64") });
+  }
+
   /** Snapshot is copied so UI consumers cannot mutate retained transcript state. */
   transcriptSnapshot(): TranscriptState {
     return {
@@ -219,16 +303,18 @@ export class AppServerClient {
   }
 
   private assertSafeThreadEcho(response: Record<string, unknown>): void {
-    const expected = clonePath(this.account);
+    const expected = workspaceRoot(this.account, this.workspaceRootOverride);
     const settings = response as ThreadSettingsEcho;
     const sandbox = settings.sandbox as Record<string, unknown> | undefined;
     const correctSandbox = sandbox?.type === "workspaceWrite"
       && Array.isArray(sandbox.writableRoots)
-      && sandbox.writableRoots.length === 1
-      && sandbox.writableRoots[0] === expected
-      && sandbox.networkAccess === true
-      && sandbox.excludeTmpdirEnvVar === true
-      && sandbox.excludeSlashTmp === true;
+      // Codex represents the default workspace root as an empty list. Its
+      // returned `cwd` below remains the authoritative single-root boundary.
+      && (sandbox.writableRoots.length === 0 || (sandbox.writableRoots.length === 1 && sandbox.writableRoots[0] === expected))
+      // `thread/start` accepts only the legacy string "workspace-write".
+      // Codex acknowledges that mode with no network access (the secure default);
+      // network policy is supplied separately when a turn actually starts.
+      && sandbox.networkAccess !== true;
     if (settings.cwd !== expected || settings.approvalPolicy !== "untrusted" || settings.approvalsReviewer !== "user" || !correctSandbox) {
       throw new Error("App-server returned an unsafe thread execution policy");
     }
@@ -265,6 +351,13 @@ export class AppServerClient {
       threadId,
       turns: thread.turns as RawThreadTurn[],
     });
+    const latest = [...thread.turns]
+      .filter((turn): turn is Record<string, unknown> => Boolean(turn) && typeof turn === "object" && !Array.isArray(turn))
+      .sort((left, right) => (typeof left.startedAt === "number" ? left.startedAt : -1) - (typeof right.startedAt === "number" ? right.startedAt : -1))
+      .at(-1);
+    const turnId = latest && typeof latest.id === "string" ? latest.id : undefined;
+    const state = latest ? turnActivityState(latest) : undefined;
+    if (turnId && state) this.emit({ type: "turn", accountId: this.account, threadId, turnId, state });
   }
 
   private applyTranscriptNotification(notification: { method: string; params?: unknown }): void {
@@ -272,19 +365,53 @@ export class AppServerClient {
     if (params === null || typeof params !== "object" || Array.isArray(params)) return;
     const threadId = (params as Record<string, unknown>).threadId;
     const recordParams = params as Record<string, unknown>;
-    const turnId = typeof recordParams.turnId === "string" ? recordParams.turnId : undefined;
-    if (notification.method.startsWith("turn/")) this.emit({ type: "turn", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state: notification.method.slice("turn/".length) });
+    const turn = object(recordParams.turn);
+    const turnId = typeof recordParams.turnId === "string" ? recordParams.turnId : typeof turn?.id === "string" ? turn.id : undefined;
+    const state = notification.method === "turn/completed" && turnLimitExhausted(turn) ? "limit_exhausted" : notification.method.slice("turn/".length);
+    if (notification.method.startsWith("turn/")) this.emit({ type: "turn", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state });
     else if (notification.method.startsWith("thread/")) this.emit({ type: "thread", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, state: notification.method.slice("thread/".length) });
     else if (notification.method === "account/rateLimits/updated") this.emit({ type: "rate_limit", accountId: this.account, state: "updated" });
     else if (notification.method === "account/updated") this.emit({ type: "account", accountId: this.account, state: "updated" });
+    if (notification.method === "item/completed" && isBreakingChangeHandoff(recordParams.item)) this.emit({ type: "breaking_change", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state: "reported" });
     if (typeof threadId !== "string" || !this.trackedThreadIds.has(threadId)) return;
     this.transcript = reduceTranscriptEvent(this.transcript, {
       method: notification.method,
       params: { ...recordParams, accountId: this.account },
     });
+    if (notification.method.startsWith("item/")) this.emit({ type: "transcript", accountId: this.account, threadId, turnId, state: "updated" });
   }
 
   private emit(event: NormalizedAppServerEvent): void {
     for (const listener of this.eventListeners) listener(event);
   }
+}
+
+function normalizeModelOption(value: unknown): ChatModelOption | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const model = value as Record<string, unknown>;
+  if (typeof model.model !== "string" || !model.model) return undefined;
+  const supportedEfforts = Array.isArray(model.supportedReasoningEfforts)
+    ? model.supportedReasoningEfforts.flatMap((option) => option && typeof option === "object" && !Array.isArray(option) && typeof (option as Record<string, unknown>).reasoningEffort === "string" ? [(option as Record<string, unknown>).reasoningEffort as string] : [])
+    : [];
+  const serviceTiers = Array.isArray(model.serviceTiers)
+    ? model.serviceTiers.flatMap((tier) => tier && typeof tier === "object" && !Array.isArray(tier) && typeof (tier as Record<string, unknown>).id === "string" && typeof (tier as Record<string, unknown>).name === "string" ? [{ id: (tier as Record<string, unknown>).id as string, name: (tier as Record<string, unknown>).name as string }] : [])
+    : [];
+  return {
+    model: model.model,
+    displayName: typeof model.displayName === "string" && model.displayName ? model.displayName : model.model,
+    supportedEfforts,
+    defaultEffort: typeof model.defaultReasoningEffort === "string" ? model.defaultReasoningEffort : null,
+    serviceTiers,
+    defaultServiceTier: typeof model.defaultServiceTier === "string" ? model.defaultServiceTier : null,
+    isDefault: model.isDefault === true,
+  };
+}
+
+/** Only a deliberate handoff marker raises the persistent breaking-change signal. */
+function isBreakingChangeHandoff(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (item.type !== "agentMessage") return false;
+  const text = typeof item.text === "string" ? item.text : "";
+  return /(?:^|\n)\s*BREAKING CHANGE\s*:/i.test(text);
 }

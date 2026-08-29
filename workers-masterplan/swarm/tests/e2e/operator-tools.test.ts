@@ -36,7 +36,7 @@ describe("operator tools", () => {
     expect(resolveSmokeEnvironment({})).toMatchObject({
       kind: "skip",
       code: "SWARM_SMOKE_SKIPPED",
-      message: "Set SWARM_SMOKE_ACCOUNT to bot1 through bot8.",
+      message: "Set SWARM_SMOKE_ACCOUNT to claudiothe or bot1 through bot8.",
     });
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3" })).toMatchObject({
       kind: "skip",
@@ -55,6 +55,7 @@ describe("operator tools", () => {
     expect(run).toMatchObject({ kind: "run", account: "bot3", startTurn: false });
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3", SWARM_USER3: "bot3:test-local-password", SWARM_SMOKE_START_TURN: "true" })).toMatchObject({ kind: "run", startTurn: true });
     expect(redactSmokeOutput("Authorization: Bearer test-local-password", ["test-local-password"])).toBe("Authorization: Bearer [REDACTED]");
+    expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "claudiothe" })).toMatchObject({ kind: "run", account: "claudiothe", password: undefined });
   });
 
   it("requires the opt-in smoke turn to preserve the bot clone status", () => {
@@ -62,7 +63,7 @@ describe("operator tools", () => {
     expect(repositoryIsUnchanged("", " M src/client/App.tsx\n")).toBe(false);
   });
 
-  it("loads the committed MVP3 planning projection with only F0 ready", async () => {
+  it("loads and evaluates every ordinary and UI-design task in the committed MVP3 projection", async () => {
     const repositoryRoot = resolve(process.cwd(), "../..");
     const manifest = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
     const evidence = await loadBlueprintEvidence(manifest, {
@@ -71,13 +72,14 @@ describe("operator tools", () => {
         if (error.code === "ENOENT") return undefined;
         throw error;
       }),
+      isAncestor: async () => true,
     });
     const readiness = evaluateTaskReadiness(manifest, evidence);
 
-    expect(manifest.tasks).toHaveLength(26);
+    expect(manifest.tasks).toHaveLength(32);
     expect(evidence.code).toBeUndefined();
-    expect(readiness.filter((task) => task.state === "ready").map((task) => task.taskId)).toEqual(["F0"]);
-    expect(readiness.filter((task) => task.state === "blocked")).toHaveLength(25);
+    expect(readiness).toHaveLength(32);
+    expect(readiness.map((task) => task.taskId)).toEqual(manifest.tasks.map((task) => task.id));
   });
 
   it("uses the ready manifest only with its explicit fixture authority", async () => {

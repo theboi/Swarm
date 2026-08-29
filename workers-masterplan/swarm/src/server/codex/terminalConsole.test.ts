@@ -1,0 +1,34 @@
+import { describe, expect, it } from "vitest";
+
+import { codexLoginCommand, tmuxAttachCommand, tmuxServerCommand } from "./terminalConsole.js";
+
+describe("terminal console commands", () => {
+  it("uses an allowlisted account session for the app-server and its attach console", () => {
+    const command = tmuxServerCommand("bot1", "'/opt/homebrew/bin/codex' app-server");
+
+    expect(command).toContain("kill-session -t swarm-bot1");
+    expect(command).toContain("new-session -s swarm-bot1");
+    expect(command).not.toContain("new-session -A");
+    expect(tmuxAttachCommand("bot1")).toContain("/usr/bin/su - bot1 -c");
+  });
+
+  it("opens Codex login as the selected bot instead of passing credentials through the browser", () => {
+    const command = codexLoginCommand("bot1", "/opt/homebrew/bin/codex");
+
+    expect(command).toContain("/usr/bin/su - bot1 -c");
+    expect(command).toContain("/opt/homebrew/bin/codex");
+    expect(command).toContain(" login");
+    expect(command).not.toMatch(/password|token/i);
+  });
+
+  it("uses direct local tmux and Codex login commands for claudiothe", () => {
+    expect(tmuxAttachCommand("claudiothe")).toBe("exec '/opt/homebrew/bin/tmux' attach-session -t swarm-claudiothe");
+    expect(codexLoginCommand("claudiothe", "/opt/homebrew/bin/codex")).toBe("exec '/opt/homebrew/bin/codex' login");
+  });
+
+  it("quotes the Codex binary inside the bot su command", () => {
+    const command = codexLoginCommand("bot1", "/opt/homebrew/bin/codex; touch /tmp/pwned");
+
+    expect(command).toBe(String.raw`exec /usr/bin/su - bot1 -c 'exec '\''/opt/homebrew/bin/codex; touch /tmp/pwned'\'' login'`);
+  });
+});

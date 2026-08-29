@@ -1,14 +1,10 @@
 import type { ApiResult } from "./errors.js";
 
-export type AccountId =
-  | "bot1"
-  | "bot2"
-  | "bot3"
-  | "bot4"
-  | "bot5"
-  | "bot6"
-  | "bot7"
-  | "bot8";
+export const BOT_ACCOUNT_IDS = ["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as const;
+export type BotAccountId = (typeof BOT_ACCOUNT_IDS)[number];
+export const LOCAL_ACCOUNT_ID = "claudiothe" as const;
+export const ACCOUNT_IDS = [LOCAL_ACCOUNT_ID, ...BOT_ACCOUNT_IDS] as const;
+export type AccountId = (typeof ACCOUNT_IDS)[number];
 
 export type AccountConnectionState =
   | "disconnected"
@@ -35,6 +31,7 @@ export interface GitSyncStatus {
   action: "pull" | "push";
   lastAttemptAt: number | null;
   message?: string;
+  errorCode?: "MERGE_CONFLICT";
 }
 
 export interface LocalWorkspaceSnapshot {
@@ -52,6 +49,8 @@ export interface AccountSnapshot {
   terminalCommand?: string;
   errorCode?: string;
   gitSync?: GitSyncStatus;
+  /** A worker explicitly reported a breaking change in this account's chat. */
+  hasBreakingChange?: boolean;
 }
 
 export type TaskKind = "planning" | "execution" | "ui" | "gate";
@@ -130,6 +129,29 @@ export interface DispatchRecord {
   updatedAt: number;
   retryAt: number | null;
   errorCode?: string;
+  /** Selected turn settings retained if a rate-limited launch must be retried. */
+  settings?: ChatExecutionSettings;
+}
+
+export type WorkerAssignmentState = "assigned" | "waiting_for_limit" | "completed" | "attention_required";
+
+export interface WorkerTransferRecord {
+  fromAccountId: AccountId;
+  fromThreadId: string;
+  toAccountId: AccountId;
+  toThreadId: string;
+  transferredAt: number;
+}
+
+/** Durable ownership manifest for one blueprint worker across account transfers. */
+export interface WorkerAssignmentRecord {
+  taskId: string;
+  accountId: AccountId;
+  threadId: string;
+  state: WorkerAssignmentState;
+  assignedAt: number;
+  updatedAt: number;
+  transferHistory: WorkerTransferRecord[];
 }
 
 export interface ThreadCapabilities {
@@ -139,13 +161,45 @@ export interface ThreadCapabilities {
   canSteer: boolean;
 }
 
+/** Deliberate execution boundary selected by the dashboard operator for the next turn. */
+export type ChatPermissionMode = "ask_for_approval" | "ask_me" | "full_access";
+
+/** Model and execution overrides supported by Codex for a turn and later turns in that chat. */
+export interface ChatExecutionSettings {
+  model?: string;
+  effort?: string;
+  serviceTier?: string;
+  permissionMode?: ChatPermissionMode;
+}
+
+/** A model option normalized from the signed-in account's Codex model catalog. */
+export interface ChatModelOption {
+  model: string;
+  displayName: string;
+  supportedEfforts: string[];
+  defaultEffort: string | null;
+  serviceTiers: Array<{ id: string; name: string }>;
+  defaultServiceTier: string | null;
+  isDefault: boolean;
+}
+
 export interface ThreadSummary {
   id: string;
   accountId: AccountId;
   name: string | null;
   archived: boolean;
+  /** True only when the app-server thread's working directory is this account's EdenMind clone. */
+  isEdenMindProject?: boolean;
   updatedAt: number;
+  /** Current app-server activity, retained so a missed browser event cannot hide a running turn. */
+  activity?: "active" | "idle";
   capabilities: ThreadCapabilities;
+}
+
+export interface LaunchAccountOption {
+  id: AccountId;
+  activeWorkers: number;
+  available: boolean;
 }
 
 export interface TranscriptItem {
@@ -197,11 +251,11 @@ export interface NgrokSnapshot {
 
 export interface CoordinatorSnapshot {
   generatedAt: number;
-  activeTurnLimit: number;
   accounts: AccountSnapshot[];
   localWorkspace?: LocalWorkspaceSnapshot;
   tasks: TaskNode[];
   dispatches: DispatchRecord[];
+  workerAssignments?: WorkerAssignmentRecord[];
   threads: ThreadSummary[];
   pendingApprovals: PendingApproval[];
   ngrok: NgrokSnapshot;

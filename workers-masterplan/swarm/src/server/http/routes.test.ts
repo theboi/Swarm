@@ -11,13 +11,15 @@ import { createApiRouter, type CoordinatorRouteServices } from "./routes.js";
 const health: HealthSnapshot = {
   server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" },
 };
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, activeTurnLimit: 3, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health };
 
 async function fixture() {
   const passwordHash = await createPasswordHash("correct password", "route-test-salt");
   const sessionStore = new SessionStore("session-secret");
+  const openTerminal = vi.fn(async () => undefined);
+  const origins = new Set(["http://127.0.0.1:4310", "http://localhost:4310"]);
   const services: CoordinatorRouteServices = {
-    config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310 },
+    config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310, terminalPort: 4311 },
     sessions: sessionStore,
     throttle: new LoginThrottle(),
     verifyTotp: createTotpVerifier("JBSWY3DPEHPK3PXP"),
@@ -25,12 +27,16 @@ async function fixture() {
     health: async () => health,
     connectAccount: vi.fn(async () => ({ id: "bot1" })),
     disconnectAccount: vi.fn(async () => undefined),
+    openTerminal,
     refreshRateLimits: vi.fn(async () => []),
+    refreshAllRateLimits: vi.fn(async () => []),
+    listModels: vi.fn(async () => []),
     previewLaunch: vi.fn(async () => ({ task: { id: "T1" }, accountId: "bot1", prompt: "prompt", dependencies: [], concurrencyImpact: "1 / 3" })),
     launch: vi.fn(async () => ({ id: "dispatch-1" })),
     listThreads: vi.fn(async () => []),
     readTranscript: vi.fn(async () => []),
     startThread: vi.fn(async () => ({ id: "thread-1", accountId: "bot1", name: null, archived: false, updatedAt: 1, capabilities: { canArchive: true, canInterrupt: false, canStartTurn: true, canSteer: false } })),
+    moveThreadToAccount: vi.fn(async () => ({ id: "thread-2", accountId: "bot2", name: null, archived: false, updatedAt: 1, capabilities: { canArchive: false, canInterrupt: true, canStartTurn: false, canSteer: true } })),
     archiveThread: vi.fn(async () => undefined),
     startTurn: vi.fn(async () => ({ turnId: "turn-1" })),
     steerTurn: vi.fn(async () => undefined),
@@ -39,11 +45,11 @@ async function fixture() {
     decideApproval: vi.fn(async () => undefined),
     ngrokSnapshot: async () => snapshot.ngrok,
     stopNgrokEarly: vi.fn(async () => undefined),
-    allowedOrigins: () => new Set(["http://127.0.0.1:4310", "http://localhost:4310"]),
+    allowedOrigins: () => origins,
   };
   const app = express();
   app.use("/api/v1", createApiRouter(services));
-  return { app, services };
+  return { app, services, openTerminal, origins };
 }
 
 describe("coordinator HTTP routes", () => {
@@ -58,6 +64,7 @@ describe("coordinator HTTP routes", () => {
     expect(complete.body).toEqual({ data: { authenticated: true } });
     expect(complete.headers["set-cookie"][0]).toContain("HttpOnly");
     expect(complete.headers["set-cookie"][0]).toContain("SameSite=Strict");
+    expect(complete.headers["set-cookie"][0]).toContain("Max-Age=2592000");
     await agent.get("/api/v1/snapshot").expect(200, { data: snapshot });
   });
 
@@ -66,6 +73,77 @@ describe("coordinator HTTP routes", () => {
     await request(app).get("/api/v1/snapshot").expect(401, { error: { code: "AUTH_INVALID", message: "Authentication required" } });
     const result = await request(app).post("/api/v1/auth/challenge").set("origin", "https://attacker.example").send({ email: "claudio@example.test", password: "correct password" }).expect(403);
     expect(result.body.error).toMatchObject({ code: "AUTH_INVALID" });
+  });
+
+  it("does not expose terminal launch through the externally served API", async () => {
+    const { app, openTerminal, origins } = await fixture();
+    const agent = request.agent(app);
+    const localOrigin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", localOrigin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+    await agent.post("/api/v1/auth/complete").set("origin", localOrigin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) }).expect(200);
+    origins.add("https://swarm.example.test");
+
+    const result = await agent.post("/api/v1/accounts/bot1/terminal").set("origin", "https://swarm.example.test").send({}).expect(404);
+
+    expect(result.body).toEqual({ error: { code: "NOT_FOUND", message: "API route not found" } });
+    expect(openTerminal).not.toHaveBeenCalled();
+  });
+
+  it("refreshes every connected account's usage and forwards the selected account and edited prompt on launch", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+
+    await agent.post("/api/v1/accounts/rate-limits/refresh").set("origin", origin).send({}).expect(200);
+    await agent.post("/api/v1/tasks/T1/preview").set("origin", origin).send({ accountId: "bot1" }).expect(200);
+    const settings = { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" };
+    await agent.post("/api/v1/tasks/T1/launch").set("origin", origin).send({ accountId: "bot1", prompt: "Use this edited worker prompt.", settings }).expect(200);
+
+    expect(services.refreshAllRateLimits).toHaveBeenCalledOnce();
+    expect(services.previewLaunch).toHaveBeenCalledWith("T1", "bot1");
+    expect(services.launch).toHaveBeenCalledWith("T1", { accountId: "bot1", prompt: "Use this edited worker prompt.", settings });
+  });
+
+  it("forwards only valid explicit chat execution settings", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+    const settings = { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" };
+
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/turns").set("origin", origin).send({ text: "Run the release checks.", settings }).expect(200);
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/turns").set("origin", origin).send({ text: "Run this.", settings: { permissionMode: "unsafe" } }).expect(400, { error: { code: "INVALID_REQUEST", message: "Invalid chat execution settings" } });
+
+    expect(services.startTurn).toHaveBeenCalledWith("bot1", "thread-1", { text: "Run the release checks.", clientUserMessageId: undefined, settings });
+  });
+
+  it("explains an active Codex turn without falling back to a generic coordinator error", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+    (services.startTurn as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Codex app-server RPC turn/start failed: a turn is already in progress"));
+
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/turns").set("origin", origin).send({ text: "Continue." }).expect(409, {
+      error: { code: "TURN_ACTIVE", message: "This chat is already working. Use Steer to guide it." },
+    });
+  });
+
+  it("validates and forwards a cross-account chat continuation", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot2" }).expect(200);
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot1" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Choose a different known account" } });
+
+    expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2");
   });
 
   it("keeps health in the shared shape without operational secrets", async () => {
@@ -94,4 +172,19 @@ describe("coordinator HTTP routes", () => {
     await agent.post("/api/v1/auth/logout").set("origin", origin).send({}).expect(200);
     await request(app).get("/api/v1/snapshot").set("cookie", priorCookie).expect(401);
   });
+
+  it("reports a throttle after the fifth failed authentication code", async () => {
+    const { app } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+      await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: "invalid" }).expect(401, { error: { code: "AUTH_INVALID", message: "Unable to sign in" } });
+    }
+
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: "invalid" }).expect(429, { error: { code: "AUTH_THROTTLED", message: "Too many sign-in attempts" } });
+  });
+
 });

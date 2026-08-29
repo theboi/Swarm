@@ -50,6 +50,17 @@ export class DispatchOutbox {
     return record;
   }
 
+  /** Moves the live durable launch identity with a handoff so the old thread cannot settle it. */
+  async transferAcceptedThread(sourceAccountId: AccountId, sourceThreadId: string, targetAccountId: AccountId, targetThreadId: string, clientUserMessageId: string, now = Date.now()): Promise<DispatchRecord | undefined> {
+    const record = this.list().find((candidate) => candidate.accountId === sourceAccountId && candidate.threadId === sourceThreadId && candidate.state === "accepted");
+    if (!record) return undefined;
+    const current = this.require(record.id);
+    const prior = { ...current };
+    Object.assign(current, { accountId: targetAccountId, threadId: targetThreadId, clientUserMessageId, state: "accepted", retryAt: null, updatedAt: now });
+    try { await this.flush(); } catch (error) { Object.assign(current, prior); throw error; }
+    return { ...current };
+  }
+
   async fail(id: string, errorCode: string, now = Date.now()): Promise<void> {
     await this.transition(id, ["queued", "submitting", "accepted", "waiting_for_limit"], "failed", now, undefined, errorCode);
   }

@@ -1,74 +1,28 @@
-# Execution worker launch packet
-
-You are worker `{{WORKER_ID}}` assigned to the macOS account
-`{{ACCOUNT_ID}}`. A macOS account and a worker are different things: the
-account may own unlimited chats, but this chat is named `{{CHAT_NAME}}` and
-executes only this worker's owned task. Work through the assigned Codex
-app-server chat; do not use Codex desktop for this account.
-
-Read the following from the account's EdenMind clone before editing:
+Read these repository authorities from the account's EdenMind clone before acting:
 
 - Blueprint: `{{BLUEPRINT_PATH}}`
 - Masterplan: `{{MASTERPLAN_PATH}}`
+- Coordination root: `{{COORDINATION_ROOT}}`
 - Worker status: `{{STATUS_PATH}}`
-- Approved specification: `{{SPECIFICATION_PATH}}`
-- Approved implementation plan: `{{IMPLEMENTATION_PLAN_PATH}}`
-- Passed planning-gate receipt: `{{PLANNING_GATE_PATH}}`
-- Gate receipt commit: `{{PLANNING_GATE_COMMIT}}`
+- Task specification: `{{SPECIFICATION_PATH}}`
+- Implementation plan: `{{IMPLEMENTATION_PLAN_PATH}}`
+- Planning-gate receipt: `{{PLANNING_GATE_PATH}}`
+- Planning-gate commit: `{{PLANNING_GATE_COMMIT}}`
+- Required prerequisites: `{{HARD_PREREQUISITES}}`
 
-Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`, in phase `{{PHASE}}`. The phase
-terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
+You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is an execution-only launch. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
 
-Before
-editing, prove that the gate receipt is passed, includes this worker, and is
-reachable from the pinned `origin/main` commit. Also prove that every hard
-implemented prerequisite in `{{HARD_PREREQUISITES}}` is remotely reachable.
-Stop and report a blocker if any evidence is missing, stale, local-only, or
-does not match the task.
+Confirm every listed execution prerequisite, planning artifact, and planning-gate receipt is reachable from `origin/main` before editing. Treat any missing, stale, or local-only evidence as a blocker and report it through the worker status rather than guessing.
 
-Use implementation subagents throughout the approved task split. Route bounded
-implementation to Terra High and difficult implementation, integration,
-migrations, or debugging to Terra Xhigh. Route Sol High only for additional
-planning made necessary by an unexpected issue during execution. When another
-worker blocks this owned task, use a bounded Terra subagent to diagnose or fix
-the blockage only when the Blueprint ownership/dependency rules allow it;
-otherwise produce a handoff to the owning worker. `{{IMPLEMENTATION_MODEL}}`
-records the selected default. Model selection does not change ownership,
-review, tests, or integration duties.
+You are WORKER {{WORKER_ID}}. Read the MVP3 Implementation Masterplan together with the Business Masterplan and the Product Spec Masterplan. Constantly commit, push to main and pull changes from main regularly. Unless explicitly stated in the masterplans, continue until you have finished EXECUTION OF PLANS for your assigned task. The spec and implementation plans have been written as listed below.
 
-Own only:
+Specification: {{SPECIFICATION_PATH}}
+Implementation plan: {{IMPLEMENTATION_PLAN_PATH}}
 
-`{{OWNED_SURFACES}}`
+During planning, for your assigned task, write plans in a way that during execution, you can split the work up and use subagents to work on them in parallel, and ask the user questions when needed. During execution, use subagents: Terra High/Xhigh for execution depending on difficulty of implementation, and Sol High IF any additional planning is required due to unexpected issues faced. If required, spin up subagents to fix any blockages due to other workers. After writing plans, update the relevant masterplans with any any todos or known limitations.
 
-Do not modify:
+At each coherent execution checkpoint, run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before continuing. Update `{{STATUS_PATH}}` with the inspected `origin/main` commit, decisions, prerequisites, verification, handoff inputs, and remote-reachability proof.
 
-`{{EXCLUDED_SURFACES}}`
+If this execution handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:` so the coordinator can flag it for review.
 
-Work directly on `main` in `{{EDENMIND_CLONE_PATH}}`; do not create feature
-branches or linked worktrees. Preserve unrelated changes. The selected Git mode
-is `{{CHECKOUT_MODE}}`; its same-Mac mutation lock is
-`{{MAIN_MUTATION_LOCK}}`, and its independent-clone push queue is
-`{{MAIN_PUSH_QUEUE}}`. In `coordinator_managed_same_mac_clones` mode, acquire
-the named mutation lock before every filesystem or Git/index mutation and hold
-it through focused verification, staging only owned paths, commit, fetch and
-merge newer `origin/main`, rerun affected checks, push, and prove remote
-reachability. In `independent_main_clone` mode, do not impose a global edit
-lock; use the named push queue only for reconciliation, affected verification,
-push, and remote-ancestry proof. Never reset, clean, stash, rebase, force-push,
-or overwrite unrelated work.
-
-Execute the approved plan task-by-task. Use red-green-refactor where code
-changes. At every coherent checkpoint, run the narrow affected test/check,
-review the owned diff, update `{{STATUS_PATH}}`, stage only owned paths, commit
-directly to `main`, fetch and merge newer `origin/main`, rerun affected checks,
-push, and prove remote reachability before continuing. Do not infer completion from a
-local checkout or another worker's claim. Request and address review for your
-owned changes.
-
-After all owned plan tasks are complete, refresh the relevant local and remote
-`main`, run one final full suite, update all required authorities and downstream
-handoffs, and leave no owned dirt. Execution ends only when fresh acceptance
-evidence, closed review, final status, and remote-reachability proof are
-present. Hand off exact commits, checks, limitations, and follow-up inputs.
-Update the relevant masterplan/status authorities with every remaining TODO or
-known limitation before the final remote-reachability proof.
+Hand off exact commits, checks, limitations, and acceptance inputs, then stop.

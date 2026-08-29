@@ -21,6 +21,73 @@ describe("blueprint evidence", () => {
     expect(calls).toEqual(["fetch"]);
     expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "E1")?.state).toBe("ready");
   });
+  it("keeps a completed handoff terminal when its cited integrated commit precedes the status commit", async () => {
+    const laterHead = new Map(remote);
+    laterHead.set("docs/workers/bp-1/P1.md", "| State | review |\n| Worker planning state | complete handoff integrated |\n| Latest integrated `origin/main` commit proved for this status | `abc123` |");
+    const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => undefined, revParse: async () => "def456", readRemote: async (path) => laterHead.get(path), isAncestor: async (commit, head) => commit === "abc123" && head === "def456" });
+
+    expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "P1")?.state).toBe("complete");
+  });
+
+  it("keeps an amended integrated handoff terminal for every downstream dependency", async () => {
+    const amendedManifest: TaskManifest = {
+      ...manifest,
+      tasks: [
+        manifest.tasks[0]!,
+        { id: "P2", title: "Downstream", kind: "planning", dependsOn: ["P1"], promptTemplate: "planning", statusPath: "docs/workers/bp-1/P2.md", specificationPath: "docs/p2-spec.md", implementationPlanPath: "docs/p2-plan.md" },
+      ],
+    };
+    const records = new Map(remote);
+    records.set("docs/workers/bp-1/P1.md", "| State | review |\n| Worker planning state | amended handoff integrated; coordinator receipt review pending |\n| Latest integrated `origin/main` commit proved for this status | `abc123` |");
+    records.set("docs/workers/bp-1/P2.md", "| State | not started |\n| Latest integrated `origin/main` commit | `def456` |");
+    records.set("docs/p2-spec.md", "# Spec\n");
+    records.set("docs/p2-plan.md", "# Plan\n");
+    const evidence = await loadBlueprintEvidence(amendedManifest, { fetch: async () => undefined, revParse: async () => "def456", readRemote: async (path) => records.get(path), isAncestor: async (commit, head) => commit === "abc123" && head === "def456" });
+    const readiness = evaluateTaskReadiness(amendedManifest, evidence);
+
+    expect(readiness.find((item) => item.taskId === "P1")?.state).toBe("complete");
+    expect(readiness.find((item) => item.taskId === "P2")?.state).toBe("ready");
+    expect(readiness.find((item) => item.taskId === "P2")?.blockingCodes).toEqual([]);
+  });
+
+  it("accepts a completed handoff whose remote proof is labelled as final-status reconciliation", async () => {
+    const records = new Map(remote);
+    records.set("docs/workers/bp-1/P1.md", "| State | review |\n| Worker planning state | complete handoff integrated; coordinator receipt review pending |\n| Latest `origin/main` reconciled during final status | `abc123` |");
+    const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => undefined, revParse: async () => "def456", readRemote: async (path) => records.get(path), isAncestor: async (commit, head) => commit === "abc123" && head === "def456" });
+
+    expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "P1")?.state).toBe("complete");
+  });
+
+  it("keeps missing planning outputs visible without blocking a dependency-ready planning assignment", async () => {
+    const planningManifest: TaskManifest = {
+      ...manifest,
+      tasks: [
+        manifest.tasks[0]!,
+        { id: "P2", title: "Next planning assignment", kind: "planning", dependsOn: ["P1"], promptTemplate: "planning", statusPath: "docs/workers/bp-1/P2.md", specificationPath: "docs/p2-spec.md", implementationPlanPath: "docs/p2-plan.md" },
+      ],
+    };
+    const records = new Map(remote);
+    records.set("docs/workers/bp-1/P2.md", "| State | planning-blocked |\n| Planning artifacts | absent |");
+    const evidence = await loadBlueprintEvidence(planningManifest, { fetch: async () => undefined, revParse: async () => "abc123", readRemote: async (path) => records.get(path) });
+
+    const readiness = evaluateTaskReadiness(planningManifest, evidence).find((item) => item.taskId === "P2");
+
+    expect(readiness?.state).toBe("ready");
+    expect(readiness?.evidence.find((item) => item.code === "PLANNING_ARTIFACTS")?.satisfied).toBe(false);
+  });
+
+  it("projects an unfinished planning review as attention-required instead of ready to relaunch", async () => {
+    const reviewManifest: TaskManifest = {
+      ...manifest,
+      tasks: [{ ...manifest.tasks[0]!, dependsOn: [] }],
+    };
+    const records = new Map(remote);
+    records.set("docs/workers/bp-1/P1.md", "| State | review |\n| Worker planning state | specification integrated; implementation plan pending |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.delete("docs/plan.md");
+    const evidence = await loadBlueprintEvidence(reviewManifest, { fetch: async () => undefined, revParse: async () => "abc123", readRemote: async (path) => records.get(path) });
+
+    expect(evaluateTaskReadiness(reviewManifest, evidence).find((item) => item.taskId === "P1")?.state).toBe("attention_required");
+  });
   it("blocks when a status or gate cites a non-pinned SHA, or planning artifacts are missing", async () => {
     const stale = new Map(remote); stale.set("docs/workers/bp-1/G1.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `deadbeef` |");
     const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => undefined, revParse: async () => "abc123", readRemote: async (path) => stale.get(path) });

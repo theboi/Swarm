@@ -1,10 +1,12 @@
 import { stat } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { resolve } from "node:path";
+import type { BotAccountId } from "../../shared/contracts.js";
 
 export interface SwarmConfig {
   host: string;
   port: number;
+  terminalPort: number;
   timezone: string;
   loginEmail: string;
   loginPasswordHash: string;
@@ -12,12 +14,11 @@ export interface SwarmConfig {
   sessionSecret: string;
   codexBin: string;
   trustManagedProxy: boolean;
-  defaultConcurrency: number;
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
-  ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; domain: string | undefined; start: string; stop: string };
+  ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; url: string | undefined; start: string; stop: string };
   localAccount: string;
-  accountPasswords: Record<`bot${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`, string | undefined>;
+  accountPasswords: Record<BotAccountId, string | undefined>;
   publicConfig(): string;
 }
 
@@ -59,6 +60,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   const config: SwarmConfig = {
     host: env.SWARM_HOST ?? "127.0.0.1",
     port: Number(env.SWARM_PORT ?? 4310),
+    terminalPort: Number(env.SWARM_PORT ?? 4310) + 1,
     timezone: env.SWARM_TIMEZONE ?? "Asia/Singapore",
     localAccount: env.SWARM_LOCAL_ACCOUNT?.trim() || userInfo().username,
     loginEmail,
@@ -67,15 +69,14 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     sessionSecret: required(env, "SWARM_SESSION_SECRET"),
     codexBin: env.SWARM_CODEX_BIN ?? "/opt/homebrew/bin/codex",
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
-    defaultConcurrency: Number(env.SWARM_DEFAULT_CONCURRENCY ?? 3),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
     coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),
-    ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, domain: env.SWARM_NGROK_DOMAIN, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
+    ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, url: env.SWARM_NGROK_URL?.trim() || env.SWARM_NGROK_DOMAIN?.trim() || undefined, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
     accountPasswords,
-    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, timezone: config.timezone, defaultConcurrency: config.defaultConcurrency, ngrokEnabled: config.ngrok.enabled, localAccount: config.localAccount }),
+    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, terminalPort: config.terminalPort, timezone: config.timezone, ngrokEnabled: config.ngrok.enabled, localAccount: config.localAccount }),
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("SWARM_PORT must be a valid port");
-  if (!Number.isInteger(config.defaultConcurrency) || config.defaultConcurrency < 1) throw new Error("SWARM_DEFAULT_CONCURRENCY must be positive");
+  if (!Number.isInteger(config.terminalPort) || config.terminalPort < 1 || config.terminalPort > 65535) throw new Error("SWARM_PORT must leave a valid adjacent loopback terminal port");
   if (!config.codexBin.startsWith("/")) throw new Error("SWARM_CODEX_BIN must be an absolute path");
   return config;
 }

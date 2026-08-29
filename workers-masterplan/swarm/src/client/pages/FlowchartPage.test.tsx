@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,21 +36,28 @@ HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 afterEach(cleanup);
 
 describe("FlowchartPage", () => {
-  it("places paths in columns, layers in rows, and shared nodes in the center", () => {
+  it("provides left-to-right connector handles and arrowheads for dependency edges", () => {
+    render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
+
+    expect(document.querySelectorAll(".flow-task .react-flow__handle-left.target")).not.toHaveLength(0);
+    expect(document.querySelectorAll(".flow-task .react-flow__handle-right.source")).not.toHaveLength(0);
+    expect(document.querySelectorAll(".react-flow__edge path[marker-end]")).not.toHaveLength(0);
+  });
+
+  it("places dependent tasks in layers to the right of the work that unlocks them", () => {
     const base = dashboardSnapshot.tasks[0];
     const layered = [
-      { ...base, id: "F0", pathId: "shared", pathStep: 0 },
-      { ...base, id: "P1", pathId: "P", pathStep: 1 },
-      { ...base, id: "C1", pathId: "C", pathStep: 1 },
-      { ...base, id: "P2", pathId: "P", pathStep: 2 },
+      { ...base, id: "F0", pathId: "shared", pathStep: 0, dependsOn: [] },
+      { ...base, id: "P1", pathId: "P", pathStep: 1, dependsOn: ["F0"] },
+      { ...base, id: "C1", pathId: "C", pathStep: 1, dependsOn: ["F0"] },
+      { ...base, id: "P2", pathId: "P", pathStep: 2, dependsOn: ["P1", "C1"] },
     ];
+    const positions = taskLayoutPositions(layered);
 
-    expect(taskLayoutPositions(layered)).toEqual(new Map([
-      ["F0", { x: 130, y: 0 }],
-      ["P1", { x: 0, y: 170 }],
-      ["C1", { x: 260, y: 170 }],
-      ["P2", { x: 0, y: 340 }],
-    ]));
+    expect(positions.get("P1")!.x).toBeGreaterThan(positions.get("F0")!.x);
+    expect(positions.get("C1")!.x).toBeGreaterThan(positions.get("F0")!.x);
+    expect(positions.get("P2")!.x).toBeGreaterThan(positions.get("P1")!.x);
+    expect(positions.get("P2")!.x).toBeGreaterThan(positions.get("C1")!.x);
   });
 
   it("shows path and layer metadata in the task inspector", async () => {
@@ -64,7 +71,23 @@ describe("FlowchartPage", () => {
 
     await user.click(screen.getByRole("button", { name: "T0 Graph planning running" }));
 
+    expect(screen.getByRole("dialog", { name: "T0 Graph planning" })).toBeVisible();
     expect(screen.getByText("Path: P · Layer: 1")).toBeVisible();
+  });
+
+  it("keeps the graph as the full-page surface and opens task details as an overlay", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
+
+    const surface = screen.getByTestId("flowchart-surface");
+    expect(surface.parentElement).toHaveClass("flow-layout");
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "T0 Graph planning running" }));
+
+    const dialog = screen.getByRole("dialog", { name: "T0 Graph planning" });
+    expect(dialog).toHaveClass("flow-overlay");
+    expect(within(dialog).getByRole("button", { name: "Close" })).toHaveClass("overlay-close-button");
   });
 
   it.each([1440, 768, 390])("renders the same React Flow graph surface at %ipx", (width) => {
@@ -85,10 +108,23 @@ describe("FlowchartPage", () => {
     expect(screen.getByRole("button", { name: "I0 Integration blocked" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "U1 Coordinator UI ready" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "I0 Integration blocked" }));
-    expect(screen.getByRole("button", { name: "Launch I0" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review launch for I0" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Show all tasks" }));
     await user.click(screen.getByRole("button", { name: "U1 Coordinator UI ready" }));
-    expect(screen.getByRole("button", { name: "Launch U1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review launch for U1" })).toBeDisabled();
+  });
+
+  it("opens the shared editable launch review from a ready task", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const previewLaunch = async () => ({ data: { task: dashboardSnapshot.tasks[1], accountId: "bot3", prompt: "UI prompt", dependencies: ["T0"], concurrencyImpact: "1 / 3", accounts: [{ id: "bot3" as const, activeWorkers: 0, available: true }] } });
+    render(<FlowchartPage snapshot={dashboardSnapshot} api={{ previewLaunch, launch: async () => ({ data: { id: "d1", clientUserMessageId: "m1", taskId: "U1", accountId: "bot3" as const, threadId: "thread-new", state: "accepted" as const, createdAt: 0, updatedAt: 0, retryAt: null } }) }} onOpenChat={() => undefined} />);
+
+    await user.click(screen.getByRole("button", { name: "U1 Coordinator UI ready" }));
+    await user.click(screen.getByRole("button", { name: "Review launch for U1" }));
+
+    expect(await screen.findByRole("dialog", { name: "Launch U1" })).toBeVisible();
+    expect(screen.getByLabelText("Worker prompt")).toHaveValue("UI prompt");
   });
 
   it("opens a mobile node overlay by keyboard, preserves its viewport after Close, and opens the mapped chat", async () => {

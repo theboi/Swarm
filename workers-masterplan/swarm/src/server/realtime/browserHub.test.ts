@@ -7,7 +7,7 @@ import type { CoordinatorSnapshot } from "../../shared/contracts.js";
 import { SessionStore } from "../auth/sessionStore.js";
 import { BrowserHub } from "./browserHub.js";
 
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, activeTurnLimit: 3, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" } } };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" } } };
 let close: (() => Promise<void>) | undefined;
 
 afterEach(async () => { await close?.(); close = undefined; });
@@ -37,5 +37,31 @@ describe("BrowserHub", () => {
     expect(received[1]).toMatchObject({ type: "rate_limit", sequence: 1, payload: { accountId: "bot1" } });
     expect(received[2]).toMatchObject({ type: "snapshot", sequence: 1, payload: snapshot });
     socket.close();
+  });
+
+  it("contains a snapshot failure to the browser connection instead of creating an unhandled rejection", async () => {
+    const http = createServer();
+    const sessions = new SessionStore("session-secret");
+    const token = await sessions.createSession("claudio@example.test");
+    const failures: Error[] = [];
+    const hub = new BrowserHub({
+      server: http,
+      sessions,
+      allowedOrigins: () => new Set(["http://127.0.0.1:4310"]),
+      snapshot: async () => { throw new Error("snapshot unavailable"); },
+      onError: (error) => failures.push(error instanceof Error ? error : new Error(String(error))),
+    });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    const address = http.address();
+    if (!address || typeof address === "string") throw new Error("missing listener");
+    close = async () => { await hub.close(); await new Promise<void>((resolve) => http.close(() => resolve())); };
+
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, { headers: { origin: "http://127.0.0.1:4310", cookie: `swarm_session=${encodeURIComponent(token)}` } });
+    socket.on("error", () => undefined);
+    await once(socket, "open");
+    const [code] = await once(socket, "close");
+
+    expect(code).toBe(1011);
+    expect(failures).toEqual([expect.objectContaining({ message: "snapshot unavailable" })]);
   });
 });

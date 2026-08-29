@@ -1,7 +1,7 @@
 import { realpath as nodeRealpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { AccountId } from "../../shared/contracts.js";
-import { clonePath } from "../codex/protocol.js";
+import { workspaceRoot } from "../codex/protocol.js";
 
 export interface ApprovalRequest { method: string; params: Record<string, unknown>; }
 
@@ -27,8 +27,8 @@ const V2_PERMISSIONS = "item/permissions/requestApproval";
 const LEGACY_COMMAND = "execCommandApproval";
 const LEGACY_PATCH = "applyPatchApproval";
 
-export function createApprovalContext(account: AccountId): ApprovalContext {
-  const context = Object.freeze({ account, workspaceRoot: clonePath(account) });
+export function createApprovalContext(account: AccountId, localWorkspaceRoot?: string): ApprovalContext {
+  const context = Object.freeze({ account, workspaceRoot: workspaceRoot(account, localWorkspaceRoot) });
   issuedContexts.add(context);
   return context;
 }
@@ -40,7 +40,7 @@ export function validContext(context: unknown): context is ApprovalContext {
 
 function requireContext(context: unknown): ApprovalContext {
   if (!validContext(context)) throw new Error("Approval context must be created by the coordinator");
-  if (context.workspaceRoot !== clonePath(context.account)) throw new Error("Approval context is not bound to its account clone");
+  if (context.workspaceRoot !== workspaceRoot(context.account, context.workspaceRoot)) throw new Error("Approval context is not bound to its account workspace");
   return context;
 }
 
@@ -59,7 +59,7 @@ function pathIsAmbiguous(path: string): boolean {
 }
 
 async function canonicalCloneRoot(context: ApprovalContext, filesystem: ApprovalFilesystem): Promise<string> {
-  const expected = clonePath(context.account);
+  const expected = context.workspaceRoot;
   const canonical = await filesystem.realpath(expected);
   if (canonical !== expected) throw new Error("Assigned clone root must not be a symlink");
   return canonical;

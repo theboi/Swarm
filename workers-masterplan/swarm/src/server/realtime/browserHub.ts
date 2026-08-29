@@ -11,6 +11,7 @@ export interface BrowserHubOptions {
   allowedOrigins(): ReadonlySet<string>;
   snapshot(): Promise<CoordinatorSnapshot>;
   maxBufferedBytes?: number;
+  onError?: (error: unknown) => void;
 }
 
 function rejectUpgrade(socket: { write(data: string): unknown; destroy(): void }): void {
@@ -27,7 +28,12 @@ export class BrowserHub {
   private readonly websocket = new WebSocketServer({ noServer: true });
   private sequence = 0;
   private closed = false;
-  private readonly upgrade = (request: IncomingMessage, socket: Parameters<Server["emit"]>[1], head: Buffer) => { void this.handleUpgrade(request, socket as never, head); };
+  private readonly upgrade = (request: IncomingMessage, socket: Parameters<Server["emit"]>[1], head: Buffer) => {
+    void this.handleUpgrade(request, socket as never, head).catch((error) => {
+      this.options.onError?.(error);
+      rejectUpgrade(socket as never);
+    });
+  };
 
   constructor(private readonly options: BrowserHubOptions) {
     options.server.on("upgrade", this.upgrade);
@@ -64,10 +70,17 @@ export class BrowserHub {
   }
 
   private configureSocket(socket: WebSocket): void {
-    void this.sendSnapshot(socket);
+    this.sendSnapshotSafely(socket);
     socket.on("message", (data) => {
       if (!resyncMessage(data)) { socket.close(1008, "only resync messages are permitted"); return; }
-      void this.sendSnapshot(socket);
+      this.sendSnapshotSafely(socket);
+    });
+  }
+
+  private sendSnapshotSafely(socket: WebSocket): void {
+    void this.sendSnapshot(socket).catch((error) => {
+      this.options.onError?.(error);
+      if (socket.readyState === WebSocket.OPEN) socket.close(1011, "snapshot unavailable");
     });
   }
 

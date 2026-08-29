@@ -33,6 +33,7 @@ function account(id: AccountSnapshot["id"], patch: Partial<AccountSnapshot> = {}
 
 function fixtureAccounts(): AccountSnapshot[] {
   return [
+    account("claudiothe"),
     account("bot1", { connection: "action_required", authentication: "unauthenticated", rateLimits: [], lastAssignedAt: null, terminalCommand: "/usr/bin/su - bot1 -c '/opt/homebrew/bin/codex login'", errorCode: "ACCOUNT_AUTH_REQUIRED" }),
     account("bot2", { rateLimits: [{ id: "bot2:five-hour", label: "Five-hour", usedPercent: 20, resetsAt: 1_725_018_000, updatedAt: timestamp }, { id: "bot2:weekly", label: "Weekly", usedPercent: 80, resetsAt: 1_725_100_000, updatedAt: timestamp }] }),
     account("bot3", { activeTurns: 1 }),
@@ -69,16 +70,18 @@ export function createFixtureState(options: { manifest?: FixtureManifest } = {})
   const manifest = options.manifest ?? "blocked";
   const snapshot: CoordinatorSnapshot = {
     generatedAt: timestamp,
-    activeTurnLimit: 3,
     accounts: fixtureAccounts(),
     tasks: manifest === "ready" ? readyTasks() : [],
     dispatches: manifest === "ready" ? [{ id: "dispatch-1", clientUserMessageId: "fixture-message-1", taskId: "T0", accountId: "bot3", threadId: "thread-1", state: "accepted", createdAt: timestamp, updatedAt: timestamp + 10, retryAt: null }] : [],
     threads: [
-      { id: "thread-1", accountId: "bot3", name: "T0 · Graph planning", archived: false, updatedAt: timestamp, capabilities: { canArchive: true, canInterrupt: true, canStartTurn: true, canSteer: true } },
-      { id: "thread-2", accountId: "bot3", name: "U1 · Coordinator UI", archived: false, updatedAt: timestamp + 100, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } },
+      { id: "thread-1", accountId: "bot3", name: "T0 · Graph planning", archived: false, updatedAt: timestamp, isEdenMindProject: true, capabilities: { canArchive: true, canInterrupt: true, canStartTurn: true, canSteer: true } },
+      { id: "thread-2", accountId: "bot3", name: "U1 · Coordinator UI", archived: false, updatedAt: timestamp + 100, isEdenMindProject: true, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } },
       { id: "thread-3", accountId: "bot1", name: "Account recovery", archived: false, updatedAt: timestamp + 200, capabilities: { canArchive: true, canInterrupt: false, canStartTurn: true, canSteer: false } },
     ],
-    pendingApprovals: [{ id: "approval-1", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "command-1", method: "item/commandExecution/requestApproval", summary: "rm -rf /Users/bot4", availableDecisions: ["decline"], createdAt: timestamp }],
+    pendingApprovals: [
+      { id: "approval-1", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "command-1", method: "item/commandExecution/requestApproval", summary: "rm -rf /Users/bot4", availableDecisions: ["decline"], createdAt: timestamp },
+      { id: "approval-2", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "command-2", method: "item/commandExecution/requestApproval", summary: "git push origin main", availableDecisions: ["decline"], createdAt: timestamp + 1 },
+    ],
     ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: 1_725_018_000 },
     health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" } },
   };

@@ -1,14 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Archive, CircleStop, CornerUpRight, MessageSquarePlus, Plus, Send, SquareTerminal } from "lucide-react";
 
-import type { AccountId, ApiResult, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
+import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
 import type { CoordinatorApi, MarkdownDocument } from "../api.js";
+import type { ChatTarget } from "./HomePage.js";
 import { MarkdownViewer } from "../components/MarkdownViewer.js";
+import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
 import { TranscriptItemView } from "../components/TranscriptItemView.js";
+import { TurnOptions } from "../components/TurnOptions.js";
+import { Toast } from "../components/Toast.js";
+import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
-type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval">;
+type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount">>;
 
-function initialAccount(snapshot: CoordinatorSnapshot, initialThreadId?: string | null): AccountId | null {
-  return snapshot.threads.find((thread) => thread.id === initialThreadId)?.accountId ?? snapshot.accounts[0]?.id ?? null;
+function settingsKey(accountId: AccountId | null, threadId: string | null, isDraftChat: boolean): string | null {
+  return accountId && threadId && !isDraftChat ? chatExecutionSettingsKey(accountId, threadId) : null;
+}
+
+export { normalizeExecutionSettings } from "../turnSettings.js";
+
+function initialAccount(snapshot: CoordinatorSnapshot, initialThreadId?: string | null, initialAccountId?: AccountId): AccountId | null {
+  return snapshot.threads.find((thread) => thread.id === initialThreadId)?.accountId
+    ?? snapshot.accounts.find((account) => account.id === initialAccountId)?.id
+    ?? snapshot.accounts[0]?.id
+    ?? null;
 }
 
 function threadsFor(snapshot: CoordinatorSnapshot, accountId: AccountId | null): ThreadSummary[] {
@@ -41,51 +56,178 @@ function approvalLabel(decision: string): string {
   }
 }
 
-export function ChatsPage({ snapshot, api, initialThreadId, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; onRefresh?: () => Promise<void> }) {
-  const [accountId, setAccountId] = useState<AccountId | null>(() => initialAccount(snapshot, initialThreadId));
+function limitCountdown(resetAt: number | null, now: number): string | null {
+  if (!resetAt) return null;
+  const seconds = Math.max(0, resetAt - Math.floor(now / 1_000));
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${Math.max(1, minutes)}m`;
+}
+
+function turnIdFromStart(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const turn = (value as Record<string, unknown>).turn;
+  return turn && typeof turn === "object" && !Array.isArray(turn) && typeof (turn as Record<string, unknown>).id === "string"
+    ? (turn as Record<string, string>).id
+    : undefined;
+}
+
+export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = new Set<string>(), activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = new Set<string>(), markTurnActive = () => undefined, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; onRefresh?: () => Promise<void> }) {
+  const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
+  const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
+  const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [threadId, setThreadId] = useState<string | null>(() => initialThreadId ?? threadsFor(snapshot, initialAccount(snapshot, initialThreadId))[0]?.id ?? null);
+  const [threadId, setThreadId] = useState<string | null>(() => requestedInitialThreadId ?? threadsFor(snapshot, requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId))[0]?.id ?? null);
+  const [isDraftChat, setIsDraftChat] = useState(false);
+  const [createdThread, setCreatedThread] = useState<ThreadSummary | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<ChatTarget | null>(initialTarget ?? null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
+  const [scrollRequest, setScrollRequest] = useState(0);
   const [draft, setDraft] = useState("");
+  const [models, setModels] = useState<ChatModelOption[]>([]);
+  const [executionSettings, setExecutionSettings] = useState<ChatExecutionSettings>({ permissionMode: "ask_for_approval" });
+  const [settingsByChat, setSettingsByChat] = useState<Record<string, ChatExecutionSettings>>(readChatExecutionSettings);
+  const [globalSettings, setGlobalSettings] = useState<ChatExecutionSettings>(readGlobalExecutionSettings);
   const [document, setDocument] = useState<MarkdownDocument | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<AccountId | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const lastOpenedChatKey = useRef<string | null>(null);
   const scrollPosition = useRef(0);
+  const moveDialogRef = useRef<HTMLElement>(null);
+  const moveCloseButton = useRef<HTMLButtonElement>(null);
   const compact = useCompactPicker();
-  const threads = useMemo(() => threadsFor(snapshot, accountId), [snapshot, accountId]);
-  const selectedThread = snapshot.threads.find((thread) => thread.id === threadId && thread.accountId === accountId) ?? null;
+  const threads = useMemo(() => {
+    const listed = threadsFor(snapshot, accountId);
+    return createdThread && createdThread.accountId === accountId && !listed.some((thread) => thread.id === createdThread.id) ? [...listed, createdThread] : listed;
+  }, [snapshot, accountId, createdThread]);
+  const selectedThread = snapshot.threads.find((thread) => thread.id === threadId && thread.accountId === accountId)
+    ?? (createdThread?.id === threadId && createdThread.accountId === accountId ? createdThread : null);
   const selectedAccount = snapshot.accounts.find((account) => account.id === accountId) ?? null;
   const terminalCommand = selectedAccount?.terminalCommand;
   const approvals = snapshot.pendingApprovals.filter((approval) => approval.accountId === accountId && approval.threadId === threadId);
+  const currentSettingsKey = settingsKey(accountId, threadId, isDraftChat);
 
   useEffect(() => {
+    if (!initialTarget) return;
+    setPendingTarget(initialTarget);
+    setAccountId(initialTarget.accountId);
+    setThreadId(initialTarget.threadId);
+    setIsDraftChat(false);
+  }, [initialTarget?.accountId, initialTarget?.threadId]);
+
+  useEffect(() => {
+    if (initialTarget || !initialAccountId) return;
+    setPendingTarget(null);
+    setAccountId(initialAccountId);
+    setThreadId(threadsFor(snapshot, initialAccountId)[0]?.id ?? null);
+    setIsDraftChat(false);
+  }, [initialAccountId, initialTarget, snapshot.threads]);
+
+  useEffect(() => {
+    if (isDraftChat) return;
+    if (pendingTarget) {
+      if (snapshot.threads.some((thread) => thread.accountId === pendingTarget.accountId && thread.id === pendingTarget.threadId)) setPendingTarget(null);
+      return;
+    }
     setThreadId((currentThreadId) => currentThreadId && threads.some((thread) => thread.id === currentThreadId) ? currentThreadId : threads[0]?.id ?? null);
-  }, [threads]);
+  }, [isDraftChat, pendingTarget, snapshot.threads, threads]);
 
   useEffect(() => {
-    if (!accountId || !threadId) { setItems([]); return; }
+    if (!accountId || !threadId || isDraftChat) { setItems([]); return; }
+    const openedKey = `${accountId}\u0000${threadId}`;
+    const shouldScrollToBottom = lastOpenedChatKey.current !== openedKey;
+    if (shouldScrollToBottom) lastOpenedChatKey.current = openedKey;
     let live = true;
     void api.readTranscript(accountId, threadId).then((result) => {
       if (!live) return;
       if ("error" in result && result.error) { setError(result.error.message); setItems([]); return; }
       setItems(result.data);
+      if (shouldScrollToBottom) setScrollRequest((request) => request + 1);
     }).catch(() => {
       if (!live) return;
       setError("Unable to load this chat.");
       setItems([]);
     });
     return () => { live = false; };
-  }, [api, accountId, threadId, transcriptRevision]);
+  }, [api, accountId, threadId, isDraftChat, transcriptRevision, liveTranscriptRevision]);
+
+  useLayoutEffect(() => {
+    if (!scrollRequest || !scrollRef.current) return;
+    const scroll = () => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; };
+    scroll();
+    const timer = window.setTimeout(scroll, 0);
+    return () => window.clearTimeout(timer);
+  }, [scrollRequest]);
+
+  useEffect(() => {
+    if (!accountId || (!threadId && !isDraftChat)) return;
+    const timer = window.setTimeout(() => composerRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [accountId, threadId, isDraftChat]);
+
+  useEffect(() => {
+    if (!accountId) { setModels([]); return; }
+    let live = true;
+    setModels([]);
+    void api.listModels(accountId).then((result) => {
+      if (!live || ("error" in result && result.error)) return;
+      setModels(result.data);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [accountId, api]);
+
+  useEffect(() => {
+    const fallback = models.length ? normalizeExecutionSettings(models, globalSettings) : defaultExecutionSettings(models);
+    if (!currentSettingsKey) { setExecutionSettings(fallback); return; }
+    setExecutionSettings(settingsByChat[currentSettingsKey] ?? fallback);
+  }, [currentSettingsKey, globalSettings, models, settingsByChat]);
+
+  useEffect(() => {
+    writeChatExecutionSettings(settingsByChat);
+  }, [settingsByChat]);
+
+  useEffect(() => writeGlobalExecutionSettings(globalSettings), [globalSettings]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(null), 4_500);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  const updateExecutionSettings = (next: ChatExecutionSettings) => {
+    setExecutionSettings(next);
+    setGlobalSettings(next);
+    if (currentSettingsKey) setSettingsByChat((current) => ({ ...current, [currentSettingsKey]: next }));
+  };
 
   const chooseAccount = (nextAccountId: AccountId) => {
     if (nextAccountId === accountId) { setPickerOpen((open) => !open); return; }
     setAccountId(nextAccountId);
+    setIsDraftChat(false);
     setPickerOpen(false);
   };
 
-  const chooseThread = (nextThreadId: string) => { setThreadId(nextThreadId); setPickerOpen(false); };
+  const chooseThread = (nextThreadId: string) => { setThreadId(nextThreadId); setIsDraftChat(false); setPickerOpen(false); };
+  const beginDraftChat = () => {
+    if (!accountId) return;
+    setThreadId(null);
+    lastOpenedChatKey.current = null;
+    setCreatedThread(null);
+    setItems([]);
+    setDraft("");
+    setIsDraftChat(true);
+    setPickerOpen(false);
+    setMessage(null);
+    setError(null);
+  };
   const report = (text: string) => { setError(null); setMessage(text); };
   const reportError = (text: string) => { setMessage(null); setError(text); };
   const run = async <T,>(operation: () => Promise<ApiResult<T>>, success: string, onSuccess?: (data: T) => void) => {
@@ -128,33 +270,145 @@ export function ChatsPage({ snapshot, api, initialThreadId, onRefresh = async ()
     }
   };
 
-  const latestTurnId = items.at(-1)?.turnId;
+  const sendMessage = async () => {
+    const text = draft.trim();
+    if (!accountId || !text || isWorking || (!isDraftChat && !selectedThread)) return;
+    const turnSettings = normalizeExecutionSettings(models, executionSettings);
+    try {
+      if (isDraftChat) {
+        const created = await api.startThread(accountId);
+        if ("error" in created && created.error) return reportError(created.error.message);
+        const started = await api.startTurn(accountId, created.data.id, text, turnSettings);
+        if ("error" in started && started.error) return reportError(started.error.message);
+        markTurnActive(accountId, created.data.id, turnIdFromStart(started.data));
+        setSettingsByChat((current) => ({ ...current, [chatExecutionSettingsKey(accountId, created.data.id)]: turnSettings }));
+        setGlobalSettings(turnSettings);
+        setCreatedThread(created.data);
+        setThreadId(created.data.id);
+        setIsDraftChat(false);
+        setDraft("");
+        await onRefresh();
+        setTranscriptRevision((revision) => revision + 1);
+        report("Message sent.");
+        return;
+      }
+      await run(() => api.startTurn(accountId, selectedThread!.id, text, turnSettings), "Message sent.", (result) => {
+        markTurnActive(accountId, selectedThread!.id, turnIdFromStart(result));
+        setDraft("");
+      });
+    } catch {
+      reportError("Unable to start this chat. Check that this account is connected, then try again.");
+    }
+  };
+
+  const activeTurnKey = accountId && threadId ? `${accountId}\u0000${threadId}` : "";
+  const latestTurnId = (activeTurnKey ? activeTurnIds.get(activeTurnKey) : undefined) ?? [...items].reverse().find((item) => item.turnId)?.turnId;
+  const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active"));
+  const isWorking = isThinking;
+  const canSteer = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canSteer));
+  const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
+  const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
+  const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);
+  const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
+  const waitingAssignment = selectedThread && accountId ? snapshot.workerAssignments?.find((assignment) => assignment.accountId === accountId && assignment.threadId === selectedThread.id && assignment.state === "waiting_for_limit") : undefined;
+  const limitExhausted = Boolean(selectedThread && activeTurnKey && (limitExhaustedTurnKeys.has(activeTurnKey) || waitingAssignment));
+  const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
+  const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
+
+  useEffect(() => {
+    if (!accountId || !threadId || isDraftChat || !isThinking) return;
+    const timer = window.setInterval(() => {
+      if (globalThis.document.visibilityState === "visible") setTranscriptRevision((revision) => revision + 1);
+    }, 2_500);
+    return () => window.clearInterval(timer);
+  }, [accountId, isDraftChat, isThinking, threadId]);
+
+  useEffect(() => {
+    if (!limitExhausted) return;
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [limitExhausted]);
+
+  useEffect(() => {
+    if (!moveOpen) return;
+    const priorFocus = globalThis.document.activeElement as HTMLElement | null;
+    window.setTimeout(() => moveCloseButton.current?.focus(), 0);
+    return () => priorFocus?.focus();
+  }, [moveOpen]);
+
+  const openMove = () => {
+    const first = continuationAccounts[0]?.id ?? null;
+    setMoveTarget(first);
+    setMoveOpen(true);
+  };
+
+  const moveToAccount = async () => {
+    if (!accountId || !selectedThread || !moveTarget || !api.moveThreadToAccount) return;
+    setMoving(true);
+    try {
+      const result = await api.moveThreadToAccount(accountId, selectedThread.id, moveTarget);
+      if ("error" in result && result.error) return reportError(result.error.message);
+      setCreatedThread(result.data);
+      setAccountId(moveTarget);
+      setThreadId(result.data.id);
+      setIsDraftChat(false);
+      setMoveOpen(false);
+      await onRefresh();
+      setTranscriptRevision((revision) => revision + 1);
+      report(`Continuation started on ${moveTarget}.`);
+    } catch {
+      reportError("Unable to move this chat. The original chat was kept in place.");
+    } finally {
+      setMoving(false);
+    }
+  };
   return (
-    <section className="chats-page" aria-labelledby="chats-title">
-      <header><p className="eyebrow">App-server threads</p><h1 id="chats-title">Chats</h1></header>
-      {message ? <p role="status">{message}</p> : null}{error ? <p role="alert">{error}</p> : null}
-      <div className={`chat-account-picker ${compact ? "chat-account-picker--pills" : ""}`} aria-label="macOS accounts">
-        {snapshot.accounts.map((account) => <button key={account.id} type="button" aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}>{account.id}</button>)}
-      </div>
-      <div className="chats-layout">
-        {!compact || pickerOpen ? <aside className="thread-picker" aria-label="Chats for selected account">{threads.map((thread) => <button key={thread.id} type="button" aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}>{thread.name ?? "Unnamed chat"}</button>)}</aside> : null}
-        <section className="chat-panel" aria-label="Selected chat">
-          <header className="chat-panel__header"><h2>{selectedThread?.name ?? "No chat selected"}</h2><div><button type="button" disabled={!accountId} onClick={() => accountId && void run(() => api.startThread(accountId), "New chat created.", (thread) => setThreadId(thread.id))}>New chat</button><button type="button" disabled={!selectedThread?.capabilities.canArchive || !accountId} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.")}>Archive chat</button>{terminalCommand ? <button type="button" onClick={() => void copyTerminalCommand()}>Copy open-terminal command</button> : null}</div></header>
-          {approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p><div>{approval.availableDecisions.map((decision) => {
+    <section className="chats-page" aria-label="Chats">
+      {message ? <Toast onDismiss={() => setMessage(null)}>{message}</Toast> : null}
+      {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
+      <div className="chats-workspace">
+        <nav className={`chat-account-picker ${compact ? "chat-account-picker--pills" : ""}`} aria-label="Accounts">
+          <div className="chat-account-picker__heading"><span>Accounts</span><span>{snapshot.accounts.length}</span></div>
+          {snapshot.accounts.map((account) => {
+            const threadCount = threadsFor(snapshot, account.id).length;
+            const accountThinking = snapshot.threads.some((thread) => thread.accountId === account.id && (thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`)));
+            const accountNeedsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === account.id);
+            return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><span className={accountThinking ? "chat-account-picker__activity" : ""} aria-label={accountThinking ? `${account.id} working` : undefined}><span className={`chat-account-picker__status chat-account-picker__status--${account.connection}`} aria-hidden="true" /></span><span>{account.id}</span><span className="chat-account-picker__count"><span aria-hidden="true">{threadCount}</span>{accountNeedsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span></button>;
+          })}
+        </nav>
+        {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
+          <button className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><Plus aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></button>
+          <div className="thread-picker__heading"><span>Chats</span><span>{threads.length}</span></div>
+          <div className="thread-picker__list">{threads.length ? threads.map((thread) => {
+            const name = thread.name ?? "Unnamed chat";
+            const thinking = activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`) || thread.activity === "active";
+            const needsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === thread.accountId && approval.threadId === thread.id);
+            const status = thinking ? "Thinking" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
+            return <button key={thread.id} type="button" aria-label={name} aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}><span className="thread-picker__icon">{thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <MessageSquarePlus aria-hidden="true" size={16} strokeWidth={1.75} />}</span><span className="thread-picker__copy"><strong>{name}</strong><small>{status}</small></span>{needsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} needs attention`} /> : null}</button>;
+          }) : <p className="thread-picker__empty">No chats for this account.</p>}</div>
+        </aside> : null}
+        <section className="chat-panel" aria-labelledby="selected-chat-title">
+          <header className="chat-panel__header">
+            <div className="chat-panel__title"><span className="chat-panel__account">{accountId ?? "No account"}</span><h2 id="selected-chat-title">{selectedChatName}</h2>{isThinking ? <span className="chat-thinking" aria-label="Codex is thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}</div>
+            <div className="chat-panel__tools"><button className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.")}><Archive aria-hidden="true" size={17} strokeWidth={1.75} /></button>{terminalCommand ? <button className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><SquareTerminal aria-hidden="true" size={17} strokeWidth={1.75} /></button> : null}</div>
+          </header>
+          {approvals.length ? <div className="chat-approvals">{approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><div className="chat-approval__copy"><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p></div><div className="chat-approval__actions">{approval.availableDecisions.map((decision) => {
             const permissions = isPermissionGrant(decision) ? approval.requestedPermissions : undefined;
             const missingPermissions = isPermissionGrant(decision) && (!permissions || Object.keys(permissions).length === 0);
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
-          })}</div></section>)}
-          <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef}>{items.map((item) => <TranscriptItemView item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />)}</div>
-          <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); if (selectedThread && accountId && draft.trim()) void run(() => api.startTurn(accountId, selectedThread.id, draft), "Message sent."); }}>
-            <label htmlFor="message">Message</label><textarea id="message" value={draft} onChange={(event) => setDraft(event.target.value)} />
-            <button className="primary-button" type="submit" disabled={!selectedThread?.capabilities.canStartTurn}>Send</button>
-            <button type="button" disabled={!selectedThread?.capabilities.canSteer || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.steerTurn(accountId, selectedThread.id, latestTurnId, draft), "Turn steered.")}>Steer</button>
-            <button type="button" disabled={!selectedThread?.capabilities.canInterrupt || !accountId || !latestTurnId} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}>Interrupt</button>
+          })}</div></section>)}</div> : null}
+          <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div>
+          <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
+            <div className="chat-compose__field"><textarea ref={composerRef} id="message" aria-label="Message" rows={2} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
+            <TurnOptions models={models} settings={executionSettings} onChange={updateExecutionSettings} />
+            {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>Waiting for limit to reset{limitCountdown(exhaustedLimit?.resetsAt ?? null, clock) ? ` in ${limitCountdown(exhaustedLimit?.resetsAt ?? null, clock)}` : ""} before resuming.</p><button type="button" onClick={openMove}>Move to another account</button></section> : null}
+            <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><button type="button" aria-label="Steer" title="Steer" disabled={!canSteer} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.steerTurn(accountId, selectedThread.id, latestTurnId, draft), "Turn steered.")}><CornerUpRight aria-hidden="true" size={16} strokeWidth={1.75} /></button><button type="button" aria-label="Interrupt" title="Interrupt" disabled={!canInterrupt} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}><CircleStop aria-hidden="true" size={16} strokeWidth={1.75} /></button></div><button className="primary-button chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={!canSend}><Send aria-hidden="true" size={16} strokeWidth={2} /></button></div>
           </form>
         </section>
       </div>
       {document ? <MarkdownViewer document={document} onClose={closeMarkdown} /> : null}
+      {moveOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !moving) setMoveOpen(false); }}><section className="launch-dialog chat-move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-chat-title" tabIndex={-1} ref={moveDialogRef} onKeyDown={(event) => { if (event.key === "Escape" && !moving) setMoveOpen(false); }}><OverlayCloseButton ref={moveCloseButton} disabled={moving} onClick={() => setMoveOpen(false)} /><h2 id="move-chat-title">Move to another account</h2><p>The original chat will remain on {accountId}. Swarm will attach its JSONL to a new chat on the selected account and ask it to continue from that session.</p>{continuationAccounts.length ? <fieldset className="chat-move-dialog__accounts"><legend>New chat account</legend>{continuationAccounts.map((account) => <label key={account.id}><input type="radio" name="continuation-account" value={account.id} checked={moveTarget === account.id} onChange={() => setMoveTarget(account.id)} />{account.id}</label>)}</fieldset> : <p>No other signed-in account is available.</p>}<div className="dialog-actions"><button className="primary-button" type="button" disabled={!moveTarget || moving} onClick={() => void moveToAccount()}>{moving ? "Moving…" : `Move to ${moveTarget ?? "account"}`}</button></div></section></div> : null}
     </section>
   );
 }

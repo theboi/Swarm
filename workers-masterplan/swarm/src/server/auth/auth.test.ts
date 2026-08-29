@@ -52,14 +52,14 @@ describe("authentication primitives", () => {
     await expect(sessions.consumeChallenge(expiring.id, 301_000)).resolves.toBeUndefined();
   });
 
-  it("persists signed sessions across restart, atomically renews idle expiry, and expires after twelve idle hours", async () => {
+  it("persists signed sessions across restart, atomically renews idle expiry, and expires after thirty idle days", async () => {
     const persisted: Record<string, unknown> = {};
     let writes = 0;
     const first = new SessionStore("session-secret", { persistence: persisted, persist: async () => { writes += 1; } });
     const cookie = await first.createSession("claudio@example.com", 0);
     const restarted = new SessionStore("session-secret", { persistence: persisted });
     expect((await restarted.useSession(cookie, 1000))?.email).toBe("claudio@example.com");
-    expect(await restarted.useSession(cookie, 12 * 60 * 60 * 1_000 + 1_001)).toBeUndefined();
+    expect(await restarted.useSession(cookie, 30 * 24 * 60 * 60 * 1_000 + 1_001)).toBeUndefined();
     expect(writes).toBeGreaterThan(0);
   });
 

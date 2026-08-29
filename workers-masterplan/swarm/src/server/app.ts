@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { createApiRouter } from "./http/routes.js";
+import { createTerminalControlApp } from "./http/terminalControl.js";
 import { BrowserHub } from "./realtime/browserHub.js";
 
 export interface CoordinatorAppDependencies {
@@ -17,6 +18,7 @@ export interface CoordinatorAppDependencies {
 export interface CoordinatorApp {
   app: express.Express;
   server: Server;
+  terminalServer: Server;
   hub: BrowserHub;
   start(): Promise<{ host: string; port: number }>;
   shutdown(): Promise<void>;
@@ -37,12 +39,14 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
     app.use((_request, response) => response.sendFile(resolve(staticDir, "index.html")));
   }
   const server = createServer(app);
+  const terminalServer = createServer(createTerminalControlApp(dependencies.services));
   const hub = new BrowserHub({ server, sessions: dependencies.services.sessions, allowedOrigins: dependencies.services.allowedOrigins, snapshot: dependencies.services.snapshot });
   let stopping: Promise<void> | undefined;
 
   return {
     app,
     server,
+    terminalServer,
     hub,
     async start() {
       await new Promise<void>((resolveListen, rejectListen) => {
@@ -52,6 +56,18 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
         server.once("listening", onListening);
         server.listen(dependencies.services.config.port, dependencies.services.config.host);
       });
+      try {
+        await new Promise<void>((resolveListen, rejectListen) => {
+          const onError = (error: Error) => { terminalServer.off("listening", onListening); rejectListen(error); };
+          const onListening = () => { terminalServer.off("error", onError); resolveListen(); };
+          terminalServer.once("error", onError);
+          terminalServer.once("listening", onListening);
+          terminalServer.listen(dependencies.services.config.terminalPort, "127.0.0.1");
+        });
+      } catch (error) {
+        await closeServer(server);
+        throw error;
+      }
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("Coordinator did not bind a loopback listener");
       return { host: dependencies.services.config.host, port: address.port };
@@ -61,6 +77,7 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
         await dependencies.shutdown();
         await hub.close();
         await dependencies.flush();
+        await closeServer(terminalServer);
         await closeServer(server);
       })();
       return stopping;

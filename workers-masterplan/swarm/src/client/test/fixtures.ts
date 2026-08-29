@@ -2,7 +2,6 @@ import type { CoordinatorSnapshot, TranscriptItem } from "../../shared/contracts
 
 export const snapshot: CoordinatorSnapshot = {
   generatedAt: 1_725_000_000,
-  activeTurnLimit: 3,
   accounts: [
     {
       id: "bot3",

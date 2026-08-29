@@ -1,4 +1,4 @@
-import type { PromptTemplate, TaskKind, TaskManifest, TaskManifestTask } from "./contracts.js";
+import { ACCOUNT_IDS, type PromptTemplate, type TaskKind, type TaskManifest, type TaskManifestTask } from "./contracts.js";
 
 export type ManifestValidationError =
   | { code: "MANIFEST_INVALID"; field: string; reason: "required" | "type" | "value" | "duplicate" }
@@ -88,7 +88,7 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
     if (typeof value.preferredAccount !== "string") {
       return { code: "MANIFEST_INVALID", field: `${prefix}.preferredAccount`, reason: "type" };
     }
-    if (!/^bot[1-8]$/.test(value.preferredAccount)) {
+    if (!(ACCOUNT_IDS as readonly string[]).includes(value.preferredAccount)) {
       return { code: "MANIFEST_INVALID", field: `${prefix}.preferredAccount`, reason: "value" };
     }
   }

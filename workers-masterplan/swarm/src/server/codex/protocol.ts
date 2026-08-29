@@ -1,4 +1,5 @@
-import type { AccountId } from "../../shared/contracts.js";
+import { LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings } from "../../shared/contracts.js";
+import { isAbsolute, resolve } from "node:path";
 
 /** The Codex app-server wire protocol deliberately omits a JSON-RPC version field. */
 export type AppServerId = number | string;
@@ -48,7 +49,9 @@ export const APP_SERVER_METHODS = [
   "turn/start",
   "turn/steer",
   "turn/interrupt",
+  "model/list",
   "fs/readFile",
+  "fs/writeFile",
 ] as const;
 
 export type AppServerMethod = (typeof APP_SERVER_METHODS)[number];
@@ -99,12 +102,16 @@ export const APP_SERVER_NOTIFICATION_METHODS = new Set<string>([
   "thread/realtime/closed", "windows/worldWritableWarning", "windowsSandbox/setupCompleted", "account/login/completed",
 ]);
 
-export interface SafeTurnSandboxPolicy {
+export interface WorkspaceWriteTurnSandboxPolicy {
   type: "workspaceWrite";
   writableRoots: [string];
   networkAccess: true;
   excludeTmpdirEnvVar: true;
   excludeSlashTmp: true;
+}
+
+export interface FullAccessTurnSandboxPolicy {
+  type: "dangerFullAccess";
 }
 
 export interface SafeThreadSettings {
@@ -116,25 +123,43 @@ export interface SafeThreadSettings {
 
 export interface SafeTurnSettings {
   cwd: string;
-  approvalPolicy: "untrusted";
+  approvalPolicy: "untrusted" | "on-request" | "never";
   approvalsReviewer: "user";
-  sandboxPolicy: SafeTurnSandboxPolicy;
+  sandboxPolicy: WorkspaceWriteTurnSandboxPolicy | FullAccessTurnSandboxPolicy;
+  model?: string;
+  effort?: string;
+  serviceTier?: string;
 }
 
 export function clonePath(account: AccountId): string {
   return `/Users/${account}/Dev/EdenMind`;
 }
 
-export function safeThreadSettings(account: AccountId): SafeThreadSettings {
-  const cwd = clonePath(account);
+/** The local account works in the coordinator checkout; bot accounts stay in their isolated clones. */
+export function workspaceRoot(account: AccountId, localWorkspaceRoot?: string): string {
+  if (account !== LOCAL_ACCOUNT_ID || !localWorkspaceRoot) return clonePath(account);
+  if (!isAbsolute(localWorkspaceRoot)) throw new Error("Local workspace root must be absolute");
+  return resolve(localWorkspaceRoot);
+}
+
+export function safeThreadSettings(account: AccountId, localWorkspaceRoot?: string): SafeThreadSettings {
+  const cwd = workspaceRoot(account, localWorkspaceRoot);
   return { cwd, approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
 }
 
-export function safeTurnSettings(account: AccountId): SafeTurnSettings {
-  const cwd = clonePath(account);
+export function safeTurnSettings(account: AccountId, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {
+  const cwd = workspaceRoot(account, localWorkspaceRoot);
+  const overrides = {
+    ...(selected.model ? { model: selected.model } : {}),
+    ...(selected.effort ? { effort: selected.effort } : {}),
+    ...(selected.serviceTier ? { serviceTier: selected.serviceTier } : {}),
+  };
+  if (selected.permissionMode === "full_access") {
+    return { cwd, approvalPolicy: "never", approvalsReviewer: "user", sandboxPolicy: { type: "dangerFullAccess" }, ...overrides };
+  }
   return {
     cwd,
-    approvalPolicy: "untrusted",
+    approvalPolicy: selected.permissionMode === "ask_me" ? "on-request" : "untrusted",
     approvalsReviewer: "user",
     sandboxPolicy: {
       type: "workspaceWrite",
@@ -143,6 +168,7 @@ export function safeTurnSettings(account: AccountId): SafeTurnSettings {
       excludeTmpdirEnvVar: true,
       excludeSlashTmp: true,
     },
+    ...overrides,
   };
 }
 

@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from "react";
 
 import type { CoordinatorApi } from "../api.js";
+import { Toast } from "../components/Toast.js";
 
 const genericError = "Unable to sign in. Check your details and try again.";
+const invalidCodeError = "That authentication code couldn't be verified. Refresh the page to start again.";
+const throttledError = "Too many sign-in attempts. Wait up to one hour before trying again.";
 
 export function LoginPage({ api, onAuthenticated }: { api: Pick<CoordinatorApi, "startLogin" | "completeLogin">; onAuthenticated: () => void }) {
   const [email, setEmail] = useState("");
@@ -16,7 +19,7 @@ export function LoginPage({ api, onAuthenticated }: { api: Pick<CoordinatorApi, 
     event.preventDefault(); setSubmitting(true); setError(null);
     try {
       const result = await api.startLogin({ email, password });
-      if ("error" in result) return setError(genericError);
+      if ("error" in result && result.error) return setError(result.error.code === "AUTH_THROTTLED" ? throttledError : genericError);
       setChallengeId(result.data.challengeId);
     } catch {
       setError(genericError);
@@ -31,7 +34,8 @@ export function LoginPage({ api, onAuthenticated }: { api: Pick<CoordinatorApi, 
     setSubmitting(true); setError(null);
     try {
       const result = await api.completeLogin({ challengeId, code });
-      if ("error" in result || !result.data.authenticated) return setError(genericError);
+      if ("error" in result && result.error) return setError(result.error.code === "AUTH_THROTTLED" ? throttledError : invalidCodeError);
+      if (!result.data.authenticated) return setError(invalidCodeError);
       onAuthenticated();
     } catch {
       setError(genericError);
@@ -44,7 +48,7 @@ export function LoginPage({ api, onAuthenticated }: { api: Pick<CoordinatorApi, 
     <main className="login-page" aria-labelledby="login-title">
       <section className="login-card">
         <p className="eyebrow">EdenMind Swarm</p><h1 id="login-title">Sign in</h1><p>Use your coordinator account to continue.</p>
-        {error ? <p role="alert" className="form-error">{error}</p> : null}
+        {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
         {challengeId ? (
           <form onSubmit={complete}>
             <label htmlFor="totp-code">Authentication code</label>

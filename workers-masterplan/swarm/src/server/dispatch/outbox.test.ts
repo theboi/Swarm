@@ -91,4 +91,13 @@ describe("DispatchOutbox", () => {
     expect(outbox.get("d2")?.state).toBe("accepted");
     await expect(outbox.completeAcceptedForThread("bot3", "thread-1", 11)).resolves.toBeUndefined();
   });
+
+  it("moves an accepted launch to its continuation thread", async () => {
+    const outbox = new DispatchOutbox([{ id: "d1", clientUserMessageId: "m1", taskId: "A1", accountId: "bot6", threadId: "old", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null }]);
+
+    await outbox.transferAcceptedThread("bot6", "old", "bot8", "next", "m2", 20);
+
+    expect(outbox.get("d1")).toMatchObject({ accountId: "bot8", threadId: "next", clientUserMessageId: "m2", state: "accepted", updatedAt: 20 });
+    await expect(outbox.completeAcceptedForThread("bot6", "old")).resolves.toBeUndefined();
+  });
 });
