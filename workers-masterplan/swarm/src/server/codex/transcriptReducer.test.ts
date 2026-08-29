@@ -50,6 +50,18 @@ describe("transcriptReducer", () => {
     expect(state.items[0]?.payload.aggregatedOutput).toBe("first second second");
   });
 
+  it("preserves authoritative server order when an older turn has no timestamp", () => {
+    const state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [
+        { id: "turn-old", startedAt: null, itemsView: "full", items: [{ type: "agentMessage", id: "old", text: "old final answer" }] },
+        { id: "turn-new", startedAt: 20, itemsView: "full", items: [{ type: "agentMessage", id: "new", text: "new final answer" }] },
+      ],
+    });
+
+    expect(state.items.map((item) => item.id)).toEqual(["old", "new"]);
+  });
+
   it("streams reasoning-summary deltas into the live reasoning item without exposing raw reasoning text", () => {
     let state = reduceTranscriptEvent(initialTranscriptState, {
       method: "item/started",

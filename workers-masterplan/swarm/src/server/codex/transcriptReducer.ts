@@ -104,8 +104,10 @@ function upsert(state: TranscriptState, item: TranscriptItem): TranscriptState {
   const index = state.items.findIndex((candidate) => itemKey(candidate) === key);
   const replacement = index < 0 ? item : { ...item, createdAt: state.items[index].createdAt ?? item.createdAt };
   const items = index < 0 ? [...state.items, replacement] : state.items.map((candidate, candidateIndex) => candidateIndex === index ? replacement : candidate);
-  // Stable sort preserves the app-server's exact item order when timestamps are equal or absent.
-  items.sort((left, right) => (left.createdAt ?? Number.MAX_SAFE_INTEGER) - (right.createdAt ?? Number.MAX_SAFE_INTEGER));
+  // A missing timestamp is not evidence that an older item is newest. When all
+  // timestamps are known we may normalize chronologically; otherwise the
+  // app-server event/history order remains authoritative.
+  if (items.every((candidate) => candidate.createdAt !== null)) items.sort((left, right) => left.createdAt! - right.createdAt!);
   return { ...state, items };
 }
 
@@ -134,7 +136,8 @@ export function replaceTranscriptFromThreadRead(state: TranscriptState, history:
   if (!isFullThreadHistory(history)) return state;
   const scopeItems = state.items.filter((item) => item.accountId !== history.accountId || item.threadId !== history.threadId);
   let next: TranscriptState = { ...state, items: scopeItems };
-  const turns = [...history.turns].sort((left, right) => (left.startedAt ?? Number.MAX_SAFE_INTEGER) - (right.startedAt ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
+  const turns = [...history.turns];
+  if (turns.every((turn) => turn.startedAt !== null)) turns.sort((left, right) => left.startedAt! - right.startedAt! || left.id.localeCompare(right.id));
   for (const turn of turns) {
     const createdAt = turn.startedAt === null ? null : turn.startedAt * 1_000;
     for (const item of turn.items) next = upsert(next, normalizeItem(history, turn.id, item, createdAt));
