@@ -16,6 +16,30 @@ UI-design launch packet contain one substituted **Account-local runtime
 isolation** block. Existing compatibility previews remain untouched until the
 coordinator explicitly authorizes their cutover.
 
+## Launcher availability and bootstrap authority
+
+“Launcher” names the deterministic procedure in this document. It does not
+mean that a repository wrapper script must already exist.
+
+- Use a repository-provided account-isolated helper when one exists and
+  satisfies this contract.
+- If no helper exists, a worker whose brief already authorizes starting the
+  account-local runtime may execute the procedure directly with explicit
+  pinned-tool commands after completing the identity, path, namespace, and
+  full-port preflight. This is an authorized deterministic bootstrap, not an
+  ad hoc manual launch.
+- A UI-design worker may start its required isolated review dependencies under
+  that authority. It does not acquire ownership of shared launcher
+  infrastructure merely because a convenience wrapper is absent.
+- Record the exact redacted commands and effective names, paths, ports, and
+  origins in the handoff so the procedure is reproducible.
+
+A missing convenience wrapper alone is not a blocker. Block only when the
+procedure cannot satisfy this contract—for example, the identity is unknown or
+mismatched, an assigned port is occupied, the complete port inventory cannot
+be derived, the pinned tool cannot scope the generated workdir/network, or an
+operation would mutate tracked configuration or another runtime.
+
 ## Locked EdenMind allocation
 
 Runtime identity follows the macOS account UID, not the worker ID:
@@ -57,14 +81,16 @@ does not authorize leaving another port shared.
 | Identity | Account `<ACCOUNT>` has validated UID `<UID>`, slot `<SLOT>`, offset `<OFFSET>`, and runtime ID `u<UID>`; the worker ID is not a runtime identity. |
 | Ports | Client `<CLIENT_PORT>`, API `<API_PORT>`, Supabase `<SUPABASE_PORTS>`, and every other enabled numeric port equal the tracked template value plus `<OFFSET>`; no dynamic/free-port fallback is allowed. |
 | Namespaces | Supabase project `edenmind-u<UID>`, Docker network `supabase_network_edenmind-u<UID>`, container/volume/cache names, ignored generated workdir, and auth cookie `edenmind-auth-u<UID>` are distinct for this runtime. |
-| Configuration | Render the tracked `supabase/config.toml` into the ignored account-local workdir; use the pinned CLI with explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. |
+| Configuration | Use an existing account-isolated helper or direct explicit pinned-tool commands; render the tracked `supabase/config.toml` into the ignored account-local workdir; use explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. |
 | Safety | Validate identity, paths, and every assigned port before mutation. A conflict fails before Docker/Supabase changes. Start, stop, seed, reset, and clean only the exact `u<UID>` namespace; never alter another account's runtime or an existing compatibility preview. |
 | Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. A redirect or sign-in-page `200` is not readiness. |
 
-Replace every placeholder with an exact value. If the repository cannot satisfy
-one row, mark the runtime `blocked` and return the missing tooling or contract
-to the coordinator. Do not weaken the row or use another account's healthy
-service as a substitute.
+Replace every placeholder with an exact value. A missing wrapper is not failure
+to satisfy a row: use the authorized direct procedure above. If neither an
+existing helper nor explicit pinned-tool commands can satisfy one row, mark the
+runtime `blocked` and return the missing capability or contract to the
+coordinator. Do not weaken the row or use another account's healthy service as
+a substitute.
 
 ## Configuration and ownership rules
 
@@ -105,5 +131,6 @@ keys, JWTs, refresh tokens, or cookie values.
 | Reuse `edenmind-local` or one Docker network | Namespace project, network, containers, volumes, caches, and workdir with `u<UID>`. |
 | Assume ports isolate cookies | Use a distinct runtime cookie name and prove same-runtime equality/cross-runtime inequality. |
 | Edit tracked Supabase config locally | Render it into the ignored account-local workdir. |
+| Treat a missing wrapper as a review blocker | Execute the deterministic procedure directly when the brief authorizes runtime operation; record the redacted commands. |
 | Stop another stack to free a port | Report the collision; never mutate another account's runtime. |
 | Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary. |

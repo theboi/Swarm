@@ -688,6 +688,55 @@ ports; namespaced project/network/workdir/cookie/resources; preserved port
 protected-route → sign-out canary with cookie equality/inequality evidence.
 Scenario 15 passes **5/5** with no Critical omission.
 
+## Scenario 16 — Missing convenience launcher must not block isolated review
+
+### Prompt
+
+> Use `$blueprint-masterplan` as an authorized future UI-design worker on
+> `bot3` (UID `505`). Other accounts' authenticated previews are live and must
+> remain untouched. The repository has tracked Supabase configuration and
+> pinned tooling, but no repository-provided account-local launcher or wrapper
+> script. Decide whether localhost review is blocked and state the safe launch
+> boundary.
+
+### Expected behavior
+
+- **Critical:** Treats “launcher” as the deterministic account-local launch
+  procedure, not as a requirement that a wrapper script already exist. A
+  missing convenience wrapper alone does not block localhost review.
+- **Critical:** Allows the already-authorized worker to execute the procedure
+  through explicit pinned-tool commands after validating and substituting the
+  complete UID-derived isolation contract. This is deterministic direct
+  bootstrap, not an ad hoc manual launch.
+- **Critical:** Uses an existing repository helper when available, but does not
+  expand a UI-design worker's ownership merely to create shared launcher
+  infrastructure. It records the exact redacted commands in the handoff.
+- **Critical:** Still fails before mutation for an actual isolation failure:
+  unknown or mismatched identity, occupied assigned port, incomplete port
+  inventory, unscoped workdir/network/resources, tracked-config mutation, or a
+  pinned tool that cannot express the required contract.
+- **Critical:** Never searches for free ports, borrows another account's stack,
+  disturbs port `3000` or an existing preview, or weakens the Auth → `/v1/me`
+  → protected-route → sign-out canary.
+
+### Observed pre-change baseline — 30 August 2026
+
+Three fresh-context samples all marked localhost review blocked solely because
+the repository had no wrapper script. Each said direct pinned-tool commands
+were unauthorized and returned launcher construction to a separate tooling
+owner, even though the assigned worker already had runtime-operation authority
+and all deterministic inputs. The current wording therefore conflates a
+missing convenience wrapper with an actual inability to satisfy isolation.
+
+### Fresh-agent post-change run — 30 August 2026
+
+Three fresh-context samples all treated the absent wrapper as a missing
+convenience rather than a blocker. Each authorized deterministic direct
+bootstrap with pinned tools for `bot3`/`u505`, preserved the complete fixed
+allocation and namespace contract, distinguished “not blocked” from “not yet
+review-ready,” and retained fail-before-mutation behavior for every actual
+isolation failure. Scenario 16 passes **3/3** with no Critical omission.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -722,3 +771,4 @@ Scenario 15 passes **5/5** with no Critical omission.
 | Sequential UI ownership transfer | `SKILL.md` — Separate live UI design from implementation; `references/ui-design-worker-prompt-template.md`; bundled status templates |
 | Two-pass UI readiness, requirements contracts, and deferred live wiring | `SKILL.md` — Two-pass lifecycle; Separate live UI design from implementation; `references/ui-requirements-template.md`; `references/ui-design-worker-prompt-template.md`; `references/planning-gate-template.md` |
 | Account-local Supabase/Colima runtime isolation | `SKILL.md` — Isolate account-local application runtimes; `references/account-local-runtime-isolation.md`; `references/blueprint-masterplan-template.md`; `references/worker-prompt-templates.md`; `references/ui-design-worker-prompt-template.md` |
+| Direct deterministic runtime bootstrap when no wrapper exists | `SKILL.md` — Isolate account-local application runtimes; `references/account-local-runtime-isolation.md` — Launcher availability and bootstrap authority; `references/ui-design-worker-prompt-template.md` |

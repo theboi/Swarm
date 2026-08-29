@@ -95,11 +95,15 @@ functional change, record the named decision in `<STATUS_PATH>` and
 Edit the actual application, reusing its established components and tokens;
 do not create a competing component library or token system. Run
 `<ESTABLISHED_DEV_SERVER_COMMAND>`, publish the localhost URL to the user, and
-keep the server available while they review the work. Use the repository's
-account-isolated launcher and assigned ports; prove every listener and local
-container belongs to the current worker account, and stop on an occupied shared
-port or missing required launcher instead of borrowing another account's
-healthy process. Start every access dependency required by the repository's
+keep the server available while they review the work. Use a repository
+account-isolated helper when present; when absent, execute the deterministic
+account-local procedure directly with explicit pinned-tool commands after the
+complete preflight. A missing convenience wrapper alone is not a blocker and
+does not expand this worker's ownership to shared launcher infrastructure.
+Prove every listener and local container belongs to the current worker account,
+and stop on an occupied assigned port or an inability to satisfy the isolation
+contract instead of borrowing another account's healthy process. Start every
+access dependency required by the repository's
 local setup, including local authentication/Supabase, APIs, or seed data even
 when the presentation uses fixture content. Verify that the client Supabase
 origin and the API Supabase origin, issuer, and JWKS endpoint identify the same
