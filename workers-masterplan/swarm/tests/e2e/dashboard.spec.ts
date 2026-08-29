@@ -25,7 +25,7 @@ test.describe("Home dashboard", () => {
       await signIn(page);
 
       await expect(page.locator(".app-nav")).toHaveAttribute("data-variant", viewport.navigationVariant);
-      await expect(page.getByText("Public access starts at 10:00")).toBeVisible();
+      await expect(page.getByText(/Public access starts/i)).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Review launch for U1" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Blocked work" })).toBeVisible();
       await expect(page.getByText("I0 · Integration")).toBeVisible();
