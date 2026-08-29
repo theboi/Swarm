@@ -41,10 +41,14 @@ describe("HTTP coordinator API", () => {
     expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4311/api/v1/accounts/bot3/terminal", expect.objectContaining({ method: "POST", credentials: "include" }));
   });
 
-  it("refuses terminal control from a tunneled dashboard", async () => {
-    vi.stubGlobal("window", { location: { protocol: "https:", hostname: "swarm.example.test", port: "" } });
+  it("keeps terminal control on the same Tailscale host and adjacent control port", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("window", { location: { protocol: "http:", hostname: "100.90.80.70", port: "4310" } });
 
-    await expect((createHttpCoordinatorApi() as unknown as { openTerminal(accountId: string): Promise<unknown> }).openTerminal("bot3")).rejects.toThrow(/local Swarm dashboard/i);
+    await (createHttpCoordinatorApi() as unknown as { openTerminal(accountId: string): Promise<unknown> }).openTerminal("bot3");
+
+    expect(fetch).toHaveBeenCalledWith("http://100.90.80.70:4311/api/v1/accounts/bot3/terminal", expect.objectContaining({ method: "POST", credentials: "include" }));
   });
 
   it("reconnects an account through the authenticated account route", async () => {
