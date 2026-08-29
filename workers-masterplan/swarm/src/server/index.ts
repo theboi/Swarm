@@ -40,7 +40,7 @@ import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintE
 import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
-import { executionLaunchMetadata } from "./tasks/launchMetadata.js";
+import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
 import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 
@@ -334,7 +334,7 @@ async function createRuntime(config: SwarmConfig) {
   const allowedOrigins = () => dashboardOrigins(config.port, config.host);
   const createPrompt = async (task: TaskNode, id: AccountId) => {
     const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task) : {};
-    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...execution, ...launchGitMetadata(id, workspaceFor(id)), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...taskArtifactLaunchMetadata(task, nodes), ...execution, ...launchGitMetadata(id, workspaceFor(id)), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
   };
   const launchAccounts = async () => {
     const current = accountSnapshot();

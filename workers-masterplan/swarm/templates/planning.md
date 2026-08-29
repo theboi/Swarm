@@ -6,25 +6,25 @@ Read these repository authorities from the account's EdenMind clone before actin
 - Worker status: `{{STATUS_PATH}}`
 - Task specification destination: `{{SPECIFICATION_PATH}}`
 - Implementation plan destination: `{{IMPLEMENTATION_PLAN_PATH}}`
+- Planned prerequisites:
+  {{PLANNED_PREREQUISITES}}
+- UI requirements contract: `{{UI_REQUIREMENTS_PATH}}`
+- Presentation handoff: `{{UI_HANDOFF_PATH}}`
 
 You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is a planning-only launch. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
 
-Read the MVP3 Implementation Masterplan together with the Business Masterplan and the Product Spec Masterplan. Constantly commit, push to main and pull changes from main regularly. Unless explicitly stated in the masterplans, continue until you have finished WRITING SPEC AND IMPLEMENTATION PLANS for your assigned task. During execution, use subagents: Terra High/Xhigh for execution depending on difficulty of implementation.
+Read the MVP3 Implementation Masterplan together with the Business Masterplan and the Product Spec Masterplan. All planning happens in Pass 1. Confirm every planned prerequisite is reachable from `origin/main` before editing. Treat missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`. Ask the user focused questions when a missing decision would materially change the approved planning boundary.
 
-Confirm every listed planning prerequisite is reachable from `origin/main` before editing. Treat any missing, stale, or local-only evidence as a blocker and report it through the worker status rather than guessing.
+Produce the worker-authored specification at `{{SPECIFICATION_PATH}}` and detailed implementation plan at `{{IMPLEMENTATION_PLAN_PATH}}`. Record an evidence-backed product-specification impact update or no-impact finding, update stable authorities, and propagate approved contract changes through owned downstream documents. When this is a Layer 3 live-wiring plan, consume both UI artifacts, map every UI requirement to its producer plan, and return a missing functional contract to its owning upstream planner for reconciliation.
 
-During this planning phase:
+Do not implement product code, UI, migrations, or runtime behavior in this phase. A planning handoff never authorizes ordinary execution: every ordinary and UI Pass 1 artifact must be reconciled in the global planning receipt first. Continue until you have finished WRITING SPEC AND IMPLEMENTATION PLANS for your assigned task. Use Terra High/Xhigh for planning according to difficulty.
 
-1. Inspect existing foundations and the authoritative task context.
-2. Produce the worker-authored specification at `{{SPECIFICATION_PATH}}` and detailed implementation plan at `{{IMPLEMENTATION_PLAN_PATH}}`.
-3. Record an evidence-backed product-specification impact update or no-impact finding, update required stable authorities, and propagate approved changes to affected downstream worker artifacts through their owners.
-4. Update `{{STATUS_PATH}}` with the inspected `origin/main` commit, decisions, prerequisites, verification, handoff inputs, and remote-reachability proof.
-5. At each coherent planning checkpoint, run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before continuing.
+## Direct-main lifecycle
 
-Write the implementation plan so its collision-safe owned tasks can be handed to Terra subagents and, where the Blueprint permits independent lanes, worked in parallel. Ask the user focused questions whenever a missing decision would materially change the specification or execution split; record each answer in the appropriate authority before proceeding.
+- Checkout mode: `{{CHECKOUT_MODE}}`; shared-checkout lock: `{{MAIN_MUTATION_LOCK}}`; cross-clone push queue: `{{MAIN_PUSH_QUEUE}}`.
+- In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock before every filesystem or Git/index mutation and hold it through remote-reachability proof.
+- In `independent_main_clone` mode, do not impose a global edit lock; use the named push queue for reconciliation, affected verification, push, and remote ancestry proof.
+- At each independently testable planning checkpoint, run focused verification, stage only owned paths (staging only owned paths), commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability.
+- Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.
 
-If this planning handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:` so the coordinator can flag it for review.
-
-Do not implement product code, UI, migrations, or runtime behavior in this phase. Planning is complete only after the specification, implementation plan, authority synchronization (or no-impact evidence), downstream/upstream propagation, status update, and remote-reachability proof are integrated on `origin/main`.
-
-Hand off exact commits, checks, limitations, and execution inputs, then stop.
+If this planning handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:`. Hand off exact commits, checks, limitations, UI requirement mappings where applicable, and execution inputs. {{PHASE_TERMINAL_CONDITION}}

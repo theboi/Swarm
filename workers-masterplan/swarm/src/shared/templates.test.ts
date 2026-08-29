@@ -14,6 +14,10 @@ describe("canonical worker prompts", () => {
     expect(prompt).toContain("Its phase is `{{PHASE}}`; this is a planning-only launch.");
     expect(prompt).toContain("Do not implement product code, UI, migrations, or runtime behavior in this phase.");
     expect(prompt).toContain("Ask the user focused questions");
+    expect(prompt).toContain("{{PLANNED_PREREQUISITES}}");
+    expect(prompt).toContain("{{UI_REQUIREMENTS_PATH}}");
+    expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
+    expect(prompt).toContain("All planning happens in Pass 1");
     expect(prompt).not.toContain("ask me questions");
   });
 
@@ -22,15 +26,27 @@ describe("canonical worker prompts", () => {
     expect(prompt).toContain("Planning-gate receipt: `{{PLANNING_GATE_PATH}}`");
     expect(prompt).toContain("Its phase is `{{PHASE}}`; this is an execution-only launch.");
     expect(prompt).toContain("Confirm every listed execution prerequisite, planning artifact, and planning-gate receipt is reachable from `origin/main`");
-    expect(prompt).toContain("ask the user questions when needed.");
+    expect(prompt).toContain("{{UI_REQUIREMENTS_PATH}}");
+    expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
+    expect(prompt).toContain("live wiring");
+    expect(prompt).toContain("Ask the user focused questions");
     expect(prompt).not.toContain("ask me questions");
   });
 
   it("includes the user's authority and UI-only instructions in UI launches", async () => {
     const prompt = await readTemplate("ui.md");
-    expect(prompt).toContain("Task specification: `{{SPECIFICATION_PATH}}`");
+    expect(prompt).toContain("Upstream specification: `{{SPECIFICATION_PATH}}`");
     expect(prompt).toContain("Its phase is `{{PHASE}}`; this is a UI-only launch.");
     expect(prompt).toContain("Confirm every listed UI prerequisite is reachable from `origin/main`");
-    expect(prompt).toContain("the user will say which parts require changing.");
+    const checklist = `**Mandatory pre-edit source-read checklist** — do not abbreviate:
+- [ ] Completely read \`claude-design/codex/AGENTS.md\`.
+- [ ] Completely read \`claude-design/codex/system-prompt.md\`.
+- [ ] Completely read every relevant procedure under \`claude-design/codex/skills/\`.
+- [ ] Completely read \`.agents/skills/better-ui/SKILL.md\`.`;
+    expect(prompt.split(checklist).length - 1).toBe(1);
+    expect(prompt).toContain("{{UI_REQUIREMENTS_PATH}}");
+    expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
+    expect(prompt).toContain("fixture/mock-backed state");
+    expect(prompt).toContain("Do not add or change live wiring");
   });
 });
