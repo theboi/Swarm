@@ -50,6 +50,24 @@ describe("blueprint evidence", () => {
     expect(readiness.find((item) => item.taskId === "P2")?.blockingCodes).toEqual([]);
   });
 
+  it("treats a worker-authored integrated planning handoff as complete for downstream planning", async () => {
+    const planningManifest: TaskManifest = {
+      ...manifest,
+      tasks: [
+        manifest.tasks[0]!,
+        { id: "P2", title: "Downstream planning", kind: "planning", dependsOn: ["P1"], promptTemplate: "planning", statusPath: "docs/workers/bp-1/P2.md", specificationPath: "docs/p2-spec.md", implementationPlanPath: "docs/p2-plan.md" },
+      ],
+    };
+    const records = new Map(remote);
+    records.set("docs/workers/bp-1/P1.md", "| State | review; worker-authored planning handoff integrated, coordinator/product-owner approval pending |\n| Latest proven integration head before this status edit | `abc123` |");
+    records.set("docs/workers/bp-1/P2.md", "| State | planning-blocked |\n| Latest integrated `origin/main` commit | `def456` |");
+    const evidence = await loadBlueprintEvidence(planningManifest, { fetch: async () => undefined, revParse: async () => "def456", readRemote: async (path) => records.get(path), isAncestor: async (commit, head) => commit === "abc123" && head === "def456" });
+    const readiness = evaluateTaskReadiness(planningManifest, evidence);
+
+    expect(readiness.find((item) => item.taskId === "P1")?.state).toBe("complete");
+    expect(readiness.find((item) => item.taskId === "P2")?.state).toBe("ready");
+  });
+
   it("accepts a completed handoff whose remote proof is labelled as final-status reconciliation", async () => {
     const records = new Map(remote);
     records.set("docs/workers/bp-1/P1.md", "| State | review |\n| Worker planning state | complete handoff integrated; coordinator receipt review pending |\n| Latest `origin/main` reconciled during final status | `abc123` |");

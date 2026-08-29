@@ -23,7 +23,7 @@ export interface EvidenceSource {
 
 function remoteCommitFrom(text: string | undefined): string | undefined {
   if (!text) return undefined;
-  const labelled = text.match(/(?:remoteCommit|Latest integrated `origin\/main` commit[^\n|:]*|Latest `origin\/main` reconciled[^\n|:]*|Authorized `origin\/main` commit[^\n|:]*)\s*[:|]\s*`?([0-9a-f]{6,64})/i);
+  const labelled = text.match(/(?:remoteCommit|Latest integrated `origin\/main` commit[^\n|:]*|Latest `origin\/main` reconciled[^\n|:]*|Authorized `origin\/main` commit[^\n|:]*|Latest proven integration head before this status edit)\s*[:|]\s*`?([0-9a-f]{6,64})/i);
   return labelled?.[1]?.toLowerCase();
 }
 
@@ -76,7 +76,7 @@ function evidence(code: string, satisfied: boolean, path?: string, commit?: stri
 
 function statusIsRemoteTerminal(text: string | undefined, remoteCommit: string | undefined, integratedCommits?: ReadonlySet<string>): boolean {
   const committed = remoteCommitFrom(text);
-  return Boolean(text && remoteCommit && committed && (integratedCommits?.has(committed) ?? committed === remoteCommit) && /(?:status|state|gate state)\s*[:|][^\n]*(?:complete|completed|passed|amended handoff integrated)\b/i.test(text));
+  return Boolean(text && remoteCommit && committed && (integratedCommits?.has(committed) ?? committed === remoteCommit) && /(?:status|state|gate state)\s*[:|][^\n]*(?:complete|completed|passed|amended handoff integrated|worker-authored planning handoff integrated)\b/i.test(text));
 }
 
 function planningArtifactsAreRemote(task: TaskManifestTask, source: BlueprintEvidence): boolean {
