@@ -14,7 +14,116 @@ const remote = new Map<string, string>([
   ["docs/workers/bp-1/G1.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n| P1 | docs/spec.md abc123 | docs/plan.md abc123 | approved | authority-sync abc123 | reconciled |"],
 ]);
 
+const twoPassManifest: TaskManifest = {
+  blueprintId: "two-pass",
+  title: "Two-pass UI planning",
+  masterplanPath: "docs/two-pass-blueprint.md",
+  coordinationRoot: "docs/workers/two-pass",
+  tasks: [
+    { id: "P2", title: "Layer 2 planning", kind: "planning", dependsOn: [], promptTemplate: "planning", statusPath: "docs/workers/two-pass/status/p2.md", specificationPath: "docs/p2-spec.md", implementationPlanPath: "docs/p2-plan.md" },
+    { id: "PD", title: "Platform design", kind: "ui", dependsOn: ["P2"], promptTemplate: "ui", statusPath: "docs/workers/two-pass/status/pd.md", specificationPath: "docs/p2-spec.md", uiRequirementsPath: "docs/design/requirements/pd.md", uiHandoffPath: "docs/design/handoffs/pd.md" },
+    { id: "P3", title: "Layer 3 live-wiring planning", kind: "planning", dependsOn: ["P2", "PD"], promptTemplate: "planning", statusPath: "docs/workers/two-pass/status/p3.md", specificationPath: "docs/p3-spec.md", implementationPlanPath: "docs/p3-plan.md" },
+    { id: "PG", title: "Planning gate", kind: "gate", dependsOn: ["P3"], promptTemplate: "planning", statusPath: "docs/workers/two-pass/PLANNING_GATE.md" },
+    { id: "P2X", title: "Layer 2 implementation", kind: "execution", dependsOn: [], promptTemplate: "execution", statusPath: "docs/workers/two-pass/status/p2x.md" },
+    { id: "P3X", title: "Layer 3 live wiring", kind: "execution", dependsOn: ["PG", "P2X"], promptTemplate: "execution", statusPath: "docs/workers/two-pass/status/p3x.md" },
+  ],
+};
+
+const acceptedPdHandoff = [
+  "| Accepted app-state commit | `abc123` |",
+  "| Product-owner approval | accepted |",
+  "| Live review | complete |",
+  "| Mutable ownership transfer | PD -> P3 |",
+].join("\n");
+
+function twoPassRecords(): Map<string, string> {
+  return new Map([
+    ["docs/two-pass-blueprint.md", "| Blueprint ID | `two-pass` |\n| Integration authority | `origin/main` |"],
+    ["docs/workers/two-pass/status/p2.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |"],
+    ["docs/p2-spec.md", "# P2 specification"],
+    ["docs/p2-plan.md", "# P2 implementation plan"],
+    ["docs/workers/two-pass/status/pd.md", "| State | planning in progress |\n| Latest integrated `origin/main` commit | `abc123` |"],
+    ["docs/workers/two-pass/status/p3.md", "| State | planning blocked |\n| Latest integrated `origin/main` commit | `abc123` |"],
+    ["docs/p3-spec.md", "# P3 specification"],
+    ["docs/p3-plan.md", "# P3 implementation plan"],
+    ["docs/workers/two-pass/status/p2x.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |"],
+    ["docs/workers/two-pass/status/p3x.md", "| State | not ready |\n| Latest integrated `origin/main` commit | `abc123` |"],
+    ["docs/workers/two-pass/PLANNING_GATE.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n| P2 | docs/p2-spec.md abc123 | docs/p2-plan.md abc123 | authority-sync abc123 | reconciled |\n| P3 | docs/p3-spec.md abc123 | docs/p3-plan.md abc123 | authority-sync abc123 | reconciled |"],
+  ]);
+}
+
+async function twoPassReadiness(records: Map<string, string>) {
+  const loaded = await loadBlueprintEvidence(twoPassManifest, {
+    fetch: async () => undefined,
+    revParse: async () => "abc123",
+    readRemote: async (path) => records.get(path),
+  });
+  return evaluateTaskReadiness(twoPassManifest, loaded);
+}
+
 describe("blueprint evidence", () => {
+  it("starts UI planning from completed Layer 2 planning, without a Layer 2 implementation", async () => {
+    const readiness = await twoPassReadiness(twoPassRecords());
+
+    expect(readiness.find((item) => item.taskId === "PD")?.state).toBe("ready");
+  });
+
+  it("blocks a Layer 3 planner until its UI-design worker completes both UI artifacts", async () => {
+    const readiness = await twoPassReadiness(twoPassRecords());
+
+    expect(readiness.find((item) => item.taskId === "P3")?.state).toBe("blocked");
+  });
+
+  it("does not complete a UI worker when its separate UI requirements contract is absent", async () => {
+    const records = twoPassRecords();
+    records.set("docs/workers/two-pass/status/pd.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/design/handoffs/pd.md", acceptedPdHandoff);
+    const readiness = await twoPassReadiness(records);
+    const pd = readiness.find((item) => item.taskId === "PD");
+
+    expect(pd?.state).not.toBe("complete");
+    expect(pd?.evidence.find((item) => item.code === "UI_ARTIFACTS")?.satisfied).toBe(false);
+  });
+
+  it("unblocks a Layer 3 planner after accepted UI requirements and handoff evidence", async () => {
+    const records = twoPassRecords();
+    records.set("docs/workers/two-pass/status/pd.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/design/handoffs/pd.md", acceptedPdHandoff);
+    records.set("docs/design/requirements/pd.md", "# PD UI requirements");
+    const readiness = await twoPassReadiness(records);
+
+    expect(readiness.find((item) => item.taskId === "P3")?.state).toBe("ready");
+  });
+
+  it("blocks Pass 2 live wiring when a passed receipt omits the UI row", async () => {
+    const records = twoPassRecords();
+    records.set("docs/workers/two-pass/status/pd.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/workers/two-pass/status/p3.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/design/handoffs/pd.md", acceptedPdHandoff);
+    records.set("docs/design/requirements/pd.md", "# PD UI requirements");
+    const readiness = await twoPassReadiness(records);
+
+    expect(readiness.find((item) => item.taskId === "P3X")?.state).toBe("blocked");
+  });
+
+  it("permits Pass 2 live wiring only after the full UI receipt row and runtime predecessor exist", async () => {
+    const records = twoPassRecords();
+    records.set("docs/workers/two-pass/status/pd.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/workers/two-pass/status/p3.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");
+    records.set("docs/design/handoffs/pd.md", acceptedPdHandoff);
+    records.set("docs/design/requirements/pd.md", "# PD UI requirements");
+    records.set("docs/workers/two-pass/PLANNING_GATE.md", [
+      "| Gate state | passed |",
+      "| Authorized `origin/main` commit | `abc123` |",
+      "| P2 | docs/p2-spec.md abc123 | docs/p2-plan.md abc123 | authority-sync abc123 | reconciled |",
+      "| P3 | docs/p3-spec.md abc123 | docs/p3-plan.md abc123 | authority-sync abc123 | reconciled |",
+      "| PD | accepted app abc123 | approval accepted | docs/design/handoffs/pd.md | docs/design/requirements/pd.md | live review complete | reconciled | transfer PD -> P3 | abc123 |",
+    ].join("\n"));
+    const readiness = await twoPassReadiness(records);
+
+    expect(readiness.find((item) => item.taskId === "P3X")?.state).toBe("ready");
+  });
+
   it("fetches then pins the actual origin/main SHA and requires all planning evidence", async () => {
     const calls: string[] = [];
     const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => { calls.push("fetch"); }, revParse: async () => "abc123", readRemote: async (path, sha) => { expect(sha).toBe("abc123"); return remote.get(path); } });

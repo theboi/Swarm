@@ -181,7 +181,7 @@ git diff --check
 
 Expected: the GREEN response passes every critical expectation; the searches show the new contract in the skill and coupled templates; `git diff --check` exits zero.
 
-- [ ] **Step 7: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 7: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 git add workers-masterplan/blueprint-masterplan/SKILL.md workers-masterplan/blueprint-masterplan/references/blueprint-masterplan-template.md workers-masterplan/blueprint-masterplan/references/ui-design-worker-prompt-template.md workers-masterplan/blueprint-masterplan/references/ui-requirements-template.md workers-masterplan/blueprint-masterplan/references/worker-prompt-templates.md workers-masterplan/blueprint-masterplan/references/planning-gate-template.md workers-masterplan/blueprint-masterplan/references/worker-status-template.md workers-masterplan/blueprint-masterplan/references/status-summary-template.md workers-masterplan/evals/blueprint-masterplan-scenarios.md
@@ -305,7 +305,7 @@ Rerun Step 5 if reconciliation changes an owned authority.
 - Produces: `TaskManifestTask.uiRequirementsPath?: string` and `TaskManifestTask.uiHandoffPath?: string`.
 - Validation contract: both fields are required for `kind: "ui"`; `implementationPlanPath` is forbidden for UI; all supplied paths are trimmed and repository-contained; missing future UI output files are allowed only for UI tasks.
 
-- [ ] **Step 1: Pull current `main` and install dependencies if needed**
+- [x] **Step 1: Pull current `main` and install dependencies if needed**
 
 ```bash
 git status --short --branch
@@ -314,7 +314,7 @@ cd workers-masterplan/swarm
 npm ci
 ```
 
-- [ ] **Step 2: Write failing schema tests**
+- [x] **Step 2: Write failing schema tests**
 
 Add these cases to `contracts.test.ts`:
 
@@ -349,7 +349,7 @@ it("requires both UI artifact paths and forbids a UI implementation plan", () =>
 
 Extend the malformed-path table with whitespace-only and padded values for both new fields.
 
-- [ ] **Step 3: Write failing repository-boundary tests**
+- [x] **Step 3: Write failing repository-boundary tests**
 
 In `tasks.test.ts`, extend the future-output test with a UI task whose requirements and handoff paths do not exist yet and assert `loadManifest` resolves. Then set `uiRequirementsPath: "../outside.md"` and a symlink-escaped handoff path in separate assertions and expect `outside repository`.
 
@@ -361,7 +361,7 @@ npx vitest run src/shared/contracts.test.ts src/server/tasks/tasks.test.ts
 
 Expected: FAIL because the new fields are neither typed nor validated.
 
-- [ ] **Step 4: Implement the manifest fields and role validation**
+- [x] **Step 4: Implement the manifest fields and role validation**
 
 Add to `TaskManifestTask`:
 
@@ -399,7 +399,7 @@ if (value.kind === "ui") {
 
 In `manifestLoader.ts`, validate `uiRequirementsPath` and `uiHandoffPath` with `allowMissing: task.kind === "ui"`. Keep `masterplanPath`, `coordinationRoot`, and every `statusPath` existence-required.
 
-- [ ] **Step 5: Run focused schema tests**
+- [x] **Step 5: Run focused schema tests**
 
 ```bash
 npx vitest run src/shared/contracts.test.ts src/server/tasks/tasks.test.ts
@@ -408,7 +408,7 @@ npm run typecheck
 
 Expected: PASS with the new UI contract and path-escape cases.
 
-- [ ] **Step 6: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 6: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 cd ../..
@@ -439,14 +439,14 @@ git merge-base --is-ancestor HEAD origin/main
 - Readiness evidence codes: retain `REMOTE_PREREQUISITES`, `PLANNING_GATE`, and `PLANNING_ARTIFACTS`; add `UI_ARTIFACTS`.
 - Gate contract: every ordinary planning row needs specification, plan, authority/no-impact, reconciliation, and an integrated commit; every UI row needs accepted app evidence, approval, handoff, requirements, live review, reconciliation, transfer, and an integrated commit.
 
-- [ ] **Step 1: Pull current `main`**
+- [x] **Step 1: Pull current `main`**
 
 ```bash
 git status --short --branch
 git pull --ff-only origin main
 ```
 
-- [ ] **Step 2: Add a two-pass evidence fixture and failing readiness tests**
+- [x] **Step 2: Add a two-pass evidence fixture and failing readiness tests**
 
 Add a focused fixture to `blueprintEvidence.test.ts` with tasks `P2` planning, `PD` UI depending on `P2`, `P3` planning depending on `P2` and `PD`, `PG` gate depending on `P3`, and `P3X` execution depending on `PG` and an implemented predecessor. Use these UI paths:
 
@@ -497,7 +497,7 @@ npx vitest run src/server/tasks/blueprintEvidence.test.ts
 
 Expected: FAIL because UI artifacts are not loaded or evaluated and the gate scans planning rows only.
 
-- [ ] **Step 3: Load UI artifacts and accepted app commits from remote evidence**
+- [x] **Step 3: Load UI artifacts and accepted app commits from remote evidence**
 
 Extend `allReferencedPaths` to include both new task fields. Extend `remoteCommitFrom` so `Accepted app-state commit` is a recognized label and its commit enters `integratedCommits` after the ancestry check.
 
@@ -527,13 +527,13 @@ function uiEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvidence)
 }
 ```
 
-- [ ] **Step 4: Replace terminal-only planned dependency checks with role-aware evidence**
+- [x] **Step 4: Replace terminal-only planned dependency checks with role-aware evidence**
 
 For a `planning`, `ui`, or `gate` consumer, require a planning dependency to satisfy `planningEvidenceIsComplete` and a UI dependency to satisfy `uiEvidenceIsComplete`. For an execution consumer, retain terminal runtime dependency evidence and separately evaluate its direct gate dependency. Continue to surface `REMOTE_EVIDENCE_MISMATCH` when a cited commit is not an ancestor of the inspected remote head.
 
 Make UI terminal state depend on `uiEvidenceIsComplete`, not the status file alone. While a UI task is not terminal, it may be `ready` or `attention_required`; if it claims terminal status with missing artifacts, keep it blocked and report `UI_ARTIFACTS: not satisfied`.
 
-- [ ] **Step 5: Expand the global gate evaluator**
+- [x] **Step 5: Expand the global gate evaluator**
 
 Refactor `gateEvidenceIsComplete` to scan all `kind === "planning" || kind === "ui"` tasks, regardless of the gate node's direct dependencies. Ordinary rows must match the exact ID and include their spec, plan, `authority-sync` or `no-impact`, `reconciled`, and an integrated commit. UI rows must match the exact ID and include both UI paths plus case-insensitive evidence for accepted app, approval, live review, reconciliation, transfer, and an integrated commit.
 
@@ -548,7 +548,7 @@ evidence(
 ),
 ```
 
-- [ ] **Step 6: Run focused evidence tests**
+- [x] **Step 6: Run focused evidence tests**
 
 ```bash
 npx vitest run src/server/tasks/blueprintEvidence.test.ts src/server/tasks/tasks.test.ts

@@ -313,6 +313,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/pd.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p2-people-admin-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-pd-platform-admin.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-pd-platform-admin.md",
       "promptTemplate": "ui"
     },
     {
@@ -324,6 +326,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/cd.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c2-curriculum-workflows-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-cd-curriculum.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-cd-curriculum.md",
       "promptTemplate": "ui"
     },
     {
@@ -335,6 +339,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/qd.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q2-content-workflows-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-qd-content.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-qd-content.md",
       "promptTemplate": "ui"
     },
     {
@@ -346,6 +352,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/ad.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a2-analysis-pipeline-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-ad-analysis-intake.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-ad-analysis-intake.md",
       "promptTemplate": "ui"
     },
     {
@@ -357,6 +365,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/ed.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e2-statistics-export-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-ed-evidence.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-ed-evidence.md",
       "promptTemplate": "ui"
     },
     {
@@ -368,6 +378,8 @@
       "pathStep": 3,
       "statusPath": "docs/workers/2026-08-14-mvp3/status/gd.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g2-practice-rendering-design.md",
+      "uiRequirementsPath": "docs/design/requirements/2026-08-26-gd-practice.md",
+      "uiHandoffPath": "docs/design/handoffs/2026-08-26-gd-practice.md",
       "promptTemplate": "ui"
     },
     {

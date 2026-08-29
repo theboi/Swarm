@@ -42,6 +42,33 @@ describe("validateTaskManifest", () => {
     expect(validateTaskManifest(localPreferred)).toEqual({ ok: true, data: localPreferred });
   });
 
+  it("requires both UI artifact paths and forbids a UI implementation plan", () => {
+    const ui = {
+      id: "PD",
+      title: "Platform design",
+      kind: "ui",
+      dependsOn: ["T0"],
+      promptTemplate: "ui",
+      specificationPath: "docs/upstream-spec.md",
+      uiRequirementsPath: "docs/design/requirements/pd.md",
+      uiHandoffPath: "docs/design/handoffs/pd.md",
+    };
+
+    expect(validateTaskManifest({ ...validManifest, tasks: [validManifest.tasks[0], ui] })).toMatchObject({ ok: true });
+    expect(validateTaskManifest({ ...validManifest, tasks: [validManifest.tasks[0], { ...ui, uiRequirementsPath: undefined }] })).toEqual({
+      ok: false,
+      error: { code: "MANIFEST_INVALID", field: "tasks[1].uiRequirementsPath", reason: "required" },
+    });
+    expect(validateTaskManifest({ ...validManifest, tasks: [validManifest.tasks[0], { ...ui, uiHandoffPath: undefined }] })).toEqual({
+      ok: false,
+      error: { code: "MANIFEST_INVALID", field: "tasks[1].uiHandoffPath", reason: "required" },
+    });
+    expect(validateTaskManifest({ ...validManifest, tasks: [validManifest.tasks[0], { ...ui, implementationPlanPath: "docs/ui-plan.md" }] })).toEqual({
+      ok: false,
+      error: { code: "MANIFEST_INVALID", field: "tasks[1].implementationPlanPath", reason: "value" },
+    });
+  });
+
   it("rejects a dependency cycle", () => {
     const result = validateTaskManifest({
       blueprintId: "2026-08-14-mvp3",
@@ -157,6 +184,10 @@ describe("validateTaskManifest", () => {
     [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], dependsOn: "G0" }] }, "tasks[0].dependsOn", "type"],
     [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], dependsOn: ["G0", "G0"] }] }, "tasks[0].dependsOn", "duplicate"],
     [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], statusPath: "" }] }, "tasks[0].statusPath", "required"],
+    [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], uiRequirementsPath: " " }] }, "tasks[0].uiRequirementsPath", "required"],
+    [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], uiRequirementsPath: " docs/design/requirements/pd.md" }] }, "tasks[0].uiRequirementsPath", "value"],
+    [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], uiHandoffPath: " " }] }, "tasks[0].uiHandoffPath", "required"],
+    [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], uiHandoffPath: "docs/design/handoffs/pd.md " }] }, "tasks[0].uiHandoffPath", "value"],
     [{ ...validManifest, tasks: [{ ...validManifest.tasks[0], preferredAccount: "bot9" }] }, "tasks[0].preferredAccount", "value"],
   ])("rejects malformed manifests deterministically", (input, field, reason) => {
     expect(validateTaskManifest(input)).toEqual({

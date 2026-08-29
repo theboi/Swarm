@@ -79,10 +79,20 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
     return { code: "MANIFEST_INVALID", field: `${prefix}.promptTemplate`, reason: "value" };
   }
 
-  for (const optionalField of ["statusPath", "specificationPath", "implementationPlanPath"] as const) {
+  for (const optionalField of ["statusPath", "specificationPath", "implementationPlanPath", "uiRequirementsPath", "uiHandoffPath"] as const) {
     if (value[optionalField] === undefined) continue;
     const error = requiredString(value[optionalField], `${prefix}.${optionalField}`);
     if (error) return error;
+  }
+  if (value.kind === "ui") {
+    for (const field of ["uiRequirementsPath", "uiHandoffPath"] as const) {
+      if (value[field] === undefined) {
+        return { code: "MANIFEST_INVALID", field: `${prefix}.${field}`, reason: "required" };
+      }
+    }
+    if (value.implementationPlanPath !== undefined) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.implementationPlanPath`, reason: "value" };
+    }
   }
   if (value.preferredAccount !== undefined) {
     if (typeof value.preferredAccount !== "string") {
