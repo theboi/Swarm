@@ -63,6 +63,19 @@ describe("ChatsPage", () => {
     expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
   });
 
+  it("pins the selected account's overlaid five-hour and weekly usage below its chat list", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+
+    const picker = screen.getByLabelText("Chats for bot3");
+    expect(within(picker).getByLabelText("bot3: five-hour remaining 60%; weekly remaining 80%")).toBeVisible();
+    expect(picker.lastElementChild).toHaveClass("thread-picker__usage");
+
+    await user.click(screen.getByRole("button", { name: "bot1" }));
+    expect(within(screen.getByLabelText("Chats for bot1")).getByLabelText("bot1: five-hour remaining unknown; weekly remaining unknown")).toBeVisible();
+  });
+
   it("holds a newly launched account and chat target until the refreshed snapshot contains it", async () => {
     setViewport(390);
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialTarget={{ accountId: "bot1", threadId: "thread-new" }} />);

@@ -7,6 +7,7 @@ import type { ChatTarget } from "./HomePage.js";
 import { MarkdownViewer } from "../components/MarkdownViewer.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
 import { TranscriptItemView } from "../components/TranscriptItemView.js";
+import { AccountUsageBar } from "../components/AccountSummaryPanel.js";
 import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
@@ -387,6 +388,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const status = thinking ? "Thinking" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
             return <button key={thread.id} type="button" aria-label={name} aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}><span className="thread-picker__icon">{thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <MessageSquarePlus aria-hidden="true" size={16} strokeWidth={1.75} />}</span><span className="thread-picker__copy"><strong>{name}</strong><small>{status}</small></span>{needsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} needs attention`} /> : null}</button>;
           }) : <p className="thread-picker__empty">No chats for this account.</p>}</div>
+          {selectedAccount ? <footer className="thread-picker__usage"><AccountUsageBar account={selectedAccount} showLabels /></footer> : null}
         </aside> : null}
         <section className="chat-panel" aria-labelledby="selected-chat-title">
           <header className="chat-panel__header">
