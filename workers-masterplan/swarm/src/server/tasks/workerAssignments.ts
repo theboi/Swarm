@@ -18,6 +18,11 @@ export class WorkerAssignmentManifest {
     const value = [...this.records.values()].find((record) => record.accountId === accountId && record.threadId === threadId);
     return value && clone(value);
   }
+  waitingForAccount(accountId: AccountId): WorkerAssignmentRecord[] {
+    return [...this.records.values()]
+      .filter((record) => record.accountId === accountId && record.state === "waiting_for_limit")
+      .map(clone);
+  }
 
   async assign(taskId: string, accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
     const prior = this.records.get(taskId);
@@ -39,6 +44,10 @@ export class WorkerAssignmentManifest {
 
   async complete(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
     await this.updateCurrent(accountId, threadId, (record) => { record.state = "completed"; record.updatedAt = now; });
+  }
+
+  async markAttentionRequired(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
+    await this.updateCurrent(accountId, threadId, (record) => { record.state = "attention_required"; record.updatedAt = now; });
   }
 
   async transfer(sourceAccountId: AccountId, sourceThreadId: string, targetAccountId: AccountId, targetThreadId: string, now = Date.now()): Promise<void> {

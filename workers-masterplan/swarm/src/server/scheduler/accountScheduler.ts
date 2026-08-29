@@ -32,4 +32,10 @@ export function nextRateLimitCheck(limits: RateLimitWindow[], seed: string, now 
   return { at: now + jitter, reason: "heartbeat" };
 }
 
+/** Chooses an immediate retry after restart when fresh limits already show capacity. */
+export function nextLimitResumeCheck(account: AccountSnapshot, seed: string, now = Date.now()): { at: number; reason: "available" | "reset" | "heartbeat" } {
+  if (rankAccounts([account], now).length) return { at: now, reason: "available" };
+  return nextRateLimitCheck(account.rateLimits, seed, now);
+}
+
 export function canDispatch(activeTurns: number, limit: number, override: boolean): boolean { return activeTurns < limit || override; }

@@ -24,6 +24,7 @@ const api: CoordinatorApi = {
   connectAccount: async () => ({ data: {} }),
   refreshAllRateLimits: async () => ({ data: {} }),
   listModels: async () => ({ data: [] }),
+  listThreads: async () => ({ data: snapshot.threads }),
   openTerminal: async () => ({ data: {} }),
   startThread: async () => ({ data: { id: "thread", accountId: "bot3", name: null, archived: false, updatedAt: 0, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } } }),
   moveThreadToAccount: async () => ({ data: { id: "thread", accountId: "bot3", name: null, archived: false, updatedAt: 0, capabilities: { canArchive: false, canInterrupt: false, canStartTurn: false, canSteer: false } } }),

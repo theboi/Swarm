@@ -39,13 +39,13 @@ describe("task dispatch projection", () => {
     expect(projectDispatchState([task("F0", "ready")], [dispatch("F0", state)])[0]?.readiness.state).toBe("running");
   });
 
-  it("never regresses a task after a durable dispatch completed", () => {
+  it("uses repository completion evidence instead of treating a finished chat turn as phase completion", () => {
     expect(projectDispatchState([task("F0", "complete")], [dispatch("F0", "accepted")])[0]?.readiness.state).toBe("complete");
-    expect(projectDispatchState([task("P1", "attention_required")], [dispatch("P1", "completed")])[0]?.readiness.state).toBe("complete");
+    expect(projectDispatchState([task("P1", "attention_required")], [dispatch("P1", "completed")])[0]?.readiness.state).toBe("attention_required");
   });
 
-  it("never regresses a task recorded in the durable completion ledger", () => {
-    expect(projectDispatchState([task("A1", "blocked")], [], [], [], new Set(["A1"]))[0]?.readiness.state).toBe("complete");
+  it("does not let a stale durable completion ledger override current repository evidence", () => {
+    expect(projectDispatchState([task("A1", "blocked")], [], [], [], new Set(["A1"]))[0]?.readiness.state).toBe("blocked");
   });
 
   it("projects an active named EdenMind task thread as running without a historical dispatch", () => {

@@ -32,6 +32,7 @@ export interface CoordinatorApi {
   connectAccount(accountId: string): Promise<ApiResult<unknown>>;
   refreshAllRateLimits(): Promise<ApiResult<unknown>>;
   listModels(accountId: string): Promise<ApiResult<ChatModelOption[]>>;
+  listThreads(accountId: string): Promise<ApiResult<ThreadSummary[]>>;
   openTerminal(accountId: string): Promise<ApiResult<unknown>>;
   startThread(accountId: string): Promise<ApiResult<ThreadSummary>>;
   moveThreadToAccount(sourceAccountId: string, threadId: string, targetAccountId: string): Promise<ApiResult<ThreadSummary>>;
@@ -92,6 +93,7 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     connectAccount: (accountId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/connect`, { method: "POST" }),
     refreshAllRateLimits: () => request<unknown>("/accounts/rate-limits/refresh", { method: "POST" }),
     listModels: (accountId) => request<ChatModelOption[]>(`/accounts/${encodeURIComponent(accountId)}/models`),
+    listThreads: (accountId) => request<ThreadSummary[]>(`/accounts/${encodeURIComponent(accountId)}/threads`),
     openTerminal: (accountId) => terminalRequest<unknown>(`/accounts/${encodeURIComponent(accountId)}/terminal`),
     startThread: (accountId) => request<ThreadSummary>(`/accounts/${encodeURIComponent(accountId)}/threads`, { method: "POST" }),
     moveThreadToAccount: (sourceAccountId, threadId, targetAccountId) => request<ThreadSummary>(`/accounts/${encodeURIComponent(sourceAccountId)}/threads/${encodeURIComponent(threadId)}/move`, { method: "POST", body: JSON.stringify({ targetAccountId }) }),

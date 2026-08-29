@@ -12,7 +12,7 @@ import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
-type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount">>;
+type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount">>;
 
 interface SubagentReference {
   threadId: string;
@@ -226,6 +226,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [threadId, setThreadId] = useState<string | null>(() => requestedInitialThreadId ?? threadsFor(snapshot, requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId))[0]?.id ?? null);
   const [isDraftChat, setIsDraftChat] = useState(false);
   const [createdThread, setCreatedThread] = useState<ThreadSummary | null>(null);
+  const [threadsByAccount, setThreadsByAccount] = useState<Partial<Record<AccountId, ThreadSummary[]>>>(() => Object.fromEntries(snapshot.accounts.map((account) => [account.id, threadsFor(snapshot, account.id)])));
+  const [loadingAccountId, setLoadingAccountId] = useState<AccountId | null>(null);
   const [pendingTarget, setPendingTarget] = useState<ChatTarget | null>(initialTarget ?? null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
@@ -251,10 +253,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const compact = useCompactPicker();
   const threads = useMemo(() => {
-    const listed = threadsFor(snapshot, accountId);
+    const listed = accountId ? threadsByAccount[accountId] ?? [] : [];
     return createdThread && createdThread.accountId === accountId && !listed.some((thread) => thread.id === createdThread.id) ? [...listed, createdThread] : listed;
-  }, [snapshot, accountId, createdThread]);
-  const selectedThread = snapshot.threads.find((thread) => thread.id === threadId && thread.accountId === accountId)
+  }, [threadsByAccount, accountId, createdThread]);
+  const selectedThread = threads.find((thread) => thread.id === threadId && thread.accountId === accountId)
     ?? (createdThread?.id === threadId && createdThread.accountId === accountId ? createdThread : null);
   const selectedAccount = snapshot.accounts.find((account) => account.id === accountId) ?? null;
   const terminalCommand = selectedAccount?.terminalCommand;
@@ -280,11 +282,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   useEffect(() => {
     if (isDraftChat) return;
     if (pendingTarget) {
-      if (snapshot.threads.some((thread) => thread.accountId === pendingTarget.accountId && thread.id === pendingTarget.threadId)) setPendingTarget(null);
+      if (threads.some((thread) => thread.accountId === pendingTarget.accountId && thread.id === pendingTarget.threadId)) setPendingTarget(null);
       return;
     }
     setThreadId((currentThreadId) => currentThreadId && threads.some((thread) => thread.id === currentThreadId) ? currentThreadId : threads[0]?.id ?? null);
-  }, [isDraftChat, pendingTarget, snapshot.threads, threads]);
+  }, [isDraftChat, pendingTarget, threads]);
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat) { setItems([]); return; }
@@ -376,6 +378,23 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
   const report = useCallback((text: string) => { setError(null); setMessage(text); }, []);
   const reportError = useCallback((text: string) => { setMessage(null); setError(text); }, []);
+
+  useEffect(() => {
+    if (!accountId) return;
+    let live = true;
+    setLoadingAccountId(accountId);
+    void api.listThreads(accountId).then((result) => {
+      if (!live) return;
+      setLoadingAccountId(null);
+      if ("error" in result && result.error) return reportError(result.error.message);
+      setThreadsByAccount((current) => ({ ...current, [accountId]: result.data.filter((thread) => !thread.archived) }));
+    }).catch(() => {
+      if (!live) return;
+      setLoadingAccountId(null);
+      reportError("Unable to load chats for this account.");
+    });
+    return () => { live = false; };
+  }, [accountId, api, reportError]);
   const run = async <T,>(operation: () => Promise<ApiResult<T>>, success: string, onSuccess?: (data: T) => void) => {
     try {
       const result = await operation();
@@ -527,8 +546,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         <nav className={`chat-account-picker ${compact ? "chat-account-picker--pills" : ""}`} aria-label="Accounts">
           <div className="chat-account-picker__heading"><span>Accounts</span><span>{snapshot.accounts.length}</span></div>
           {snapshot.accounts.map((account) => {
-            const threadCount = threadsFor(snapshot, account.id).length;
-            const accountThinking = snapshot.threads.some((thread) => thread.accountId === account.id && (thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`)));
+            const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
+            const threadCount = accountThreads.length;
+            const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`));
             const accountNeedsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === account.id);
             return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><span className={accountThinking ? "chat-account-picker__activity" : ""} aria-label={accountThinking ? `${account.id} working` : undefined}><span className={`chat-account-picker__status chat-account-picker__status--${account.connection}`} aria-hidden="true" /></span><span>{account.id}</span><span className="chat-account-picker__count"><span aria-hidden="true">{threadCount}</span>{accountNeedsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span></button>;
           })}
@@ -536,7 +556,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
           <button className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><Plus aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></button>
           <div className="thread-picker__heading"><span>Chats</span><span>{threads.length}</span></div>
-          <div className="thread-picker__list">{threads.length ? threads.map((thread) => {
+          <div className="thread-picker__list">{loadingAccountId === accountId && threads.length === 0 ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : threads.length ? threads.map((thread) => {
             const name = thread.name ?? "Unnamed chat";
             const thinking = activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`) || thread.activity === "active";
             const needsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === thread.accountId && approval.threadId === thread.id);
@@ -548,7 +568,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         <section className="chat-panel" aria-labelledby="selected-chat-title">
           <header className="chat-panel__header">
             <div className="chat-panel__title"><span className="chat-panel__account">{accountId ?? "No account"}</span><h2 id="selected-chat-title">{selectedChatName}</h2>{isThinking ? <span className="chat-thinking" aria-label="Codex is thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}</div>
-            <div className="chat-panel__tools"><button className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.")}><Archive aria-hidden="true" size={17} strokeWidth={1.75} /></button>{terminalCommand ? <button className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><SquareTerminal aria-hidden="true" size={17} strokeWidth={1.75} /></button> : null}</div>
+            <div className="chat-panel__tools"><button className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.", () => { setThreadsByAccount((current) => ({ ...current, [accountId]: (current[accountId] ?? []).filter((thread) => thread.id !== selectedThread.id) })); if (createdThread?.id === selectedThread.id) setCreatedThread(null); })}><Archive aria-hidden="true" size={17} strokeWidth={1.75} /></button>{terminalCommand ? <button className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><SquareTerminal aria-hidden="true" size={17} strokeWidth={1.75} /></button> : null}</div>
           </header>
           {approvals.length ? <div className="chat-approvals">{approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><div className="chat-approval__copy"><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p></div><div className="chat-approval__actions">{approval.availableDecisions.map((decision) => {
             const permissions = isPermissionGrant(decision) ? approval.requestedPermissions : undefined;

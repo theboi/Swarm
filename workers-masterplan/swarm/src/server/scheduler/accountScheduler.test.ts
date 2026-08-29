@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AccountSnapshot, RateLimitWindow } from "../../shared/contracts.js";
 import { canDispatch, mergeRateLimits, nextRateLimitCheck, rankAccounts } from "./accountScheduler.js";
+import * as accountScheduler from "./accountScheduler.js";
 
 const account = (id: "bot3" | "bot5", limits: RateLimitWindow[], activeTurns = 0): AccountSnapshot => ({ id, connection: "connected", authentication: "authenticated", rateLimits: limits, activeTurns, lastAssignedAt: null });
 const limit = (id: string, usedPercent: number | null, resetsAt: number | null): RateLimitWindow => ({ id, label: id, usedPercent, resetsAt, updatedAt: 1 });
@@ -24,6 +25,12 @@ describe("account scheduler", () => {
     expect(first).toEqual(nextRateLimitCheck([limit("five", 100, null)], "job", 0));
     expect(first.at).toBeGreaterThanOrEqual(40 * 60_000);
     expect(first.at).toBeLessThanOrEqual(80 * 60_000);
+  });
+  it("resumes immediately when a recovered account already has capacity", () => {
+    const nextLimitResumeCheck = (accountScheduler as unknown as { nextLimitResumeCheck?: (account: AccountSnapshot, seed: string, now: number) => { at: number; reason: string } }).nextLimitResumeCheck;
+
+    expect(nextLimitResumeCheck).toBeTypeOf("function");
+    expect(nextLimitResumeCheck?.(account("bot3", [limit("five", 0, 1_800), limit("week", 20, 7_200)]), "CD", 1_000)).toEqual({ at: 1_000, reason: "available" });
   });
   it("requires an explicit override above global active-turn concurrency", () => {
     expect(canDispatch(3, 3, false)).toBe(false);

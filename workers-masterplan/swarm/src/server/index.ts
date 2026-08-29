@@ -31,7 +31,7 @@ import { accountForGitSyncTarget, GitSynchronizer, MergeConflictSteerGate } from
 import { createCoordinatorApp } from "./app.js";
 import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
-import { mergeRateLimits, rankAccounts } from "./scheduler/accountScheduler.js";
+import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
 import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
@@ -161,10 +161,21 @@ async function createRuntime(config: SwarmConfig) {
     }).catch((error) => logger.warn("notifications", { event: "breaking_change_persist_failed", account, error: error instanceof Error ? error.message : "failed" }));
   };
   const settleCompletedLaunchThread = async (account: AccountId, threadId: string) => {
-    await assignments.complete(account, threadId);
-    const record = await outbox.completeAcceptedForThread(account, threadId);
-    if (!record) return;
-    completedTaskIds.add(record.taskId);
+    const assignment = assignments.forThread(account, threadId);
+    const accepted = outbox.list().find((record) => record.accountId === account && record.threadId === threadId && record.state === "accepted");
+    const taskId = assignment?.taskId ?? accepted?.taskId;
+    if (!taskId) return;
+    await refreshTasks(true);
+    const provenComplete = nodes.find((node) => node.id === taskId)?.readiness.state === "complete";
+    if (provenComplete) {
+      await assignments.complete(account, threadId);
+      await outbox.completeAcceptedForThread(account, threadId);
+      completedTaskIds.add(taskId);
+    } else {
+      await assignments.markAttentionRequired(account, threadId);
+      if (accepted) await outbox.abandon(accepted.id);
+      completedTaskIds.delete(taskId);
+    }
     await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
     completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
     const snapshot = accounts.snapshot(account);
@@ -254,9 +265,13 @@ async function createRuntime(config: SwarmConfig) {
       try {
         manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
         const readiness = evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
-        let completionChanged = false;
-        for (const task of readiness) if (task.state === "complete" && !completedTaskIds.has(task.taskId)) { completedTaskIds.add(task.taskId); completionChanged = true; }
-        if (completionChanged || !root.completedTaskIds) await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
+        const provenCompletedTaskIds = new Set(readiness.filter((task) => task.state === "complete").map((task) => task.taskId));
+        const completionChanged = provenCompletedTaskIds.size !== completedTaskIds.size || [...provenCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId));
+        if (completionChanged || !root.completedTaskIds) {
+          completedTaskIds.clear();
+          for (const taskId of provenCompletedTaskIds) completedTaskIds.add(taskId);
+          await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
+        }
         nodes = taskNode(manifest, readiness);
         manifestError = undefined;
       } catch (error) { manifest = undefined; nodes = []; manifestError = error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID"; }
@@ -279,15 +294,30 @@ async function createRuntime(config: SwarmConfig) {
     const rateLimits = mergeRateLimits(accounts.snapshot(id).rateLimits, await client.readRateLimitWindows());
     return accounts.updateSnapshot(id, { rateLimits });
   };
-  const threads = async (id: AccountId): Promise<ThreadSummary[]> => (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id)));
+  const threadCache = new Map<AccountId, ThreadSummary[]>();
+  const cacheThreads = (id: AccountId, next: ThreadSummary[]) => {
+    threadCache.set(id, next.map((thread) => ({ ...thread, capabilities: { ...thread.capabilities } })));
+    return next;
+  };
+  const upsertCachedThread = (thread: ThreadSummary) => {
+    const current = threadCache.get(thread.accountId) ?? [];
+    cacheThreads(thread.accountId, [thread, ...current.filter((candidate) => candidate.id !== thread.id)]);
+  };
+  const threads = async (id: AccountId): Promise<ThreadSummary[]> => cacheThreads(id, (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id))));
   const refreshAllRateLimits = async () => {
     await Promise.allSettled(accountSnapshot().filter((account) => account.connection === "connected" && account.authentication === "authenticated").map((account) => updateRateLimits(account.id)));
+    await Promise.allSettled(assignments.list().filter((assignment) => assignment.state === "waiting_for_limit").map((assignment) => scheduleLimitResume(assignment.accountId, assignment.threadId)));
     return accountSnapshot();
   };
   const health = async (): Promise<HealthSnapshot> => ({ server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: manifestError ? "degraded" : "ok", ...(manifestError ? { message: manifestError } : {}) }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: accountSnapshot().some((item) => item.connection === "error") ? "degraded" : "ok" } });
   const reconcileAssignments = async (threadSummaries: ThreadSummary[]) => {
     for (const node of nodes) {
-      if (assignments.forTask(node.id)) continue;
+      const existing = assignments.forTask(node.id);
+      if (existing) {
+        if (node.readiness.state === "complete" && existing.state !== "completed") await assignments.complete(existing.accountId, existing.threadId);
+        else if (node.readiness.state !== "complete" && existing.state === "completed") await assignments.markAttentionRequired(existing.accountId, existing.threadId);
+        continue;
+      }
       const thread = latestUnarchivedTaskThread(threadSummaries, node.id);
       if (!thread) continue;
       await assignments.assign(node.id, thread.accountId, thread.id, thread.updatedAt);
@@ -297,7 +327,7 @@ async function createRuntime(config: SwarmConfig) {
   const snapshot = async (): Promise<CoordinatorSnapshot> => {
     await refreshTasks(false);
     const dispatches = outbox.list();
-    const threadSummaries = (await Promise.all(accountSnapshot().filter((item) => item.connection === "connected").map((item) => threads(item.id).catch(() => [])))).flat();
+    const threadSummaries = [...threadCache.values()].flat();
     await reconcileAssignments(threadSummaries);
     return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: projectDispatchState(nodes, dispatches, threadSummaries, assignments.list(), completedTaskIds), dispatches, workerAssignments: assignments.list(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
   };
@@ -308,8 +338,7 @@ async function createRuntime(config: SwarmConfig) {
   };
   const launchAccounts = async () => {
     const current = accountSnapshot();
-    const visibleThreads = await Promise.all(current.filter((account) => account.connection === "connected").map((account) => threads(account.id).catch(() => [])));
-    return rankLaunchAccounts(current, visibleThreads.flat());
+    return rankLaunchAccounts(current, [...threadCache.values()].flat());
   };
   const rateWaitTimers = new Map<string, NodeJS.Timeout>();
   const limitResumeTimers = new Map<string, NodeJS.Timeout>();
@@ -345,7 +374,7 @@ async function createRuntime(config: SwarmConfig) {
     const existing = limitResumeTimers.get(key);
     if (existing) clearTimeout(existing);
     await updateRateLimits(account).catch(() => undefined);
-    const next = nextRateLimitCheck(accounts.snapshot(account).rateLimits, key);
+    const next = nextLimitResumeCheck(accounts.snapshot(account), key);
     const timer = setTimeout(() => {
       limitResumeTimers.delete(key);
       void (async () => {
@@ -373,11 +402,16 @@ async function createRuntime(config: SwarmConfig) {
         return { turns: turns.map((turn) => ({ clientUserMessageId: typeof turn.clientUserMessageId === "string" ? turn.clientUserMessageId : undefined })) };
       } });
       for (const waiting of outbox.recoverWaitingTimers()) { const record = outbox.get(waiting.id); if (record?.accountId === id) await scheduleRateWait(record); }
+      for (const waiting of assignments.waitingForAccount(id)) await scheduleLimitResume(id, waiting.threadId);
       return connected;
     },
     disconnectAccount: (id) => accounts.disconnect(id),
     openTerminal: (id) => accounts.openTerminal(id),
-    refreshRateLimits: updateRateLimits,
+    refreshRateLimits: async (id) => {
+      const updated = await updateRateLimits(id);
+      await Promise.allSettled(assignments.waitingForAccount(id).map((assignment) => scheduleLimitResume(id, assignment.threadId)));
+      return updated;
+    },
     refreshAllRateLimits,
     listModels: async (id) => (await liveClient(id)).listModels(),
     previewLaunch: async (taskId, requested) => {
@@ -400,6 +434,7 @@ async function createRuntime(config: SwarmConfig) {
       const client = await liveClient(preview.accountId);
       const rawThread = await client.startThread();
       const thread = asThread(preview.accountId, responseThread(rawThread), projectWorkspaceFor(preview.accountId));
+      upsertCachedThread(thread);
       await client.setThreadName(thread.id, `${preview.task.id} · ${preview.task.title}`);
       const now = Date.now();
       const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
@@ -419,7 +454,11 @@ async function createRuntime(config: SwarmConfig) {
     },
     listThreads: threads,
     readTranscript: async (id, threadId) => { const client = await liveClient(id); await client.readThread(threadId, { includeTurns: true }); return client.transcriptSnapshot().items.filter((item) => item.threadId === threadId); },
-    startThread: async (id) => asThread(id, responseThread(await (await liveClient(id)).startThread()), projectWorkspaceFor(id)),
+    startThread: async (id) => {
+      const thread = asThread(id, responseThread(await (await liveClient(id)).startThread()), projectWorkspaceFor(id));
+      upsertCachedThread(thread);
+      return thread;
+    },
     moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId) => {
       try { await gitRunner.checkpointAndPush(sourceAccountId); }
       catch { throw new Error(`GIT_HANDOFF_PUSH_FAILED: Push ${sourceAccountId}'s changes manually, then try moving this worker again.`); }
@@ -453,7 +492,10 @@ async function createRuntime(config: SwarmConfig) {
       publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
       return thread;
     },
-    archiveThread: async (id, threadId) => { await (await liveClient(id)).archiveThread(threadId); },
+    archiveThread: async (id, threadId) => {
+      await (await liveClient(id)).archiveThread(threadId);
+      cacheThreads(id, (threadCache.get(id) ?? []).map((thread) => thread.id === threadId ? { ...thread, archived: true } : thread));
+    },
     startTurn: async (id, threadId, input) => (await liveClient(id)).startTurn({ threadId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID(), settings: input.settings }),
     steerTurn: async (id, threadId, input) => { await (await liveClient(id)).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },
     interruptTurn: async (id, threadId, input) => { await (await liveClient(id)).interruptTurn(threadId, input.turnId); },

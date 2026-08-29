@@ -222,6 +222,10 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
     if (!task || task.readiness.state !== "ready" || !accountId) return sendError(response, 409, "MASTERPLAN_NOT_READY");
     sendData(response, { id: `dispatch-${randomUUID()}`, taskId: task.id, accountId });
   });
+  app.get("/api/v1/accounts/:accountId/threads", (request, response) => {
+    const accountId = request.params.accountId as AccountId;
+    sendData(response, state.snapshot.threads.filter((thread) => thread.accountId === accountId));
+  });
   app.get("/api/v1/accounts/:accountId/threads/:threadId", (request, response) => {
     const accountId = request.params.accountId as AccountId;
     if (!selectedThread(state, accountId, request.params.threadId)) return sendError(response, 404, "THREAD_NOT_FOUND");

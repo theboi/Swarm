@@ -17,13 +17,14 @@ export function latestUnarchivedTaskThread(threads: ThreadSummary[], taskId: str
 /** Overlay durable launches and live named project chats without hiding a completed task. */
 export function projectDispatchState(nodes: TaskNode[], dispatches: DispatchRecord[], threads: ThreadSummary[] = [], assignments: WorkerAssignmentRecord[] = [], completedTaskIds: ReadonlySet<string> = new Set()): TaskNode[] {
   const runningTaskIds = new Set(dispatches.filter((dispatch) => ACTIVE_DISPATCH_STATES.has(dispatch.state)).map((dispatch) => dispatch.taskId));
-  const completedDispatchTaskIds = new Set(dispatches.filter((dispatch) => dispatch.state === "completed").map((dispatch) => dispatch.taskId));
+  // Completion is owned by repository evidence. Durable dispatch and assignment
+  // records describe orchestration state and must never promote an unfinished phase.
+  void completedTaskIds;
   for (const node of nodes) {
     if (latestUnarchivedTaskThread(threads, node.id)) runningTaskIds.add(node.id);
   }
   return nodes.map((node) => {
     const assignment = assignments.find((candidate) => candidate.taskId === node.id);
-    if (assignment?.state === "completed" || completedDispatchTaskIds.has(node.id) || completedTaskIds.has(node.id)) return { ...node, readiness: { ...node.readiness, state: "complete", blockingCodes: [] } };
     if (node.readiness.state !== "complete" && (assignment?.state === "assigned" || assignment?.state === "waiting_for_limit" || runningTaskIds.has(node.id))) {
       return { ...node, readiness: { ...node.readiness, state: "running", blockingCodes: [] } };
     }

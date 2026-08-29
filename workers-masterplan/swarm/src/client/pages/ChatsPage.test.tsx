@@ -12,6 +12,7 @@ const api = {
   readTranscript: async () => ({ data: chatTranscript }),
   readMarkdown: async () => ({ data: { filename: "runbook.md", content: "# Runbook\n\n<script>window.evil = true</script>\n\nSafe coordinator instructions." } }),
   listModels: async () => ({ data: [{ model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", supportedEfforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium", serviceTiers: [{ id: "standard", name: "Standard" }, { id: "priority", name: "Fast" }], defaultServiceTier: "standard", isDefault: true }] }),
+  listThreads: async (accountId: string) => ({ data: chatSnapshot.threads.filter((thread) => thread.accountId === accountId) }),
   startTurn: async () => ({ data: {} }),
   startThread: async () => ({ data: chatSnapshot.threads[1] }),
   archiveThread: async () => ({ data: {} }),
@@ -91,6 +92,21 @@ describe("ChatsPage", () => {
 
     expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
+  });
+
+  it("renders the chat workspace immediately and lazy-loads only the selected account's chat list", async () => {
+    setViewport(1440);
+    let resolveThreads: ((value: { data: typeof chatSnapshot.threads }) => void) | undefined;
+    const listThreads = vi.fn(() => new Promise<{ data: typeof chatSnapshot.threads }>((resolve) => { resolveThreads = resolve; }));
+    const lazySnapshot = { ...chatSnapshot, threads: [] };
+
+    render(<ChatsPage snapshot={lazySnapshot} api={{ ...api, listThreads }} />);
+
+    expect(screen.getByRole("region", { name: "Chats" })).toBeVisible();
+    expect(screen.getByRole("status", { name: "Loading chats" })).toBeVisible();
+    expect(listThreads).toHaveBeenCalledWith("bot3");
+    resolveThreads?.({ data: chatSnapshot.threads.filter((thread) => thread.accountId === "bot3") });
+    expect(await screen.findByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
   });
 
   it("pins the selected account's overlaid five-hour and weekly usage below its chat list", async () => {

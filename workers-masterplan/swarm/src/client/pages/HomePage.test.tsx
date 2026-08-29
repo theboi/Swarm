@@ -113,6 +113,21 @@ describe("HomePage", () => {
     expect(screen.getByRole("button", { name: "Send to bot3" })).toBeEnabled();
   });
 
+  it("opens a review shell immediately while the launch preview is still loading", async () => {
+    const user = userEvent.setup();
+    let resolvePreview: ((value: Awaited<ReturnType<typeof successfulPreview>>) => void) | undefined;
+    const successfulPreview = async () => ({ data: { task: dashboardSnapshot.tasks[1], accountId: "bot3" as const, prompt: "UI prompt", dependencies: ["T0"], accounts: [{ id: "bot3" as const, activeWorkers: 0, available: true }] } });
+    const previewLaunch = vi.fn(() => new Promise<Awaited<ReturnType<typeof successfulPreview>>>((resolve) => { resolvePreview = resolve; }));
+    render(<HomePage snapshot={dashboardSnapshot} api={{ previewLaunch, launch: successfulLaunch }} />);
+
+    await user.click(screen.getByRole("button", { name: "Review launch for U1" }));
+
+    expect(screen.getByRole("dialog", { name: "Review launch U1" })).toBeVisible();
+    expect(screen.getByRole("status", { name: "Loading launch preview" })).toBeVisible();
+    resolvePreview?.(await successfulPreview());
+    expect(await screen.findByRole("dialog", { name: "Launch U1" })).toHaveClass("launch-dialog--review");
+  });
+
   it("uses the chat composer turn options in launch review and sends every selected option", async () => {
     const user = userEvent.setup();
     const launch = vi.fn(async () => ({ data: launchedDispatch }));

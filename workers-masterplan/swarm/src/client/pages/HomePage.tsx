@@ -52,7 +52,7 @@ export function LaunchDialog({ preview, onClose, onSend, onSelectAccount, listMo
   const updateSettings = (next: ChatExecutionSettings) => { setSettings(next); writeGlobalExecutionSettings(next); };
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
-      <section className="launch-dialog" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Tab") { const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), textarea:not([disabled])')]; const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }}>
+      <section className="launch-dialog launch-dialog--review" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Tab") { const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), textarea:not([disabled])')]; const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }}>
         <OverlayCloseButton ref={closeButton} onClick={onClose} />
         <header className="launch-dialog__header"><p className="eyebrow">Review launch</p><h2 id="launch-dialog-title">Launch {preview.task.id}</h2></header>
         <dl>
@@ -66,8 +66,15 @@ export function LaunchDialog({ preview, onClose, onSend, onSelectAccount, listMo
   );
 }
 
+function LaunchReviewLoading({ task, onClose }: { task: TaskNode; onClose: () => void }) {
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeButton.current?.focus(), []);
+  return <div className="dialog-backdrop" onMouseDown={onClose}><section className="launch-dialog launch-dialog--review launch-dialog--loading" role="dialog" aria-modal="true" aria-labelledby="launch-loading-title" onMouseDown={(event) => event.stopPropagation()}><OverlayCloseButton ref={closeButton} onClick={onClose} /><header className="launch-dialog__header"><p className="eyebrow">Review launch</p><h2 id="launch-loading-title">Review launch {task.id}</h2></header><div className="launch-dialog__loading" role="status" aria-label="Loading launch preview"><span className="loading-spinner" aria-hidden="true" /><span>Preparing worker prompt and accounts…</span></div></section></div>;
+}
+
 export function HomePage({ snapshot, api, onOpenAccountChat, onOpenChat = () => undefined, onViewAccounts = () => undefined, onRefreshUsage }: { snapshot: CoordinatorSnapshot; api: HomeApi; onOpenAccountChat?: (accountId: AccountId) => void; onOpenChat?: (target: ChatTarget) => void; onViewAccounts?: () => void; onRefreshUsage?: () => Promise<void> }) {
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
+  const [reviewingTask, setReviewingTask] = useState<TaskNode | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const launchTrigger = useRef<HTMLElement | null>(null);
@@ -79,11 +86,15 @@ export function HomePage({ snapshot, api, onOpenAccountChat, onOpenChat = () => 
 
   const reviewLaunch = async (task: TaskNode, accountId?: AccountId) => {
     setError(null);
+    setPreview(null);
+    setReviewingTask(task);
     try {
       const result = await api.previewLaunch(task.id, accountId);
-      if ("error" in result && result.error) return setError(result.error.message);
+      if ("error" in result && result.error) { setReviewingTask(null); return setError(result.error.message); }
       setPreview(result.data);
+      setReviewingTask(null);
     } catch {
+      setReviewingTask(null);
       setError("Unable to review this launch.");
     }
   };
@@ -101,7 +112,7 @@ export function HomePage({ snapshot, api, onOpenAccountChat, onOpenChat = () => 
     }
   };
 
-  const closePreview = () => setPreview(null);
+  const closePreview = () => { setPreview(null); setReviewingTask(null); };
   useEffect(() => {
     if (!preview) launchTrigger.current?.focus();
   }, [preview]);
@@ -124,6 +135,7 @@ export function HomePage({ snapshot, api, onOpenAccountChat, onOpenChat = () => 
         <AccountSummaryPanel accounts={snapshot.accounts} assignments={snapshot.workerAssignments} tasks={snapshot.tasks} onOpenAccountChat={onOpenAccountChat} onViewMore={onViewAccounts} onRefreshUsage={onRefreshUsage} />
       </div>
       {preview ? <LaunchDialog preview={preview} onClose={closePreview} onSend={send} onSelectAccount={(accountId) => reviewLaunch(preview.task, accountId)} listModels={api.listModels} /> : null}
+      {reviewingTask && !preview ? <LaunchReviewLoading task={reviewingTask} onClose={closePreview} /> : null}
     </section>
   );
 }
