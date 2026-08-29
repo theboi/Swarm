@@ -31,8 +31,6 @@ export interface CoordinatorRouteServices {
   interruptTurn(accountId: AccountId, threadId: string, input: { turnId: string }): Promise<void>;
   readMarkdown(accountId: AccountId, path: string): Promise<{ filename: string; content: string }>;
   decideApproval(id: string, input: { decision: string; permissions?: Record<string, unknown> }): Promise<void>;
-  ngrokSnapshot(): Promise<unknown>;
-  stopNgrokEarly(): Promise<void>;
   allowedOrigins(): ReadonlySet<string>;
 }
 
@@ -167,9 +165,6 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   router.post("/tasks/:task/preview", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.previewLaunch(param(request.params.task), accountId)); }));
   router.post("/tasks/:task/launch", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const prompt = body.prompt === undefined ? undefined : text(body.prompt, "prompt"); const settings = executionSettings(body.settings); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.prompt !== undefined && !prompt) { apiError(response, 400, "INVALID_REQUEST", "A non-empty prompt is required"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.launch(param(request.params.task), { accountId, prompt, ...(settings ? { settings } : {}) })); }));
   router.post("/approvals/:approval", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const decision = text(body.decision, "decision"); if (!decision) { apiError(response, 400, "INVALID_REQUEST", "An approval decision is required"); return; } await services.decideApproval(param(request.params.approval), { decision, permissions: record(body.permissions) }); sendData(response, {}); }));
-  router.get("/ngrok", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.ngrokSnapshot())));
-  router.post("/ngrok/stop", ...securedMutation, asyncRoute(async (_request, response) => { await services.stopNgrokEarly(); sendData(response, {}); }));
-
   router.use((_request, response) => apiError(response, 404, "NOT_FOUND", "API route not found"));
   return router;
 }

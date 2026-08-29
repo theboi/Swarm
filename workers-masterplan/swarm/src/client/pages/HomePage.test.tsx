@@ -60,7 +60,7 @@ describe("HomePage", () => {
     expect(onOpenAccountChat).toHaveBeenCalledWith("bot3");
   });
 
-  it("renders normalized active, ready, queue, account, attention, and scheduled-access state", () => {
+  it("renders normalized active, ready, queue, account, and attention state", () => {
     render(<HomePage snapshot={dashboardSnapshot} api={{ previewLaunch: async () => ({ data: { task: dashboardSnapshot.tasks[1], accountId: "bot3", prompt: "UI prompt", dependencies: ["T0"], concurrencyImpact: "Uses 2 of 3 active turns" } }), launch: successfulLaunch }} />);
 
     expect(screen.getByText("Active", { selector: "dt" }).nextElementSibling).toHaveTextContent("1");
@@ -72,7 +72,6 @@ describe("HomePage", () => {
     expect(screen.getByLabelText("bot3: five-hour remaining 60%; weekly remaining 80%")).toBeVisible();
     expect(screen.getByRole("heading", { name: "bot1" })).toBeVisible();
     expect(screen.getByLabelText("bot1: five-hour remaining unknown; weekly remaining unknown")).toBeVisible();
-    expect(screen.getByText("Public access starts at 10:00")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Active work" })).toBeVisible();
     expect(screen.getByText("Task: T0 · Graph planning")).toBeVisible();
     expect(screen.getByText("Worker: Not reported")).toBeVisible();
@@ -93,12 +92,6 @@ describe("HomePage", () => {
     const cards = within(screen.getByLabelText("Accounts")).getAllByRole("heading", { level: 3 });
     expect(cards).toHaveLength(localSnapshot.accounts.length);
     expect(screen.queryByText("claudiothe (local)")).not.toBeInTheDocument();
-  });
-
-  it("renders the normalized ngrok public URL only when the coordinator reports one", () => {
-    render(<HomePage snapshot={{ ...dashboardSnapshot, ngrok: { ...dashboardSnapshot.ngrok, state: "running", publicUrl: "https://edenmind.example.ngrok.app" } }} api={{ previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: successfulLaunch }} />);
-
-    expect(screen.getByRole("link", { name: "https://edenmind.example.ngrok.app" })).toHaveAttribute("href", "https://edenmind.example.ngrok.app");
   });
 
   it("opens an editable ready-worker review with phase, dependencies, account selection, and concurrency impact", async () => {

@@ -30,10 +30,9 @@ describe("AtomicStateStore", () => {
       SWARM_LOGIN_PASSWORD_HASH: "web-hash",
       SWARM_TOTP_SECRET: "totp-secret",
       SWARM_SESSION_SECRET: "session-secret",
-      SWARM_NGROK_AUTHTOKEN: "ngrok-secret",
     });
     const store = createCoordinatorStateStore(join(directory, "state.json"), config);
-    await expect(store.write({ status: "ngrok-secret" })).rejects.toThrow("secret-like");
+    await expect(store.write({ status: "session-secret" })).rejects.toThrow("secret-like");
     await expect(store.write({ status: "bot-secret-4" })).rejects.toThrow("secret-like");
     await rm(directory, { recursive: true, force: true });
   });

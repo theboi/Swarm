@@ -11,8 +11,8 @@ import { createCoordinatorApp } from "./app.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import type { CoordinatorSnapshot, HealthSnapshot } from "../shared/contracts.js";
 
-const health: HealthSnapshot = { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" } };
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health };
+const health: HealthSnapshot = { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" } };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health };
 let stop: (() => Promise<void>) | undefined;
 afterEach(async () => { await stop?.(); stop = undefined; });
 
@@ -20,7 +20,7 @@ async function servicesFixture(): Promise<CoordinatorRouteServices> {
   const passwordHash = await createPasswordHash("password", "app-test-salt");
   return {
     config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310, terminalPort: 4311 }, sessions: new SessionStore("session"), throttle: new LoginThrottle(), verifyTotp: createTotpVerifier("JBSWY3DPEHPK3PXP"), snapshot: async () => snapshot, health: async () => health,
-    connectAccount: async () => ({}), disconnectAccount: async () => undefined, openTerminal: async () => undefined, refreshRateLimits: async () => [], refreshAllRateLimits: async () => [], listModels: async () => [], previewLaunch: async () => ({}), launch: async () => ({}), listThreads: async () => [], readTranscript: async () => [], startThread: async () => ({}), moveThreadToAccount: async () => ({}), archiveThread: async () => undefined, startTurn: async () => ({}), steerTurn: async () => undefined, interruptTurn: async () => undefined, readMarkdown: async () => ({ filename: "x.md", content: "" }), decideApproval: async () => undefined, ngrokSnapshot: async () => snapshot.ngrok, stopNgrokEarly: async () => undefined, allowedOrigins: () => new Set(["http://127.0.0.1:4310"]),
+    connectAccount: async () => ({}), disconnectAccount: async () => undefined, openTerminal: async () => undefined, refreshRateLimits: async () => [], refreshAllRateLimits: async () => [], listModels: async () => [], previewLaunch: async () => ({}), launch: async () => ({}), listThreads: async () => [], readTranscript: async () => [], startThread: async () => ({}), moveThreadToAccount: async () => ({}), archiveThread: async () => undefined, startTurn: async () => ({}), steerTurn: async () => undefined, interruptTurn: async () => undefined, readMarkdown: async () => ({ filename: "x.md", content: "" }), decideApproval: async () => undefined, allowedOrigins: () => new Set(["http://127.0.0.1:4310"]),
   };
 }
 

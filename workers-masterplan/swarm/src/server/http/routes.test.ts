@@ -9,9 +9,9 @@ import type { CoordinatorSnapshot, HealthSnapshot } from "../../shared/contracts
 import { createApiRouter, type CoordinatorRouteServices } from "./routes.js";
 
 const health: HealthSnapshot = {
-  server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" },
+  server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" },
 };
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: null }, health };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health };
 
 async function fixture() {
   const passwordHash = await createPasswordHash("correct password", "route-test-salt");
@@ -43,8 +43,6 @@ async function fixture() {
     interruptTurn: vi.fn(async () => undefined),
     readMarkdown: vi.fn(async () => ({ filename: "notes.md", content: "# Notes" })),
     decideApproval: vi.fn(async () => undefined),
-    ngrokSnapshot: async () => snapshot.ngrok,
-    stopNgrokEarly: vi.fn(async () => undefined),
     allowedOrigins: () => origins,
   };
   const app = express();

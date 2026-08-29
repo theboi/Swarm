@@ -2,7 +2,9 @@
 
 The coordinator is a local-first operations tool for supervising Codex
 app-server chats across the local `claudiothe` account and `bot1` through
-`bot8`. Open it locally at [http://127.0.0.1:4310](http://127.0.0.1:4310).
+`bot8`. Open it locally at [http://localhost:4310](http://localhost:4310), or
+through this Mac's Tailscale address. The development listener binds to all
+interfaces by default.
 Codex app-server runs directly for `claudiothe`; each bot runs through `su`.
 Codex Desktop must never be launched for a bot account.
 
@@ -13,8 +15,6 @@ Codex Desktop must never be launched for a bot account.
 - Node.js 20 or later and npm.
 - Codex CLI 0.146.0 with `codex app-server` available at the absolute path in
   `SWARM_CODEX_BIN`.
-- ngrok only if scheduled public access is wanted. Configure its local token in
-  `.env`; do not put it in source control.
 - A completed Codex login in every account that will be connected.
 
 Install the locked dependencies with `npm ci` from this directory.
@@ -61,9 +61,9 @@ log. A missing slot does not prevent the dashboard from starting: that bot
 displays its authentication remediation until you add the matching local
 credential.
 
-`SWARM_PORT` defaults to `4310`. The loopback-only terminal controller always
-uses the next port (`4311` by default) for the local dashboard's **Open
-Terminal** action. A signed-in browser session remains valid for 30 days of
+`SWARM_HOST` defaults to `0.0.0.0` and `SWARM_PORT` defaults to `4310`. The
+terminal controller uses the next port (`4311` by default) for the signed-in
+dashboard's **Open Terminal** action. A browser session remains valid for 30 days of
 inactivity before another password-and-TOTP login is required.
 
 `manifests/mvp3.json` is the production default. It is the 32-task **Pass 1**
@@ -119,14 +119,14 @@ are retained in `.data/swarm.stdout.log` and `.data/swarm.stderr.log`.
 
 The normal browser harness uses deterministic fake app-server data for all
 nine accounts. It does not need real bot passwords, a Codex network session,
-a bot account, or ngrok. It requires the coordinator HTTP/WebSocket composition
+or a bot account. It requires the coordinator HTTP/WebSocket composition
 runtime; until that runtime is present, the command stops with a clear Task 5
 dependency message rather than substituting a test-only web application.
 
 ## Operating model
 
-The default global active-turn concurrency is `3`. This controls dispatches,
-not chat storage: every macOS account can own unlimited chats.
+There is no global active-turn limit. Every macOS account can own and run
+multiple chats subject only to that account's own Codex usage limits.
 
 Each account runs one loopback-only Codex app-server. `claudiothe` starts the
 CLI directly with its existing local Codex profile; each bot starts through
@@ -135,13 +135,12 @@ per-launch capability token in memory. Use the CLI app-server path only; do
 not open Codex Desktop under a bot account.
 
 The first Accounts card is the full `claudiothe` Codex account. The local
-workspace Git status remains a separate information card. Every hour Swarm
-deterministically runs a fast-forward-only pull in that local checkout, then
-pushes `origin/main` from each configured bot checkout in `bot1` through
-`bot8` order. A failed pull shows a warning on the workspace card; a failed
-push shows one on the affected bot card. Swarm leaves the failure for an
-operator or the owning worker to resolve and tries again at the next hourly
-interval.
+workspace Git status remains a separate information card. Every minute Swarm
+deterministically pulls `origin/main` in the local checkout and every configured
+bot checkout. A merge conflict raises one warning and steers the affected bot
+once to resolve it. Before a usage-limit stop or account transfer, Swarm stages
+and commits all work, fetches and rebases onto `origin/main`, aborts a failed
+rebase for manual resolution, then pushes the checkpoint.
 
 If an account needs Codex authentication, sign in manually from the coordinator
 account using the displayed account-specific command. For example, when the
@@ -155,18 +154,9 @@ configured CLI is at its default path:
 After that command succeeds, retry the account connection. Do not add a CLI or
 desktop fallback to the coordinator.
 
-**Open Terminal** works only from the dashboard opened on this Mac at
-`127.0.0.1` or `localhost`; it intentionally is unavailable through ngrok.
-The control endpoint itself is on the separate loopback-only terminal port, so
-a public dashboard session cannot open a Terminal window on the host.
-
-ngrok is optional. When enabled, the coordinator may run it only from 10:00
-until 00:00 in `Asia/Singapore`; local access remains available outside that
-window. Set `SWARM_NGROK_URL` to a reserved hostname without `https://` and
-Swarm starts `ngrok http --url=<hostname> 127.0.0.1:4310`. If automatic region
-selection is blocked by local routing, set `SWARM_NGROK_REGION` (for example,
-`ap`) to pin the agent connection. The coordinator does
-not offer an early or outside-window start.
+**Open Terminal** is available to a signed-in dashboard opened through
+localhost or one of this Mac's local/Tailscale addresses. Its separate control
+port accepts only those explicit origins.
 
 On an open dashboard, Swarm refreshes authenticated account usage once a
 minute. The Accounts sidebar also offers **Refresh usage** for an immediate
@@ -212,4 +202,4 @@ local under `.data/` and ignored by Git. The LaunchAgent retains structured
 process output in `.data/swarm.stdout.log` and `.data/swarm.stderr.log`. On
 `SIGINT` or `SIGTERM`, the
 coordinator stops accepting launches, closes browser sockets, flushes state,
-terminates managed ngrok and child app-servers, and exits within ten seconds.
+terminates child app-servers, and exits within ten seconds.

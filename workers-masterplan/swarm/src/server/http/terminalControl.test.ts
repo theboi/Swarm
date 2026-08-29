@@ -14,12 +14,13 @@ function fixture() {
     throttle: new LoginThrottle(),
     verifyTotp: { verify: async () => false },
     openTerminal,
+    allowedOrigins: () => new Set(["http://127.0.0.1:4310", "http://100.90.80.70:4310"]),
   } as unknown as CoordinatorRouteServices;
   return { app: createTerminalControlApp(services), sessions, openTerminal };
 }
 
-describe("loopback terminal controller", () => {
-  it("accepts a session-authenticated local dashboard request for each allowlisted account", async () => {
+describe("terminal controller", () => {
+  it("accepts a session-authenticated local or Tailscale dashboard request for each allowlisted account", async () => {
     const { app, sessions, openTerminal } = fixture();
     const token = await sessions.createSession("claudio@example.test");
     const origin = "http://127.0.0.1:4310";
@@ -27,6 +28,7 @@ describe("loopback terminal controller", () => {
     await request(app).options("/api/v1/accounts/bot1/terminal").set("origin", origin).expect(204).expect("access-control-allow-origin", origin);
     await request(app).post("/api/v1/accounts/bot1/terminal").set("origin", origin).set("cookie", `swarm_session=${token}`).send({}).expect(200, { data: {} });
     await request(app).post("/api/v1/accounts/claudiothe/terminal").set("origin", origin).set("cookie", `swarm_session=${token}`).send({}).expect(200, { data: {} });
+    await request(app).options("/api/v1/accounts/bot1/terminal").set("origin", "http://100.90.80.70:4310").expect(204).expect("access-control-allow-origin", "http://100.90.80.70:4310");
 
     expect(openTerminal).toHaveBeenNthCalledWith(1, "bot1");
     expect(openTerminal).toHaveBeenNthCalledWith(2, "claudiothe");
@@ -38,6 +40,7 @@ describe("loopback terminal controller", () => {
 
     await request(app).post("/api/v1/accounts/bot1/terminal").set("origin", "http://127.0.0.1:4310").send({}).expect(401);
     await request(app).options("/api/v1/accounts/bot1/terminal").set("origin", "https://attacker.example").expect(403);
+    await request(app).post("/api/v1/accounts/bot1/terminal").set("origin", "https://attacker.example").set("cookie", `swarm_session=${token}`).send({}).expect(403);
     await request(app).post("/api/v1/accounts/not-a-bot/terminal").set("origin", "http://127.0.0.1:4310").set("cookie", `swarm_session=${token}`).send({}).expect(400);
     expect(openTerminal).not.toHaveBeenCalled();
   });

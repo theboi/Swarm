@@ -63,9 +63,6 @@ async function read<T>(path: string): Promise<T> {
 
 function localTerminalControlOrigin(): string {
   const location = window.location;
-  if (location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
-    throw new Error("Open Terminal is available only from the local Swarm dashboard");
-  }
   const dashboardPort = location.port ? Number(location.port) : location.protocol === "https:" ? 443 : 80;
   if (!Number.isInteger(dashboardPort) || dashboardPort < 1 || dashboardPort >= 65_535) {
     throw new Error("The local Swarm dashboard has an invalid port");

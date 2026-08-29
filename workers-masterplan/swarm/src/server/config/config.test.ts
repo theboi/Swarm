@@ -40,6 +40,7 @@ describe("loadConfig", () => {
 
     expect(config.masterplanPath).toBe("manifests/mvp3.json");
     expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
+    expect(config.host).toBe("0.0.0.0");
     expect(config.terminalPort).toBe(config.port + 1);
   });
 
@@ -74,18 +75,12 @@ describe("loadConfig", () => {
       SWARM_LOGIN_PASSWORD_HASH: "scrypt$16384$8$1$c2FsdA==$ZGlnaWVzdA==",
       SWARM_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
       SWARM_SESSION_SECRET: "a session secret",
-      SWARM_NGROK_AUTHTOKEN: "ngrok-secret",
-      SWARM_NGROK_URL: "tosha-protrudent-ternately.ngrok-free.dev",
-      SWARM_NGROK_REGION: "ap",
     });
 
     expect(config.loginEmail).toBe("claudio@example.com");
     expect(config.accountPasswords.bot3).toBe("local-password-3");
     expect(config.accountPasswords.bot8).toBe("local-password-8");
-    expect(config.ngrok.url).toBe("tosha-protrudent-ternately.ngrok-free.dev");
-    expect(config.ngrok.region).toBe("ap");
     expect(config.publicConfig()).not.toContain("local-password");
-    expect(config.publicConfig()).not.toContain("ngrok-secret");
   });
 
   it("leaves an unset bot credential unavailable and rejects a mismatched SWARM_USER name", async () => {

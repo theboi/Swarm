@@ -238,15 +238,7 @@ export interface HealthSnapshot {
   readiness: HealthComponent;
   outbox: HealthComponent;
   scheduler: HealthComponent;
-  ngrok: HealthComponent;
   accounts: HealthComponent;
-}
-
-export interface NgrokSnapshot {
-  state: "disabled" | "stopped" | "starting" | "running" | "error";
-  publicUrl: string | null;
-  message: string | null;
-  nextBoundaryAt: number | null;
 }
 
 export interface CoordinatorSnapshot {
@@ -258,7 +250,6 @@ export interface CoordinatorSnapshot {
   workerAssignments?: WorkerAssignmentRecord[];
   threads: ThreadSummary[];
   pendingApprovals: PendingApproval[];
-  ngrok: NgrokSnapshot;
   health: HealthSnapshot;
 }
 

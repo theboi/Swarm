@@ -82,8 +82,7 @@ export function createFixtureState(options: { manifest?: FixtureManifest } = {})
       { id: "approval-1", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "command-1", method: "item/commandExecution/requestApproval", summary: "rm -rf /Users/bot4", availableDecisions: ["decline"], createdAt: timestamp },
       { id: "approval-2", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "command-2", method: "item/commandExecution/requestApproval", summary: "git push origin main", availableDecisions: ["decline"], createdAt: timestamp + 1 },
     ],
-    ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: 1_725_018_000 },
-    health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, ngrok: { state: "ok" }, accounts: { state: "ok" } },
+    health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" } },
   };
   return {
     snapshot,

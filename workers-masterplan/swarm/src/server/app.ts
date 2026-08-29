@@ -62,14 +62,14 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
           const onListening = () => { terminalServer.off("error", onError); resolveListen(); };
           terminalServer.once("error", onError);
           terminalServer.once("listening", onListening);
-          terminalServer.listen(dependencies.services.config.terminalPort, "127.0.0.1");
+          terminalServer.listen(dependencies.services.config.terminalPort, dependencies.services.config.host);
         });
       } catch (error) {
         await closeServer(server);
         throw error;
       }
       const address = server.address();
-      if (!address || typeof address === "string") throw new Error("Coordinator did not bind a loopback listener");
+      if (!address || typeof address === "string") throw new Error("Coordinator did not bind a network listener");
       return { host: dependencies.services.config.host, port: address.port };
     },
     shutdown() {

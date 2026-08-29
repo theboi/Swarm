@@ -16,7 +16,6 @@ export interface SwarmConfig {
   trustManagedProxy: boolean;
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
-  ngrok: { enabled: boolean; bin: string; authtoken: string | undefined; url: string | undefined; region: string | undefined; start: string; stop: string };
   localAccount: string;
   accountPasswords: Record<BotAccountId, string | undefined>;
   publicConfig(): string;
@@ -58,7 +57,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   }
   const loginEmail = required(env, "SWARM_LOGIN_EMAIL").toLowerCase();
   const config: SwarmConfig = {
-    host: env.SWARM_HOST ?? "127.0.0.1",
+    host: env.SWARM_HOST ?? "0.0.0.0",
     port: Number(env.SWARM_PORT ?? 4310),
     terminalPort: Number(env.SWARM_PORT ?? 4310) + 1,
     timezone: env.SWARM_TIMEZONE ?? "Asia/Singapore",
@@ -71,9 +70,8 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
     coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),
-    ngrok: { enabled: bool(env.SWARM_NGROK_ENABLED, true), bin: env.SWARM_NGROK_BIN ?? "ngrok", authtoken: env.SWARM_NGROK_AUTHTOKEN, url: env.SWARM_NGROK_URL?.trim() || env.SWARM_NGROK_DOMAIN?.trim() || undefined, region: env.SWARM_NGROK_REGION?.trim() || undefined, start: env.SWARM_NGROK_START ?? "10:00", stop: env.SWARM_NGROK_STOP ?? "00:00" },
     accountPasswords,
-    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, terminalPort: config.terminalPort, timezone: config.timezone, ngrokEnabled: config.ngrok.enabled, localAccount: config.localAccount }),
+    publicConfig: () => JSON.stringify({ host: config.host, port: config.port, terminalPort: config.terminalPort, timezone: config.timezone, localAccount: config.localAccount }),
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("SWARM_PORT must be a valid port");
   if (!Number.isInteger(config.terminalPort) || config.terminalPort < 1 || config.terminalPort > 65535) throw new Error("SWARM_PORT must leave a valid adjacent loopback terminal port");
@@ -86,7 +84,6 @@ export function configuredSecretValues(config: SwarmConfig): string[] {
     config.loginPasswordHash,
     config.totpSecret,
     config.sessionSecret,
-    config.ngrok.authtoken,
     ...Object.values(config.accountPasswords),
   ].filter((value): value is string => Boolean(value));
 }

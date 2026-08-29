@@ -10,10 +10,6 @@ function account(value: unknown): AccountId | undefined {
   return typeof value === "string" && accounts.has(value as AccountId) ? value as AccountId : undefined;
 }
 
-function localDashboardOrigins(port: number): ReadonlySet<string> {
-  return new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
-}
-
 function asyncRoute(handler: (request: Request, response: Response) => Promise<void>) {
   return (request: Request, response: Response): void => {
     void handler(request, response).catch(() => apiError(response, 400, "OPERATION_FAILED", "Unable to open the requested terminal"));
@@ -21,28 +17,24 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<v
 }
 
 /**
- * This router is deliberately mounted on a separate loopback-only listener.
- * It never shares the externally tunneled coordinator listener, so a public
- * caller cannot make the host open a macOS terminal by forging an Origin header.
+ * This router is mounted on a separate port and accepts only the coordinator's
+ * explicit local-machine origins, including its Tailscale interface.
  */
-export function createTerminalControlApp(services: Pick<CoordinatorRouteServices, "config" | "sessions" | "openTerminal">): express.Express {
+export function createTerminalControlApp(services: Pick<CoordinatorRouteServices, "config" | "sessions" | "openTerminal" | "allowedOrigins">): express.Express {
   const app = express();
   app.disable("x-powered-by");
-  const allowedOrigins = localDashboardOrigins(services.config.port);
+  const allowedOrigins = services.allowedOrigins();
   app.use((request, response, next) => {
     const origin = request.headers.origin;
-    if (typeof origin === "string" && allowedOrigins.has(origin)) {
-      response.setHeader("Access-Control-Allow-Origin", origin);
-      response.setHeader("Access-Control-Allow-Credentials", "true");
-      response.setHeader("Access-Control-Allow-Headers", "content-type");
-      response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    }
-    if (request.method === "OPTIONS") {
-      if (typeof origin !== "string" || !allowedOrigins.has(origin)) {
-        apiError(response, 403, "AUTH_INVALID", "Request origin is not allowed");
-      } else response.status(204).end();
+    if (typeof origin !== "string" || !allowedOrigins.has(origin)) {
+      apiError(response, 403, "AUTH_INVALID", "Request origin is not allowed");
       return;
     }
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Access-Control-Allow-Credentials", "true");
+    response.setHeader("Access-Control-Allow-Headers", "content-type");
+    response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    if (request.method === "OPTIONS") { response.status(204).end(); return; }
     next();
   });
   app.use(express.json({ limit: "64kb", type: "application/json" }));

@@ -19,14 +19,12 @@ export const snapshot: CoordinatorSnapshot = {
   dispatches: [],
   threads: [],
   pendingApprovals: [],
-  ngrok: { state: "stopped", publicUrl: null, message: null, nextBoundaryAt: 1_725_018_000 },
   health: {
     server: { state: "ok" },
     stateStore: { state: "ok" },
     readiness: { state: "ok" },
     outbox: { state: "ok" },
     scheduler: { state: "ok" },
-    ngrok: { state: "ok" },
     accounts: { state: "ok" },
   },
 };

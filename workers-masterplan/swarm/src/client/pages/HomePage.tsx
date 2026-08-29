@@ -16,13 +16,6 @@ function isActiveDispatch(state: string): boolean {
   return state === "submitting" || state === "accepted";
 }
 
-function ngrokCopy(snapshot: CoordinatorSnapshot): string {
-  if (snapshot.ngrok.state === "running") return "Public until 00:00";
-  if (snapshot.ngrok.state === "error") return snapshot.ngrok.message ?? "Public access is unavailable.";
-  if (snapshot.ngrok.state === "disabled") return "Public access is disabled.";
-  return "Public access starts at 10:00";
-}
-
 function ActiveWork({ snapshot, dispatchId }: { snapshot: CoordinatorSnapshot; dispatchId: string }) {
   const dispatch = snapshot.dispatches.find((candidate) => candidate.id === dispatchId);
   if (!dispatch) return null;
@@ -115,7 +108,7 @@ export function HomePage({ snapshot, api, onOpenAccountChat, onOpenChat = () => 
 
   return (
     <section className="home-page" aria-labelledby="home-title">
-      <header><p className="eyebrow">Operating cockpit</p><h1 id="home-title">Home</h1><p>{ngrokCopy(snapshot)}</p>{snapshot.ngrok.publicUrl ? <a href={snapshot.ngrok.publicUrl}>{snapshot.ngrok.publicUrl}</a> : null}</header>
+      <header><p className="eyebrow">Operating cockpit</p><h1 id="home-title">Home</h1></header>
       {message ? <Toast onDismiss={() => setMessage(null)}>{message}</Toast> : null}
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
       <dl className="metric-grid">
