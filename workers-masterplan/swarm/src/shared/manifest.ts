@@ -123,7 +123,7 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
   return null;
 }
 
-function findFirstCycle(tasks: TaskManifestTask[]): string[] | null {
+function findFirstCycle(tasks: TaskManifestTask[], dependenciesFor: (task: TaskManifestTask) => string[] = (task) => task.dependsOn): string[] | null {
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -138,7 +138,7 @@ function findFirstCycle(tasks: TaskManifestTask[]): string[] | null {
 
     visiting.add(taskId);
     path.push(taskId);
-    for (const dependencyId of taskById.get(taskId)?.dependsOn ?? []) {
+    for (const dependencyId of dependenciesFor(taskById.get(taskId)!)) {
       const cycle = visit(dependencyId);
       if (cycle) return cycle;
     }
@@ -224,6 +224,10 @@ export function validateTaskManifest(value: unknown): ManifestValidationResult {
 
   const cycle = findFirstCycle(manifest.tasks);
   if (cycle) return { ok: false, error: { code: "MANIFEST_CYCLE", cycle } };
+  if (manifest.lifecycle?.mode === "two_pass") {
+    const executionCycle = findFirstCycle(manifest.tasks.filter((task) => task.passes?.includes("execution")), (task) => task.executionDependsOn ?? []);
+    if (executionCycle) return { ok: false, error: { code: "MANIFEST_CYCLE", cycle: executionCycle } };
+  }
 
   return { ok: true, data: manifest };
 }

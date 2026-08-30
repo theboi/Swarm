@@ -99,6 +99,25 @@ describe("validateTaskManifest", () => {
     });
   });
 
+  it("rejects a cycle in the declared Pass 2 execution graph", () => {
+    const executionTask = (id: string, executionDependsOn: string[]) => ({
+      id,
+      title: id,
+      kind: "planning",
+      dependsOn: [],
+      passes: ["planning", "execution"],
+      executionDependsOn,
+      promptTemplate: "planning",
+    });
+    const result = validateTaskManifest({
+      ...validManifest,
+      lifecycle: { mode: "two_pass", activePass: "planning", planningGatePath: "docs/gate.md" },
+      tasks: [executionTask("A", ["B"]), executionTask("B", ["A"])],
+    });
+
+    expect(result).toEqual({ ok: false, error: { code: "MANIFEST_CYCLE", cycle: ["A", "B", "A"] } });
+  });
+
   it("rejects an unknown dependency instead of treating it as ready", () => {
     expect(
       validateTaskManifest({
