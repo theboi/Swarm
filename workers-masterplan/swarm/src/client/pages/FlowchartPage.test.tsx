@@ -127,17 +127,25 @@ describe("FlowchartPage", () => {
   it("keeps review launch available for blocked, errored, and completed work", async () => {
     setViewport(1440);
     const user = userEvent.setup();
-    render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
+    const snapshot = {
+      ...dashboardSnapshot,
+      tasks: dashboardSnapshot.tasks.map((task) => task.id === "T0"
+        ? { ...task, readiness: { ...task.readiness, state: "complete" as const } }
+        : task.id === "U1"
+          ? { ...task, readiness: { ...task.readiness, state: "attention_required" as const } }
+          : task),
+    };
+    render(<FlowchartPage snapshot={snapshot} onOpenChat={() => undefined} />);
 
-    await user.click(screen.getByRole("button", { name: "Show blocked tasks" }));
-
-    expect(screen.getByRole("button", { name: "I0 Integration blocked" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "U1 Coordinator UI ready" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "I0 Integration blocked" }));
-    expect(screen.getByRole("button", { name: "Review launch for I0" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "Show all tasks" }));
-    await user.click(screen.getByRole("button", { name: "U1 Coordinator UI ready" }));
-    expect(screen.getByRole("button", { name: "Review launch for U1" })).toBeEnabled();
+    for (const [taskLabel, reviewLabel] of [
+      ["T0 Graph planning complete", "Review launch for T0"],
+      ["U1 Coordinator UI attention_required", "Review launch for U1"],
+      ["I0 Integration blocked", "Review launch for I0"],
+    ]) {
+      await user.click(screen.getByRole("button", { name: taskLabel }));
+      expect(screen.getByRole("button", { name: reviewLabel })).toBeEnabled();
+      await user.click(screen.getByRole("button", { name: "Close" }));
+    }
   });
 
   it("opens the shared editable launch review from a ready task", async () => {
