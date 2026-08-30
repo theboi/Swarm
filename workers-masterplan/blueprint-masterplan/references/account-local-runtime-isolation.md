@@ -40,6 +40,24 @@ mismatched, an assigned port is occupied, the complete port inventory cannot
 be derived, the pinned tool cannot scope the generated workdir/network, or an
 operation would mutate tracked configuration or another runtime.
 
+## Review process lifetime
+
+A review runtime must have a named, account-owned process holder independent of
+the worker's interactive command or chat session. Prefer the repository's
+account-local supervisor when one exists. Otherwise use a scoped OS service,
+container restart policy, or existing account-owned long-lived supervisor that
+can start, inspect, restart, and stop only the exact runtime namespace. A
+foreground process, a temporary yielded command session, or a worker tool cell
+is evidence for a canary only; it is not a review-lifetime holder.
+
+Before handoff, end the launch command, inspect the holder from a separate
+command session, and prove the same account-owned client/API listeners and
+protected route remain healthy. Record redacted holder inspection and restart
+commands, exact labels or process IDs, logs, and shutdown scope. Never put
+credentials, tokens, keys, or cookie values in service definitions or handoff
+evidence. If no compliant holder is available, the protected URL is blocked
+from review rather than temporarily presented.
+
 ## Protected fixture-review client launch
 
 Use this contract whenever a UI worker gives the user a protected fixture route
@@ -162,8 +180,9 @@ generated-workdir rule, exact canary, and failure owner. Applicable launch
 packets reproduce the substituted block once before runtime commands.
 
 The handoff records redacted effective origins, names, ports, health, canary
-results, and the exact resources left running. It never records passwords,
-keys, JWTs, refresh tokens, or cookie values.
+results, the exact resources left running, and holder inspection and restart
+commands. It never records passwords, keys, JWTs, refresh tokens, or cookie
+values.
 
 ## Common mistakes
 
@@ -176,6 +195,7 @@ keys, JWTs, refresh tokens, or cookie values.
 | Launch protected review with generic `--fixture` | From `edenmind-client`, export both matching account cookie variables and use `--fixture --review-as <identity>`, then pass the final cookie-free protected-route check. |
 | Edit tracked Supabase config locally | Render it into the ignored account-local workdir. |
 | Treat a missing wrapper as a review blocker | Execute the deterministic procedure directly when the brief authorizes runtime operation; record the redacted commands. |
+| Leave client/API in a worker tool session | Use an account-owned holder independent of the worker's interactive command or chat session, then prove it from a separate command session. |
 | Stop another stack to free a port | Report the collision; never mutate another account's runtime. |
 | Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary, then run the final cookie-free protected-route check without signing out afterward. |
 | Hand off the protected URL after testing only the worker's browser | Run the separate exact-URL reviewer-entry canary from no-cookie and stale-cookie contexts; use the repository fixture-review bootstrap when available. |

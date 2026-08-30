@@ -135,6 +135,11 @@ do not label the protected URL review-ready or add a “may need to sign in”
 caveat. If browser integration is unavailable, record that visual limitation
 and run both endpoint-consistent cases through an approved non-visual
 interface. Keep the app and its access dependencies running through review.
+Run them under a named account-owned process holder independent of the worker's
+interactive command or chat session. A foreground or yielded worker tool
+session is not a lifecycle holder. End the launch command, then use a separate
+command session to prove the holder still owns the exact listeners and route;
+record its redacted inspection, restart, log, and scoped shutdown commands.
 Show a working skeleton early, then edit the real app and iterate from user
 feedback.
 

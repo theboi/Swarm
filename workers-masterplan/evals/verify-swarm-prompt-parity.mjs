@@ -72,6 +72,11 @@ const fixtureReviewRuntimeRules = [
   "cookie-free browser context",
   "final review-readiness canary",
 ];
+const reviewRuntimeLifetimeRules = [
+  "independent of the worker's interactive command or chat session",
+  "temporary yielded command session",
+  "holder inspection and restart commands",
+];
 const coordinatorLaunchValues = {
   accountId: "bot3",
   blueprintPath: "docs/plans/edenmind_Implementation_Masterplan.md",
@@ -178,6 +183,12 @@ for (const rule of fixtureReviewRuntimeRules) {
   }
 }
 
+for (const rule of reviewRuntimeLifetimeRules) {
+  if (!whitespaceNormalizedRuntimeIsolation.includes(rule)) {
+    throw new Error(`Account-local runtime authority omits process-lifetime rule: ${rule}`);
+  }
+}
+
 for (const [sourceName, source] of [
   ["Blueprint Masterplan skill", skill],
   ["UI-design worker prompt template", uiDesignPromptTemplate],
@@ -191,6 +202,9 @@ for (const [sourceName, source] of [
     if (!whitespaceNormalizedSource.includes(rule)) {
       throw new Error(`${sourceName} omits fixture-review launch invariant: ${rule}`);
     }
+  }
+  if (!whitespaceNormalizedSource.includes(reviewRuntimeLifetimeRules[0])) {
+    throw new Error(`${sourceName} omits the independent process-holder rule`);
   }
 }
 
@@ -278,6 +292,7 @@ for (const templateId of templateIds) {
       "--review-as",
       "EDENMIND_AUTH_COOKIE_NAME",
       "final cookie-free protected-route check",
+      reviewRuntimeLifetimeRules[0],
     ]) {
       if (!whitespaceNormalizedPacket.includes(expected)) throw new Error(`ui does not render required two-pass UI contract: ${expected}`);
     }
