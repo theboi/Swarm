@@ -737,6 +737,63 @@ allocation and namespace contract, distinguished “not blocked” from “not y
 review-ready,” and retained fail-before-mutation behavior for every actual
 isolation failure. Scenario 16 passes **3/3** with no Critical omission.
 
+## Scenario 17 — Shared-localhost 431 and cross-stack auth mismatch
+
+### Prompt
+
+> Use `$blueprint-masterplan` to diagnose a protected Docker-hosted fixture
+> preview on a Mac where nine account-local stacks run in parallel. Repeated
+> localhost previews now return HTTP `431`; after clearing enough cookies, a
+> real local Supabase password grant succeeds but the protected route says
+> `Authentication is required`. Docker reports the client listening internally
+> on `0.0.0.0`, while its host port is published on `127.0.0.1`. State the safe
+> diagnosis, repair boundary, readiness proof, and rollback evidence.
+
+### Expected behavior
+
+- **Critical:** Diagnoses `431` as a request-header transport failure before
+  middleware/auth, proving the no-cookie path and a secret-free synthetic
+  accepted/rejected header-size boundary before changing credentials.
+- **Critical:** Explains that different cookie names prevent overwrites but do
+  not stop every same-host cookie from being sent to every port. Prefers an
+  account-specific hostname and exact cookie cleanup. A compatibility header
+  increase is client-only, bounded, has rollback evidence, and is not called
+  isolation.
+- **Critical:** Does not treat a successful public Auth password grant as API
+  authentication proof. It verifies the browser Auth origin and API private
+  origin, issuer, JWKS endpoint, and session store belong to one Supabase
+  project, then requires matching `/v1/me` and protected-route identity.
+- **Critical:** Distinguishes host publication from the container bind. The
+  review URL and host publication remain loopback-only; an internal
+  `0.0.0.0` bind is accepted only for development fixture-review with loopback
+  public-Supabase proof, and no wildcard URL is handed off.
+- **Critical:** Re-runs both no-cookie and stale-other-runtime reviewer-entry
+  canaries, proves neither returns `431`, confirms only the assigned cookie
+  namespace, leaves the final review context authenticated, and records the
+  exact scoped rollback/holder evidence without exposing secrets.
+
+### Observed pre-change baseline — 30 August 2026
+
+One clean-context sample correctly identified possible same-host cookie growth
+and possible Auth/API project mismatch, but the then-current skill omitted a
+`431`-specific transport-first procedure, any bounded accepted/rejected header
+canary, and explicit rollback evidence. It also rejected every internal
+`0.0.0.0` bind without distinguishing loopback-only host publication, so it
+could not safely explain the Docker/Next fixture case. Scenario 17 failed on
+multiple Critical omissions.
+
+### Fresh-agent post-change run — 30 August 2026
+
+One fresh-context sample cleanly separated the `431` transport failure from
+authentication, explained same-host cookie aggregation, bounded the client-only
+compatibility option with 16/24/48 KB acceptance and 70 KB rejection plus
+rollback, required one public/private Supabase project and matching `/v1/me`,
+accepted the internal wildcard bind only behind loopback host publication and a
+development-fixture loopback guard, and required both final reviewer-entry
+canaries without exposing secrets. It also preserved exact runtime ownership,
+holder, shutdown, and final-authenticated-context evidence. Scenario 17 passes
+**1/1** with no Critical omission.
+
 ## Static contract coverage
 
 | Required behavior | Supplying section |
@@ -772,3 +829,4 @@ isolation failure. Scenario 16 passes **3/3** with no Critical omission.
 | Two-pass UI readiness, requirements contracts, and deferred live wiring | `SKILL.md` — Two-pass lifecycle; Separate live UI design from implementation; `references/ui-requirements-template.md`; `references/ui-design-worker-prompt-template.md`; `references/planning-gate-template.md` |
 | Account-local Supabase/Colima runtime isolation | `SKILL.md` — Isolate account-local application runtimes; `references/account-local-runtime-isolation.md`; `references/blueprint-masterplan-template.md`; `references/worker-prompt-templates.md`; `references/ui-design-worker-prompt-template.md` |
 | Direct deterministic runtime bootstrap when no wrapper exists | `SKILL.md` — Isolate account-local application runtimes; `references/account-local-runtime-isolation.md` — Launcher availability and bootstrap authority; `references/ui-design-worker-prompt-template.md` |
+| Shared-localhost `431`, matching-project auth, and Docker bind triage | `SKILL.md` — Isolate account-local application runtimes and localhost presentation readiness; `references/account-local-runtime-isolation.md` — HTTP 431 and cross-runtime authentication triage |

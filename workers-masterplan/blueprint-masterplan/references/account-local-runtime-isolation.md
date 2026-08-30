@@ -98,6 +98,50 @@ namespace was issued. Leave that authenticated review path and every required
 process running. A final redirect to sign-in, a generic error page, or a canary
 that signs out after this check is not a presentation handoff.
 
+## HTTP 431 and cross-runtime authentication triage
+
+Use this order when a protected localhost route returns `431 Request Header
+Fields Too Large` or returns `Authentication is required` after a successful
+local Supabase sign-in. Do not start by changing fixture credentials.
+
+1. **Separate transport from authentication.** Request the exact host and route
+   with no cookies. Then probe with secret-free synthetic request-header sizes.
+   A `431` is emitted before middleware, fixture bootstrap, or API identity
+   checks, so application-auth changes cannot repair it.
+2. **Inspect host-wide cookie accumulation.** Browser cookies are scoped by
+   host/domain and path, not by TCP port. Distinct names prevent one runtime
+   from overwriting another runtime's session, but every matching cookie may
+   still be sent to every port on the same localhost host. Prefer a distinct
+   account review hostname and remove only the exact stale cookie namespaces;
+   never clear unrelated browser data or another runtime's active cookie.
+3. **Bound compatibility ingress explicitly.** When an existing coordinator
+   ingress must remain on shared localhost, a client-only launch option such as
+   `NODE_OPTIONS=--max-http-header-size=65536` may be used as a compatibility
+   measure. It is not isolation. Record the exact holder/config and rollback,
+   prove representative 16 KB, 24 KB, and 48 KB secret-free probes reach
+   application handling, and prove a 70 KB probe remains rejected with `431`.
+   Do not raise API, Supabase, or global machine limits to mask the problem.
+4. **Verify one Supabase project end to end.** A successful password grant proves
+   only that the contacted public Auth stack accepted the identity. Confirm the
+   browser-facing Auth origin and the API's private Supabase origin, issuer,
+   JWKS endpoint, and session store resolve to the same project. A
+   `session_not_found` result commonly means the browser session came from a
+   different local stack. Require the API `/v1/me` identity and protected route
+   to agree before calling login healthy.
+5. **Re-run reviewer entry.** From separate no-cookie and stale-other-runtime
+   contexts, open the exact handed URL, follow fixture-review bootstrap, prove
+   protected content and matching `/v1/me`, confirm only the assigned
+   `edenmind-auth-u<UID>` cookie is issued, and prove neither path returns
+   `431`. Leave the final reviewer context authenticated.
+
+External publication and internal container binds are different boundaries.
+The host-published review port must bind to loopback only. A Docker-contained
+client may listen on `0.0.0.0`, and Next.js may canonicalize the internal
+loopback-published request to that bind, only for development fixture-review
+when the guard also proves the configured public Supabase origin is loopback.
+Never publish beyond loopback, hand off an `0.0.0.0` URL, or relax a production
+origin guard to accommodate this development-only behavior.
+
 ## Locked EdenMind allocation
 
 Runtime identity follows the macOS account UID, not the worker ID:
@@ -139,9 +183,9 @@ does not authorize leaving another port shared.
 | Identity | Account `<ACCOUNT>` has validated UID `<UID>`, slot `<SLOT>`, offset `<OFFSET>`, and runtime ID `u<UID>`; the worker ID is not a runtime identity. |
 | Ports | Client `<CLIENT_PORT>`, API `<API_PORT>`, Supabase `<SUPABASE_PORTS>`, and every other enabled numeric port equal the tracked template value plus `<OFFSET>`; no dynamic/free-port fallback is allowed. |
 | Namespaces | Supabase project `edenmind-u<UID>`, Docker network `supabase_network_edenmind-u<UID>`, container/volume/cache names, ignored generated workdir, and auth cookie `edenmind-auth-u<UID>` are distinct for this runtime. |
-| Configuration | Use an existing account-isolated helper or direct explicit pinned-tool commands; render the tracked `supabase/config.toml` into the ignored account-local workdir; use explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. |
+| Configuration | Use an existing account-isolated helper or direct explicit pinned-tool commands; render the tracked `supabase/config.toml` into the ignored account-local workdir; use explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. Publish externally on loopback only; document any development-only internal wildcard bind and bounded client-header compatibility option with its rollback. |
 | Safety | Validate identity, paths, and every assigned port before mutation. A conflict fails before Docker/Supabase changes. Start, stop, seed, reset, and clean only the exact `u<UID>` namespace; never alter another account's runtime or an existing compatibility preview. |
-| Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. After sign-out evidence, separately open the exact handed protected URL from a no-cookie context and a stale default/other-runtime-cookie context; both final protected-route checks must finish on protected content with the matching API identity and only `edenmind-auth-u<UID>`, without inheriting the worker's session or requiring credentials when the repository fixture-review bootstrap exists. Leave the final reviewer context authenticated. A redirect or sign-in-page `200` is not readiness. |
+| Readiness | Prove health at the exact Supabase/API/client endpoints; prove the public Auth and private API issuer/JWKS/session store are the same project; prove real fixture sign-in, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. After sign-out evidence, separately open the exact handed protected URL from a no-cookie context and a stale default/other-runtime-cookie context; both final checks must avoid `431`, finish on protected content with the matching API identity and only `edenmind-auth-u<UID>`, and require neither inherited worker session nor credentials when fixture-review bootstrap exists. For a shared-host compatibility ingress, record secret-free accepted/rejected header-size probes and rollback. Leave the final reviewer context authenticated. A `431`, redirect, or sign-in-page `200` is not readiness. |
 
 Replace every placeholder with an exact value. A missing wrapper is not failure
 to satisfy a row: use the authorized direct procedure above. If neither an
@@ -162,9 +206,11 @@ a substitute.
 - Browser cookies are keyed by host/domain and path, not TCP port. Every runtime
   therefore needs a distinct cookie namespace, while browser, server, and
   middleware inside that runtime use the same name.
-- Bind the review client to the exact loopback hostname published in the
-  handoff. A wildcard bind such as `0.0.0.0` is not a loopback review origin and
-  must not be used to satisfy a local-only authentication bootstrap.
+- Publish the review client on the exact loopback hostname in the handoff. A
+  Docker-contained client may listen internally on `0.0.0.0` only for the
+  documented development-fixture case where external publication remains
+  loopback-only and the Auth guard also proves a loopback public Supabase
+  origin. Never publish or hand off a wildcard review origin.
 - Port `3000` is coordinator presentation ingress. Future workers bind their
   assigned client port. Do not move, stop, or reconfigure an existing direct
   port-`3000` compatibility preview until the coordinator authorizes cutover.
@@ -192,6 +238,9 @@ values.
 | Offset only `15431`–`15436` | Inventory and offset every enabled numeric runtime port, including shadow and optional services. |
 | Reuse `edenmind-local` or one Docker network | Namespace project, network, containers, volumes, caches, and workdir with `u<UID>`. |
 | Assume ports isolate cookies | Use a distinct runtime cookie name and prove same-runtime equality/cross-runtime inequality. |
+| Treat a `431` as bad credentials | Prove the no-cookie route and secret-free header-size boundary first; diagnose host-wide cookie accumulation before touching authentication. |
+| Raise every service's header limit and call it isolation | Prefer hostname/cookie isolation. Any shared-ingress increase is client-only, bounded by accepted/rejected probes, and carries an explicit rollback. |
+| Treat a successful public Auth grant as API session proof | Verify the public Auth and private API issuer/JWKS/session store belong to one project, then require matching `/v1/me`. |
 | Launch protected review with generic `--fixture` | From `edenmind-client`, export both matching account cookie variables and use `--fixture --review-as <identity>`, then pass the final cookie-free protected-route check. |
 | Edit tracked Supabase config locally | Render it into the ignored account-local workdir. |
 | Treat a missing wrapper as a review blocker | Execute the deterministic procedure directly when the brief authorizes runtime operation; record the redacted commands. |
@@ -199,3 +248,4 @@ values.
 | Stop another stack to free a port | Report the collision; never mutate another account's runtime. |
 | Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary, then run the final cookie-free protected-route check without signing out afterward. |
 | Hand off the protected URL after testing only the worker's browser | Run the separate exact-URL reviewer-entry canary from no-cookie and stale-cookie contexts; use the repository fixture-review bootstrap when available. |
+| Reject an internally wildcard-bound Docker client even though host publication is loopback-only | Distinguish external publication from the container bind. Permit the documented development-fixture case only with loopback public Supabase proof; never hand off `0.0.0.0`. |
