@@ -5,6 +5,7 @@ import { SuLauncher, type SpawnedPty } from "./suLauncher.js";
 class FakeChild extends EventEmitter implements SpawnedPty {
   pid = 4201;
   readonly writes: string[] = [];
+  readonly kill = vi.fn();
 
   write(value: string): void { this.writes.push(value); }
 
@@ -160,6 +161,7 @@ describe("SuLauncher", () => {
 
     await expect(launching).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
     expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
+    expect(child.kill).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -172,6 +174,7 @@ describe("SuLauncher", () => {
 
     await handle.stop();
     expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
+    expect(child.kill).toHaveBeenCalledOnce();
     expect(child.writes).toEqual(["bot-password\n"]);
     await launcher.shutdown();
     expect(kill).toHaveBeenCalledTimes(1);

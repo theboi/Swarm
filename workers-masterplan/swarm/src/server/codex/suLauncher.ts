@@ -8,6 +8,7 @@ const BOT_ACCOUNTS = new Set<string>(BOT_ACCOUNT_IDS);
 export interface SpawnedPty {
   pid: number;
   write(value: string): void;
+  kill(signal?: string): void;
   onData(listener: (data: string) => void): { dispose(): void };
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
 }
@@ -128,6 +129,7 @@ export class SuLauncher {
       if (!stopped && child.pid) {
         stopped = true;
         this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
+        try { child.kill(); } catch { /* child already exited */ }
       }
       this.active.delete(handle);
       void release();
@@ -138,6 +140,7 @@ export class SuLauncher {
       if (stopped) return;
       stopped = true;
       this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
+      try { child.kill(); } catch { /* child already exited */ }
       await release();
       this.active.delete(handle);
     };
