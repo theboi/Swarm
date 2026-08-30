@@ -75,9 +75,10 @@ Before handing off a prompt:
 11. Ban worker-to-worker Codex chat; use commits, owned status/handoff artifacts, and coordinator summaries.
 12. Require focused affected tests during implementation and one full-suite run only after all worker-owned tasks finish.
 13. For an execution prompt, name the passed coordinator-owned planning-gate receipt and its pinned `origin/main` commit.
-14. For a visual-design package, do not adapt either ordinary prompt; use `ui-design-worker-prompt-template.md` instead.
-15. For every operative Git/integration lifecycle or actual ordinary-worker launch prompt, render the canonical **Shared-main lifecycle** block below exactly once, with every angle-bracket field replaced by its exact value. Do not render it for factual explanations, status reports, or direct answers that assign no work.
-16. When `account_runtime_required` is true, read `account-local-runtime-isolation.md` completely and render its **Account-local runtime isolation** block exactly once before any runtime command. A free-port lease or another account's stack is not a valid substitution.
+14. For a named live-wiring planner or executor, name both `<UI_REQUIREMENTS_PATH>` and `<DESIGN_HANDOFF_PATH>` and state how the UI contract is reconciled with APIs/functions, permissions, data, lifecycle behavior, and acceptance checks.
+15. For a visual-design package, do not adapt either ordinary prompt; use `ui-design-worker-prompt-template.md` instead.
+16. For every operative Git/integration lifecycle or actual ordinary-worker launch prompt, render the canonical **Shared-main lifecycle** block below exactly once, with every angle-bracket field replaced by its exact value. Do not render it for factual explanations, status reports, or direct answers that assign no work.
+17. When `account_runtime_required` is true, read `account-local-runtime-isolation.md` completely and render its **Account-local runtime isolation** block exactly once before any runtime command. A free-port lease or another account's stack is not a valid substitution.
 
 ### Shared-main lifecycle
 
@@ -104,6 +105,16 @@ You are `<WORKER_ID>`, responsible for planning `<BOUNDED_OUTCOME>` and authorin
 - Implementation plan: `<PLAN_PATH>`
 
 Both paths must be inside the `<BLUEPRINT_ID>` folder. The coordinator reserved these paths but did not author their contents.
+
+When this task is the named live-wiring planner for a conditional UI-design
+worker, read that worker's UI Requirements Contract
+`<UI_REQUIREMENTS_PATH>` and accepted presentation handoff
+`<DESIGN_HANDOFF_PATH>` before writing `<PLAN_PATH>`. Reconcile every UI
+requirement with the planned API/functionality, authorization/capability,
+records, async behavior, and focused acceptance checks it needs. Those artifacts
+describe presentation and content only; do not require upstream implementation
+before this Pass 1 planning handoff. If this task has no UI-design dependency,
+replace both values with `not applicable`.
 
 Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>` using checkout/clone mode `<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are prohibited. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. In a genuinely shared checkout, read-only planning may proceed in parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem edit or Git/index operation and hold it through reconciliation, focused verification, staging, commit, push, and remote-reachability proof. If that lock cannot exist, this prompt is valid only for a normal clone on a different machine or because the shared checkout is documented incompatible; use `<MAIN_PUSH_LOCK_OR_QUEUE>` for reconciliation, affected focused verification, push, and remote-ancestry proof without imposing a global edit lock across clones. Inspect live state, preserve and report unrelated changes, pull `origin/main` when safe, and prove that the frozen blueprint, relevant authorities, brief, and approved planned-contract inputs needed for planning are integrated there. Distinguish those planning-contract inputs from `<PREREQUISITE_IDS>`: they are later hard implemented prerequisites to verify at execution readiness, not predecessor implementation required before planning. Inspect only the relevant baseline. A clean baseline means reconciled local `main` and no owned dirty state; unrelated dirt remains preserved and reported.
 
@@ -154,7 +165,7 @@ Read `<BLUEPRINT_PATH>` and these relevant living masterplans:
 - `<LIVING_MASTERPLAN_PATH>`
 - `<LIVING_MASTERPLAN_PATH>`
 
-Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-authored approved specification `<SPEC_PATH>`, worker-authored approved implementation plan `<PLAN_PATH>`, passed planning-gate receipt `<PLANNING_GATE_PATH>`, and pinned receipt commit `<PLANNING_GATE_COMMIT>`. Do not rely on private conversation history.
+Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-authored approved specification `<SPEC_PATH>`, worker-authored approved implementation plan `<PLAN_PATH>`, passed planning-gate receipt `<PLANNING_GATE_PATH>`, and pinned receipt commit `<PLANNING_GATE_COMMIT>`. When this is named live wiring, also read UI Requirements Contract `<UI_REQUIREMENTS_PATH>` and accepted presentation handoff `<DESIGN_HANDOFF_PATH>`; implement their required live functionality only after the gate and hard implemented prerequisites pass. Do not rely on private conversation history.
 
 You are `<WORKER_ID>`, responsible for executing `<BOUNDED_OUTCOME>` to its defined acceptance evidence.
 

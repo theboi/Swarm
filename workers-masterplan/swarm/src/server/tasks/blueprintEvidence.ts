@@ -201,10 +201,15 @@ function planningEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvi
     && planningArtifactsAreRemote(task, source));
 }
 
-const NEGATIVE_EVIDENCE = /\b(?:pending|unapproved|unreconciled|incomplete|rejected|denied|declined|failed|missing|absent|open|reopened|blocked|provisional|draft|not applicable|not\s+(?:approved|accepted|complete|completed|passed|integrated|reconciled))\b/i;
+const NEGATIVE_EVIDENCE = /\b(?:pending|unapproved|unreconciled|incomplete|rejected|denied|declined|failed|false|missing|absent|open|reopened|blocked|provisional|draft|tbd|revoked|in progress|not applicable|not\s+(?:approved|accepted|complete|completed|passed|integrated|reconciled))\b/i;
 
 function positiveEvidence(value: string, positive: RegExp): boolean {
   return !NEGATIVE_EVIDENCE.test(plainCell(value)) && positive.test(plainCell(value));
+}
+
+function completedEvidence(value: string, subject: RegExp): boolean {
+  return positiveEvidence(value, subject)
+    && positiveEvidence(value, /\b(?:complete|completed|passed|reconciled|integrated)\b/i);
 }
 
 function evidenceFragments(text: string | undefined): string[] {
@@ -239,7 +244,7 @@ function planningStatusHasAuthorityEvidence(text: string | undefined): boolean {
   const authority = /\b(?:authority[- ](?:sync|synchronization|synchronised|synchronized)|no[- ]impact)\b/i;
   return evidenceFragments(text).some((fragment) => fragment
     .split(";")
-    .some((clause) => positiveEvidence(clause, authority)));
+    .some((clause) => completedEvidence(clause, authority)));
 }
 
 function approvedPlanningEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvidence): boolean {
@@ -360,18 +365,24 @@ function ordinaryReceiptRowIsComplete(task: TaskManifestTask, receipt: string, s
   if (!cellContainsPath(row.cells.specification ?? "", task.specificationPath)
     || !cellContainsPath(row.cells.plan ?? "", task.implementationPlanPath)
     || !positiveEvidence(row.cells.approval ?? "", /\b(?:approved|accepted)\b/i)
-    || !positiveEvidence(row.cells.authority ?? "", /\b(?:authority[- ](?:sync|synchronization|synchronised|synchronized)|no[- ]impact)\b/i)
+    || !completedEvidence(row.cells.authority ?? "", /\b(?:authority[- ](?:sync|synchronization|synchronised|synchronized)|no[- ]impact)\b/i)
     || !positiveEvidence(row.cells.reconciliation ?? "", /\b(?:reconciled|complete|completed|passed)\b/i)) return false;
   if (row.presentColumns.has("remoteCommit")) return Boolean(integratedCommitFromCell(row.cells.remoteCommit ?? "", source));
   return Boolean(integratedCommitFromCell(row.cells.specification ?? "", source)
     && integratedCommitFromCell(row.cells.plan ?? "", source));
 }
 
-function uiReceiptRowIsComplete(task: TaskManifestTask, receipt: string, source: BlueprintEvidence): boolean {
+function expectedUiTransferTarget(task: TaskManifestTask, taskById: Map<string, TaskManifestTask>): string | undefined {
+  const consumers = [...taskById.values()].filter((candidate) => candidate.kind === "planning" && candidate.dependsOn.includes(task.id));
+  return consumers.length === 1 ? consumers[0]?.id : undefined;
+}
+
+function uiReceiptRowIsComplete(task: TaskManifestTask, receipt: string, source: BlueprintEvidence, taskById: Map<string, TaskManifestTask>): boolean {
   const row = rowForWorker(receiptRows(receipt, UI_RECEIPT_COLUMNS), task.id);
   const handoff = task.uiHandoffPath ? source.records.get(task.uiHandoffPath) : undefined;
   const acceptedHandoffCommit = acceptedAppStateCommitFrom(handoff);
   const acceptedReceiptCommit = integratedCommitFromCell(row?.cells.acceptedAppCommit ?? "", source);
+  const transferTarget = expectedUiTransferTarget(task, taskById);
   return Boolean(row
     && task.uiRequirementsPath
     && task.uiHandoffPath
@@ -382,8 +393,8 @@ function uiReceiptRowIsComplete(task: TaskManifestTask, receipt: string, source:
     && positiveEvidence(row.cells.approval ?? "", /\b(?:approved|accepted)\b/i)
     && positiveEvidence(row.cells.liveReview ?? "", /\b(?:complete|completed|passed|accepted)\b/i)
     && positiveEvidence(row.cells.reconciliation ?? "", /\b(?:reconciled|complete|completed|passed)\b/i)
-    && plainCell(row.cells.transfer ?? "")
-    && !NEGATIVE_EVIDENCE.test(plainCell(row.cells.transfer ?? ""))
+    && transferTarget
+    && positiveEvidence(row.cells.transfer ?? "", new RegExp(`(?:^|[^A-Za-z0-9])${transferTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Za-z0-9])`, "i"))
     && integratedCommitFromCell(row.cells.remoteCommit ?? "", source));
 }
 
@@ -405,7 +416,7 @@ function gateEvidenceIsComplete(task: TaskManifestTask, taskById: Map<string, Ta
       && ordinaryReceiptRowIsComplete(planning, receipt, source));
   const uiRowsComplete = [...taskById.values()].filter((candidate) => candidate.kind === "ui").every((ui) =>
     uiEvidenceIsComplete(ui, source)
-      && uiReceiptRowIsComplete(ui, receipt, source));
+      && uiReceiptRowIsComplete(ui, receipt, source, taskById));
   return ordinaryRowsComplete && uiRowsComplete;
 }
 
@@ -457,6 +468,7 @@ export function evaluateTaskReadiness(manifest: TaskManifest, source: BlueprintE
       ? task.dependsOn.map((id) => taskById.get(id)).find((candidate): candidate is TaskManifestTask => candidate?.kind === "gate")
       : undefined;
     const gatePassed = task.kind !== "execution" || Boolean(planningGate && gateEvidenceIsComplete(planningGate, taskById, source));
+    const planningGateCommit = planningGate ? authorizedGateCommitFrom(source.records.get(planningGate.statusPath ?? "")) : source.remoteCommit;
     const uiArtifacts = task.kind === "ui" ? uiArtifactsAreRemote(task, source) : true;
     const requiredPlanning = task.kind === "gate"
       ? gateEvidenceIsComplete(task, taskById, source)
@@ -475,7 +487,7 @@ export function evaluateTaskReadiness(manifest: TaskManifest, source: BlueprintE
       state: terminal && ready ? "complete" : needsAttention ? "attention_required" : ready ? "ready" : "blocked",
       evidence: [
         evidence("REMOTE_PREREQUISITES", dependencies.satisfied, undefined, source.remoteCommit),
-        evidence("PLANNING_GATE", gatePassed, planningGate?.statusPath ?? task.statusPath, source.remoteCommit),
+        evidence("PLANNING_GATE", gatePassed, planningGate?.statusPath ?? task.statusPath, planningGateCommit),
         evidence("PLANNING_ARTIFACTS", planningArtifacts, task.specificationPath, source.remoteCommit),
         evidence("UI_ARTIFACTS", uiArtifacts, task.uiRequirementsPath, source.remoteCommit),
       ],

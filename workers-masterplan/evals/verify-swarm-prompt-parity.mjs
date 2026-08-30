@@ -9,6 +9,10 @@ const referencePath = resolve(
   workspaceRoot,
   "blueprint-masterplan/references/worker-prompt-templates.md",
 );
+const uiRequirementsTemplatePath = resolve(
+  workspaceRoot,
+  "blueprint-masterplan/references/ui-requirements-template.md",
+);
 const coordinatorTemplateDirectory = resolve(workspaceRoot, "swarm/templates");
 const coordinatorRendererPath = resolve(
   workspaceRoot,
@@ -35,6 +39,23 @@ const uiChecklist = `**Mandatory pre-edit source-read checklist** — do not abb
 - [ ] Completely read \`claude-design/codex/system-prompt.md\`.
 - [ ] Completely read every relevant procedure under \`claude-design/codex/skills/\`.
 - [ ] Completely read \`.agents/skills/better-ui/SKILL.md\`.`;
+const uiRequirementsContractRules = [
+  "fields, grouping, ordering, filters,",
+  "search, pagination or cursor behavior",
+  "confirmation requirement, idempotency",
+  "success state, failure state, recovery action",
+  "attention-required, partial-success, failed,",
+  "navigation context switching",
+  "file type and size limits",
+  "keyboard operation, logical focus order and restoration",
+  "at least one deterministic fixture/mock scenario for every required state",
+  "fixture/mock data and no live",
+  "missing-contract owner",
+  "focused contract, browser, integration, or acceptance",
+  "Decision owner | Blocking behavior | Affected plans",
+  "Observable closure evidence",
+  "Record `none` only after explicitly reconciling",
+];
 const coordinatorLaunchValues = {
   accountId: "bot3",
   blueprintPath: "docs/plans/edenmind_Implementation_Masterplan.md",
@@ -102,9 +123,10 @@ function resolveBlueprintEntryPoint(reference, templateId) {
   return resolve(repositoryRoot, match[1]);
 }
 
-const [skill, reference] = await Promise.all([
+const [skill, reference, uiRequirementsTemplate] = await Promise.all([
   readFile(skillPath, "utf8"),
   readFile(referencePath, "utf8"),
+  readFile(uiRequirementsTemplatePath, "utf8"),
 ]);
 
 if (!skill.includes("EdenMind swarm coordinator launch packets")) {
@@ -117,6 +139,19 @@ if (!skill.includes("references/worker-prompt-templates.md#edenmind-swarm-coordi
 
 if (!reference.includes("## EdenMind swarm coordinator launch packets")) {
   throw new Error("Worker prompt reference does not define the coordinator adapter");
+}
+
+for (const rule of uiRequirementsContractRules) {
+  if (!uiRequirementsTemplate.includes(rule)) {
+    throw new Error(`UI requirements template omits required contract rule: ${rule}`);
+  }
+}
+
+for (const placeholder of ["<UI_REQUIREMENTS_PATH>", "<DESIGN_HANDOFF_PATH>"]) {
+  const references = reference.split(placeholder).length - 1;
+  if (references < 3) {
+    throw new Error(`Ordinary worker templates do not name ${placeholder} for live-wiring planning and execution`);
+  }
 }
 
 const { renderWorkerPrompt } = await import(pathToFileURL(coordinatorRendererPath).href);

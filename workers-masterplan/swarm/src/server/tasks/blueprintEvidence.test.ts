@@ -38,6 +38,11 @@ const twoPassManifest: TaskManifest = {
   ],
 };
 
+const planningOnlyManifest: TaskManifest = {
+  ...twoPassManifest,
+  tasks: twoPassManifest.tasks.filter((task) => task.id === "P2" || task.id === "PD"),
+};
+
 const acceptedPdHandoff = [
   "| Accepted app-state commit | `abc123` |",
   "| Product-owner approval | accepted |",
@@ -75,6 +80,23 @@ function twoPassRecords(): Map<string, string> {
       "| P2 | `docs/p2-spec.md` | `docs/p2-plan.md` | approved | authority-sync complete | reconciled | `abc123` |",
       "| P3 | `docs/p3-spec.md` | `docs/p3-plan.md` | approved | no-impact complete | reconciled | `abc123` |",
     ].join("\n")],
+  ]);
+}
+
+function planningOnlyRecords(): Map<string, string> {
+  return new Map([
+    ["docs/two-pass-blueprint.md", "| Blueprint ID | `two-pass` |\n| Integration authority | `origin/main` |"],
+    ["docs/workers/two-pass/status/p2.md", [
+      "| Field | Value |",
+      "| --- | --- |",
+      "| State | planning-complete / execution-blocked |",
+      "| Worker planning state | approved specification and implementation plan complete |",
+      "| Authority synchronization | no-impact finding complete |",
+      "| Latest integrated `origin/main` commit | `abc123` |",
+    ].join("\n")],
+    ["docs/p2-spec.md", "# P2 specification"],
+    ["docs/p2-plan.md", "# P2 implementation plan"],
+    ["docs/workers/two-pass/status/pd.md", "| State | planning in progress |\n| Latest integrated `origin/main` commit | `abc123` |"],
   ]);
 }
 
@@ -150,9 +172,19 @@ async function twoPassReadiness(records: Map<string, string>, remoteHead = "abc1
   return evaluateTaskReadiness(twoPassManifest, loaded);
 }
 
+async function planningOnlyReadiness(records: Map<string, string>) {
+  const loaded = await loadBlueprintEvidence(planningOnlyManifest, {
+    fetch: async () => undefined,
+    revParse: async () => "abc123",
+    readRemote: async (path) => records.get(path),
+    isAncestor: async (commit, head) => commit === "abc123" && head === "abc123",
+  });
+  return evaluateTaskReadiness(planningOnlyManifest, loaded);
+}
+
 describe("blueprint evidence", () => {
   it("starts UI planning from completed Layer 2 planning, without a Layer 2 implementation", async () => {
-    const readiness = await twoPassReadiness(twoPassRecords());
+    const readiness = await planningOnlyReadiness(planningOnlyRecords());
 
     expect(readiness.find((item) => item.taskId === "PD")?.state).toBe("ready");
   });
@@ -200,6 +232,13 @@ describe("blueprint evidence", () => {
     const readiness = await twoPassReadiness(records);
 
     expect(readiness.find((item) => item.taskId === "P3X")?.state).toBe("ready");
+  });
+
+  it("pins execution evidence to the gate's authorized commit rather than the later remote head", async () => {
+    const readiness = await twoPassReadiness(completePass2Records(), "def456");
+    const gateEvidence = readiness.find((item) => item.taskId === "P3X")?.evidence.find((item) => item.code === "PLANNING_GATE");
+
+    expect(gateEvidence).toMatchObject({ satisfied: true, path: "docs/workers/two-pass/PLANNING_GATE.md", commit: "abc123" });
   });
 
   it("accepts the reusable gate-template header aliases", async () => {
@@ -252,6 +291,7 @@ describe("blueprint evidence", () => {
   it.each([
     ["pending approval", "| approved |", "| pending |"],
     ["pending authority synchronization", "| authority-sync complete |", "| authority-sync pending |"],
+    ["in-progress authority synchronization", "| authority-sync complete |", "| authority-sync in progress |"],
     ["negative reconciliation", "| reconciled |", "| not reconciled |"],
   ])("rejects an ordinary receipt row with %s", async (_name, before, after) => {
     const records = new Map(remote);
@@ -263,9 +303,11 @@ describe("blueprint evidence", () => {
 
   it.each([
     ["negative approval", { uiApproval: "product-owner approval: unapproved" }],
+    ["false approval", { uiApproval: "product-owner approval: approved: false" }],
     ["incomplete live review", { liveReview: "live review incomplete" }],
     ["negative reconciliation", { uiReconciliation: "unreconciled" }],
     ["pending transfer", { transfer: "transfer pending" }],
+    ["unexpected transfer target", { transfer: "BANANA" }],
   ])("rejects a UI receipt row with %s", async (_name, mutation) => {
     const records = completePass2Records();
     records.set("docs/workers/two-pass/PLANNING_GATE.md", completeGateReceipt(mutation));
@@ -357,14 +399,14 @@ describe("blueprint evidence", () => {
     expect((await twoPassReadiness(records)).find((item) => item.taskId === "PD")?.state).toBe("blocked");
   });
 
-  it("keeps UI planning blocked without completed Layer 2 authority or no-impact evidence", async () => {
+  it.each(["pending", "authority-sync in progress", "authority-sync TBD"])("keeps UI planning blocked without completed Layer 2 authority or no-impact evidence (%s)", async (authority) => {
     const records = twoPassRecords();
     records.set("docs/workers/two-pass/status/p2.md", [
       "| Field | Value |",
       "| --- | --- |",
       "| State | planning-complete / execution-blocked |",
       "| Planning approval | approved |",
-      "| Authority synchronization | pending |",
+      `| Authority synchronization | ${authority} |`,
       "| Latest integrated `origin/main` commit | `abc123` |",
     ].join("\n"));
 

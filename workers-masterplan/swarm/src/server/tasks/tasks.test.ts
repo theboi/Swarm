@@ -171,7 +171,7 @@ describe("task authority", () => {
       ["docs/blueprint.md", "# Blueprint: mvp3\nIntegration authority: origin/main\n"],
       ["docs/workers/mvp3/T0.md", "status: complete\nremoteCommit: abc123\n"],
       ["docs/spec.md", "# spec\n"], ["docs/plan.md", "# plan\n"],
-      ["docs/workers/mvp3/G0.md", "status: passed\nremoteCommit: abc123\nT0 authority-sync abc123 docs/spec.md docs/plan.md reconciled\n"],
+      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n"],
     ]);
     const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "I0")?.state).toBe("ready");
@@ -186,7 +186,7 @@ describe("task authority", () => {
       ["docs/workers/mvp3/T0.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |"],
       ["docs/spec.md", "# Approved specification\n"],
       ["docs/plan.md", "# Approved plan\n"],
-      ["docs/workers/mvp3/G0.md", "| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n| T0 authority-sync | abc123 docs/spec.md docs/plan.md reconciled |"],
+      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n"],
     ]);
     const result = await loadBlueprintEvidence(authoritative, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(authoritative, result).find((item) => item.taskId === "I0")?.state).toBe("ready");
@@ -264,12 +264,13 @@ describe("task authority", () => {
       ownedSurfaces: "src/p3",
       excludedSurfaces: "src/other",
     };
-    const [planning, ui] = await Promise.all([
+    const [planning, execution, ui] = await Promise.all([
       renderWorkerPrompt("planning", common),
+      renderWorkerPrompt("execution", { ...common, phase: "execution", phaseTerminalCondition: "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main.", planningGatePath: "docs/workers/mvp3/g0.md", planningGateCommit: "abc123", hardPrerequisites: "P2X" }),
       renderWorkerPrompt("ui", { ...common, workerId: "PD", taskId: "PD", taskTitle: "Platform design", phase: "ui", phaseTerminalCondition: "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main." }),
     ]);
 
-    for (const packet of [planning, ui]) {
+    for (const packet of [planning, execution, ui]) {
       expect(packet).toContain("docs/design/requirements/pd.md");
       expect(packet).toContain("docs/design/handoffs/pd.md");
       expect(packet).not.toMatch(/{{[A-Z_]+}}/);
