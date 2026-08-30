@@ -112,11 +112,23 @@ publishing secret values, then use the resulting application session to obtain
 an accepted API identity, enter the protected presentation route, and sign out.
 When a browser is available, complete that full journey there. A protected-route
 redirect, sign-in-page `200`, or Supabase-only password grant is not login proof
-or a review-ready handoff. If browser integration is unavailable, record that
-visual limitation and run the same endpoint-consistent canary through an
-approved non-visual interface. Keep the app and its access dependencies running
-through review. Show a working skeleton early, then edit the real app and
-iterate from user feedback.
+or a review-ready handoff.
+
+Run a separate reviewer-entry canary against the exact URL you will hand to the
+user. When the repository provides fixture-review mode, launch it on the
+assigned loopback hostname with the assigned account-local cookie name. Open
+the handed protected URL from both a fresh no-cookie context and a fresh
+context carrying a stale default or other-runtime auth-cookie name. Each must
+finish on the protected URL, render its content, reach the API as the real
+local Supabase identity, and issue only the assigned account-local cookie
+namespace, without user-entered credentials or the worker's browser session.
+Without that proof, hand off the sign-in entry point and access instructions;
+do not label the protected URL review-ready or add a “may need to sign in”
+caveat. If browser integration is unavailable, record that visual limitation
+and run both endpoint-consistent cases through an approved non-visual
+interface. Keep the app and its access dependencies running through review.
+Show a working skeleton early, then edit the real app and iterate from user
+feedback.
 
 Compose each primary product surface so its visible area starts with the real
 task controls, navigation, or content inside the established application shell.
@@ -148,6 +160,8 @@ Record the accepted app-state commit, user approval, affected routes/components,
 reused design-system foundations, verified states, development-server command
 and reviewed localhost URL, access-runtime commands and endpoint-health proof,
 the source of the documented fixture identity without secret values,
+fresh/no-cookie and stale-cookie reviewer-entry proof with the effective
+account-local cookie name,
 limitations, functional decisions returned to planning, and ownership transfer
 in `<DESIGN_HANDOFF_PATH>`. Update `<STATUS_PATH>` with coherent progress and
 both artifact paths.

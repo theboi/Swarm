@@ -83,7 +83,7 @@ does not authorize leaving another port shared.
 | Namespaces | Supabase project `edenmind-u<UID>`, Docker network `supabase_network_edenmind-u<UID>`, container/volume/cache names, ignored generated workdir, and auth cookie `edenmind-auth-u<UID>` are distinct for this runtime. |
 | Configuration | Use an existing account-isolated helper or direct explicit pinned-tool commands; render the tracked `supabase/config.toml` into the ignored account-local workdir; use explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. |
 | Safety | Validate identity, paths, and every assigned port before mutation. A conflict fails before Docker/Supabase changes. Start, stop, seed, reset, and clean only the exact `u<UID>` namespace; never alter another account's runtime or an existing compatibility preview. |
-| Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. A redirect or sign-in-page `200` is not readiness. |
+| Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. Separately open the exact handed protected URL from a no-cookie context and a stale default/other-runtime-cookie context; both must finish on protected content with the matching API identity and only `edenmind-auth-u<UID>`, without inheriting the worker's session or requiring credentials when the repository fixture-review bootstrap exists. A redirect or sign-in-page `200` is not readiness. |
 
 Replace every placeholder with an exact value. A missing wrapper is not failure
 to satisfy a row: use the authorized direct procedure above. If neither an
@@ -104,6 +104,9 @@ a substitute.
 - Browser cookies are keyed by host/domain and path, not TCP port. Every runtime
   therefore needs a distinct cookie namespace, while browser, server, and
   middleware inside that runtime use the same name.
+- Bind the review client to the exact loopback hostname published in the
+  handoff. A wildcard bind such as `0.0.0.0` is not a loopback review origin and
+  must not be used to satisfy a local-only authentication bootstrap.
 - Port `3000` is coordinator presentation ingress. Future workers bind their
   assigned client port. Do not move, stop, or reconfigure an existing direct
   port-`3000` compatibility preview until the coordinator authorizes cutover.
@@ -134,3 +137,4 @@ keys, JWTs, refresh tokens, or cookie values.
 | Treat a missing wrapper as a review blocker | Execute the deterministic procedure directly when the brief authorizes runtime operation; record the redacted commands. |
 | Stop another stack to free a port | Report the collision; never mutate another account's runtime. |
 | Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary. |
+| Hand off the protected URL after testing only the worker's browser | Run the separate exact-URL reviewer-entry canary from no-cookie and stale-cookie contexts; use the repository fixture-review bootstrap when available. |
