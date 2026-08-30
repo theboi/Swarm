@@ -42,9 +42,16 @@ describe("task authority", () => {
     expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
     expect(production.tasks.filter((task) => task.kind !== "ui").every((task) => task.passes?.join(",") === "planning,execution")).toBe(true);
     expect(production.tasks.filter((task) => task.kind === "ui").every((task) => task.passes?.join(",") === "planning")).toBe(true);
-    expect(production.tasks.find((task) => task.id === "P3")?.executionDependsOn).toEqual(["P2", "Q2"]);
-    expect(production.tasks.find((task) => task.id === "C3")?.executionDependsOn).toEqual(["C2"]);
-    expect(production.tasks.find((task) => task.id === "X0")?.executionDependsOn).toEqual(["P4", "C4", "Q4", "A4", "E4", "G4"]);
+    expect(Object.fromEntries(production.tasks.filter((task) => task.kind !== "ui").map((task) => [task.id, task.executionDependsOn]))).toEqual({
+      F0: [],
+      P1: ["F0"], P2: ["P1"], P3: ["P2", "Q2"], P4: ["P3"],
+      C1: ["F0"], C2: ["C1"], C3: ["C2"], C4: ["C3"],
+      Q1: ["F0", "C1"], Q2: ["Q1"], Q3: ["Q2"], Q4: ["Q3"],
+      A1: ["F0"], A2: ["A1", "C2", "Q1"], A3: ["A2"], A4: ["A3"],
+      E1: ["F0", "A2"], E2: ["E1"], E3: ["E2"], E4: ["E3"],
+      G1: ["F0", "C2", "Q2", "E2"], G2: ["G1"], G3: ["G2"], G4: ["G3"],
+      X0: ["P4", "C4", "Q4", "A4", "E4", "G4"],
+    });
     expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);
     for (const [designId, layerTwoId, layerThreeId] of [["PD", "P2", "P3"], ["CD", "C2", "C3"], ["QD", "Q2", "Q3"], ["AD", "A2", "A3"], ["ED", "E2", "E3"], ["GD", "G2", "G3"]]) {
       expect(production.tasks.find((task) => task.id === designId)?.dependsOn).toEqual([layerTwoId]);

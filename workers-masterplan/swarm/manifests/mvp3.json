@@ -146,7 +146,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q1-content-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-q1-content-domain.md",
       "passes": ["planning", "execution"],
-      "executionDependsOn": ["F0"],
+      "executionDependsOn": ["F0", "C1"],
       "promptTemplate": "planning"
     },
     {
@@ -258,7 +258,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e1-evidence-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-e1-evidence-domain.md",
       "passes": ["planning", "execution"],
-      "executionDependsOn": ["F0"],
+      "executionDependsOn": ["F0", "A2"],
       "promptTemplate": "planning"
     },
     {
@@ -314,7 +314,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g1-practice-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-g1-practice-domain.md",
       "passes": ["planning", "execution"],
-      "executionDependsOn": ["F0"],
+      "executionDependsOn": ["F0", "C2", "Q2", "E2"],
       "promptTemplate": "planning"
     },
     {

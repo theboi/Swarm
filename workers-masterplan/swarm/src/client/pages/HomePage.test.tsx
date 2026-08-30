@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CoordinatorSnapshot } from "../../shared/contracts.js";
-import { HomePage } from "./HomePage";
+import { HomePage, LaunchDialog } from "./HomePage";
 import { dashboardSnapshot } from "../test/fixtures";
 
 const launchedDispatch = { id: "dispatch-test", clientUserMessageId: "message-test", taskId: "U1", accountId: "bot3" as const, threadId: "thread-test", state: "accepted" as const, createdAt: 0, updatedAt: 0, retryAt: null };
@@ -150,6 +150,14 @@ describe("HomePage", () => {
     expect(screen.getByRole("status", { name: "Loading launch preview" })).toBeVisible();
     resolvePreview?.(await successfulPreview());
     expect(await screen.findByRole("dialog", { name: "Launch U1" })).toHaveClass("launch-dialog--review");
+  });
+
+  it.each(["blocked", "attention_required", "complete"] as const)("keeps %s work reviewable but disables Send", async (state) => {
+    const task = { ...dashboardSnapshot.tasks[1], readiness: { ...dashboardSnapshot.tasks[1].readiness, state } };
+    render(<LaunchDialog preview={{ task, accountId: "bot3", prompt: "Review this prompt.", dependencies: task.dependsOn, accounts: [{ id: "bot3", activeWorkers: 0, available: true }] }} onClose={() => undefined} onSend={async () => undefined} onSelectAccount={async () => undefined} />);
+
+    expect(screen.getByRole("button", { name: "Send to bot3" })).toBeDisabled();
+    expect(screen.getByText(new RegExp(`current state: ${state.replaceAll("_", " ")}\\.$`, "i"))).toBeVisible();
   });
 
   it("uses the chat composer turn options in launch review and sends every selected option", async () => {
