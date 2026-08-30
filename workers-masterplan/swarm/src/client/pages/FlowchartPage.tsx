@@ -71,7 +71,7 @@ function taskEdges(tasks: TaskNode[]): Edge[] {
   return tasks.flatMap((task) => task.dependsOn.filter((dependency) => ids.has(dependency)).map((dependency) => ({ id: `${dependency}-${task.id}`, source: dependency, target: task.id, type: "smoothstep", animated: task.readiness.state === "running", markerEnd: { type: MarkerType.ArrowClosed, color: "#8ee39a", width: 16, height: 16 }, style: { stroke: "#8ee39a", strokeWidth: 2 } })));
 }
 
-function TaskInspector({ task, assignment, canReviewLaunch, onOpenChat, onReviewLaunch, threadId, onClose }: { task: TaskNode; assignment?: WorkerAssignmentRecord; canReviewLaunch: boolean; onOpenChat: () => void; onReviewLaunch: () => void; threadId: string | undefined; onClose: () => void }) {
+function TaskInspector({ task, assignment, onOpenChat, onReviewLaunch, threadId, onClose }: { task: TaskNode; assignment?: WorkerAssignmentRecord; onOpenChat: () => void; onReviewLaunch: () => void; threadId: string | undefined; onClose: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => closeButton.current?.focus(), [task.id]);
   const body = <>
@@ -90,7 +90,7 @@ function TaskInspector({ task, assignment, canReviewLaunch, onOpenChat, onReview
     </dl>
     <h3>Readiness evidence</h3>
     {task.readiness.evidence.length ? <ul>{task.readiness.evidence.map((evidence) => <li key={evidence.code}>{evidence.code}: {evidence.satisfied ? "satisfied" : "not satisfied"}</li>)}</ul> : <p>No readiness evidence reported.</p>}
-    <button type="button" aria-label={`Review launch for ${task.id}`} onClick={onReviewLaunch} disabled={!canReviewLaunch || task.readiness.state !== "ready"}>Review launch</button>
+    <button type="button" aria-label={`Review launch for ${task.id}`} onClick={onReviewLaunch}>Review launch</button>
     <button className="primary-button" type="button" onClick={onOpenChat} disabled={!threadId}>Open chat</button>
   </>;
   return <div className="dialog-backdrop dialog-backdrop--right" onMouseDown={onClose}>
@@ -176,7 +176,7 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
           </ReactFlowProvider>
         </div>
       </div>
-      {selectedTask ? <TaskInspector task={selectedTask} assignment={selectedAssignment} canReviewLaunch={Boolean(api)} threadId={selectedThread} onClose={closeInspector} onReviewLaunch={() => void reviewLaunch(selectedTask)} onOpenChat={() => selectedThread && onOpenChat(selectedThread)} /> : null}
+      {selectedTask ? <TaskInspector task={selectedTask} assignment={selectedAssignment} threadId={selectedThread} onClose={closeInspector} onReviewLaunch={() => void reviewLaunch(selectedTask)} onOpenChat={() => selectedThread && onOpenChat(selectedThread)} /> : null}
       {preview ? <LaunchDialog preview={preview} onClose={() => setPreview(null)} onSend={sendLaunch} onSelectAccount={(accountId) => reviewLaunch(preview.task, accountId)} listModels={api?.listModels} /> : null}
     </section>
   );

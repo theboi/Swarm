@@ -533,12 +533,12 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   useEffect(() => {
-    if (!accountId || !threadId || isDraftChat || !isThinking) return;
+    if (!accountId || !threadId || isDraftChat) return;
     const timer = window.setInterval(() => {
       if (globalThis.document.visibilityState === "visible") setTranscriptRevision((revision) => revision + 1);
     }, 2_500);
     return () => window.clearInterval(timer);
-  }, [accountId, isDraftChat, isThinking, threadId]);
+  }, [accountId, isDraftChat, threadId]);
 
   useEffect(() => {
     if (!limitExhausted) return;

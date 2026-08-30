@@ -462,7 +462,7 @@ async function createRuntime(config: SwarmConfig) {
       await refreshTasks();
       if (!manifest) throw new Error(manifestError ?? "MASTERPLAN_NOT_READY");
       const task = nodes.find((candidate) => candidate.id === taskId);
-      if (!task || task.readiness.state !== "ready") throw new Error(task?.readiness.blockingCodes[0] ?? "TASK_NOT_READY");
+      if (!task) throw new Error("TASK_NOT_READY");
       let options = await launchAccounts();
       let selected = requested ? options.find((account) => account.id === requested && account.available) : options.find((account) => account.available);
       if (!selected && !requested) {
@@ -475,6 +475,7 @@ async function createRuntime(config: SwarmConfig) {
     },
     launch: async (taskId, input) => {
       const preview = await services.previewLaunch(taskId, input.accountId) as { task: TaskNode; accountId: AccountId; prompt: string };
+      if (preview.task.readiness.state !== "ready") throw new Error(preview.task.readiness.blockingCodes[0] ?? "TASK_NOT_READY");
       const client = await liveClient(preview.accountId);
       const rawThread = await client.startThread();
       const thread = asThread(preview.accountId, responseThread(rawThread), projectWorkspaceFor(preview.accountId));

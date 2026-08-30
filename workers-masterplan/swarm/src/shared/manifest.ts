@@ -55,6 +55,23 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
     return { code: "MANIFEST_INVALID", field: `${prefix}.dependsOn`, reason: "duplicate" };
   }
 
+  if (value.passes !== undefined) {
+    if (!Array.isArray(value.passes) || value.passes.some((pass) => pass !== "planning" && pass !== "execution")) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.passes`, reason: "type" };
+    }
+    if (value.passes.length === 0 || new Set(value.passes).size !== value.passes.length) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.passes`, reason: value.passes.length === 0 ? "required" : "duplicate" };
+    }
+  }
+  if (value.executionDependsOn !== undefined) {
+    if (!Array.isArray(value.executionDependsOn) || value.executionDependsOn.some((dependency) => typeof dependency !== "string" || dependency.trim().length === 0)) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.executionDependsOn`, reason: "type" };
+    }
+    if (new Set(value.executionDependsOn).size !== value.executionDependsOn.length) {
+      return { code: "MANIFEST_INVALID", field: `${prefix}.executionDependsOn`, reason: "duplicate" };
+    }
+  }
+
   if (value.pathId !== undefined || value.pathStep !== undefined) {
     if (value.pathId === undefined) {
       return { code: "MANIFEST_INVALID", field: `${prefix}.pathId`, reason: "required" };
@@ -150,6 +167,13 @@ export function validateTaskManifest(value: unknown): ManifestValidationResult {
   if (!Array.isArray(value.tasks)) {
     return { ok: false, error: { code: "MANIFEST_INVALID", field: "tasks", reason: "type" } };
   }
+  if (value.lifecycle !== undefined) {
+    if (!isRecord(value.lifecycle)) return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle", reason: "type" } };
+    if (value.lifecycle.mode !== "two_pass") return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle.mode", reason: "value" } };
+    if (value.lifecycle.activePass !== "planning" && value.lifecycle.activePass !== "execution") return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle.activePass", reason: "value" } };
+    const gateError = requiredString(value.lifecycle.planningGatePath, "lifecycle.planningGatePath");
+    if (gateError) return { ok: false, error: gateError };
+  }
 
   for (const [index, task] of value.tasks.entries()) {
     const error = validateTask(task, index);
@@ -175,12 +199,25 @@ export function validateTaskManifest(value: unknown): ManifestValidationResult {
   }
 
   for (const task of manifest.tasks) {
-    for (const dependencyId of task.dependsOn) {
+    for (const dependencyId of [...task.dependsOn, ...(task.executionDependsOn ?? [])]) {
       if (!taskIds.has(dependencyId)) {
         return {
           ok: false,
           error: { code: "MANIFEST_UNKNOWN_DEPENDENCY", taskId: task.id, dependencyId },
         };
+      }
+    }
+    if (manifest.lifecycle?.mode === "two_pass") {
+      const index = manifest.tasks.indexOf(task);
+      const expectedPasses = task.kind === "ui" ? ["planning"] : ["planning", "execution"];
+      if (task.passes?.join(",") !== expectedPasses.join(",")) {
+        return { ok: false, error: { code: "MANIFEST_INVALID", field: `tasks[${index}].passes`, reason: "value" } };
+      }
+      if (task.kind !== "ui" && task.executionDependsOn === undefined) {
+        return { ok: false, error: { code: "MANIFEST_INVALID", field: `tasks[${index}].executionDependsOn`, reason: "required" } };
+      }
+      if (task.kind === "ui" && task.executionDependsOn !== undefined) {
+        return { ok: false, error: { code: "MANIFEST_INVALID", field: `tasks[${index}].executionDependsOn`, reason: "value" } };
       }
     }
   }

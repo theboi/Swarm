@@ -243,6 +243,22 @@ describe("ChatsPage", () => {
     }
   });
 
+  it("reconciles an open chat even when cached activity incorrectly says idle", async () => {
+    vi.useFakeTimers();
+    const readTranscript = vi.fn(async () => ({ data: chatTranscript }));
+    try {
+      setViewport(1440);
+      render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} />);
+      expect(readTranscript).toHaveBeenCalledTimes(1);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
+
+      expect(readTranscript).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sends the selected model, effort, speed, and permission mode with the next turn", async () => {
     setViewport(1440);
     const user = userEvent.setup();

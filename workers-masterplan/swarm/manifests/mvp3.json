@@ -3,6 +3,11 @@
   "title": "MVP3 planning topology — six paths and four approximate layers",
   "masterplanPath": "docs/plans/EdenMind_MVP3_Implementation_Masterplan.md",
   "coordinationRoot": "docs/workers/2026-08-14-mvp3",
+  "lifecycle": {
+    "mode": "two_pass",
+    "activePass": "planning",
+    "planningGatePath": "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md"
+  },
   "tasks": [
     {
       "id": "F0",
@@ -14,6 +19,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/f0.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-f0-shared-foundation-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-f0-shared-foundation.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": [],
       "promptTemplate": "planning"
     },
     {
@@ -26,6 +33,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/p1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p1-identity-access-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-p1-identity-access.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -38,6 +47,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/p2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p2-people-admin-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-p2-people-admin.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["P1"],
       "promptTemplate": "planning"
     },
     {
@@ -50,6 +61,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/p3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p3-platform-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-p3-platform-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["P2", "Q2"],
       "promptTemplate": "planning"
     },
     {
@@ -62,6 +75,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/p4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p4-platform-acceptance-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-p4-platform-acceptance.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["P3"],
       "promptTemplate": "planning"
     },
     {
@@ -74,6 +89,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/c1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c1-curriculum-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c1-curriculum-domain.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -86,6 +103,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/c2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c2-curriculum-workflows-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c2-curriculum-workflows.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["C1"],
       "promptTemplate": "planning"
     },
     {
@@ -98,6 +117,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/c3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c3-curriculum-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c3-curriculum-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["C2"],
       "promptTemplate": "planning"
     },
     {
@@ -110,6 +131,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/c4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c4-curriculum-qualification-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c4-curriculum-qualification.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["C3"],
       "promptTemplate": "planning"
     },
     {
@@ -122,6 +145,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/q1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q1-content-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-q1-content-domain.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -134,6 +159,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/q2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q2-content-workflows-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-q2-content-workflows.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["Q1"],
       "promptTemplate": "planning"
     },
     {
@@ -146,6 +173,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/q3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q3-content-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-q3-content-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["Q2"],
       "promptTemplate": "planning"
     },
     {
@@ -158,6 +187,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/q4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q4-content-acceptance-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-q4-content-acceptance.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["Q3"],
       "promptTemplate": "planning"
     },
     {
@@ -170,6 +201,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/a1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a1-analysis-intake-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-a1-analysis-intake.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -182,6 +215,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/a2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a2-analysis-pipeline-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-a2-analysis-pipeline.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["A1", "C2", "Q1"],
       "promptTemplate": "planning"
     },
     {
@@ -194,6 +229,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/a3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a3-analysis-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-a3-analysis-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["A2"],
       "promptTemplate": "planning"
     },
     {
@@ -206,6 +243,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/a4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a4-analysis-qualification-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-a4-analysis-qualification.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["A3"],
       "promptTemplate": "planning"
     },
     {
@@ -218,6 +257,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/e1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e1-evidence-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-e1-evidence-domain.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -230,6 +271,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/e2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e2-statistics-export-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-e2-statistics-export.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["E1"],
       "promptTemplate": "planning"
     },
     {
@@ -242,6 +285,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/e3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e3-evidence-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-e3-evidence-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["E2"],
       "promptTemplate": "planning"
     },
     {
@@ -254,6 +299,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/e4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e4-evidence-acceptance-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-e4-evidence-acceptance.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["E3"],
       "promptTemplate": "planning"
     },
     {
@@ -266,6 +313,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/g1.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g1-practice-domain-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-g1-practice-domain.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["F0"],
       "promptTemplate": "planning"
     },
     {
@@ -278,6 +327,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/g2.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g2-practice-rendering-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-g2-practice-rendering.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["G1"],
       "promptTemplate": "planning"
     },
     {
@@ -290,6 +341,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/g3.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g3-practice-ui-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-g3-practice-ui.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["G2"],
       "promptTemplate": "planning"
     },
     {
@@ -302,6 +355,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/g4.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g4-practice-acceptance-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-g4-practice-acceptance.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["G3"],
       "promptTemplate": "planning"
     },
     {
@@ -315,6 +370,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-p2-people-admin-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-pd-platform-admin.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-pd-platform-admin.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -328,6 +384,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-c2-curriculum-workflows-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-cd-curriculum.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-cd-curriculum.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -341,6 +398,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-q2-content-workflows-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-qd-content.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-qd-content.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -354,6 +412,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-a2-analysis-pipeline-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-ad-analysis-intake.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-ad-analysis-intake.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -367,6 +426,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-e2-statistics-export-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-ed-evidence.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-ed-evidence.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -380,6 +440,7 @@
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-g2-practice-rendering-design.md",
       "uiRequirementsPath": "docs/design/requirements/2026-08-26-gd-practice.md",
       "uiHandoffPath": "docs/design/handoffs/2026-08-26-gd-practice.md",
+      "passes": ["planning"],
       "promptTemplate": "ui"
     },
     {
@@ -392,6 +453,8 @@
       "statusPath": "docs/workers/2026-08-14-mvp3/status/x0.md",
       "specificationPath": "docs/superpowers/specs/2026-08-14-mvp3/2026-08-26-x0-whole-product-integration-design.md",
       "implementationPlanPath": "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-x0-whole-product-integration.md",
+      "passes": ["planning", "execution"],
+      "executionDependsOn": ["P4", "C4", "Q4", "A4", "E4", "G4"],
       "promptTemplate": "planning"
     }
   ]

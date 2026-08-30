@@ -124,7 +124,7 @@ describe("FlowchartPage", () => {
     expect(screen.queryByRole("list", { name: "Mobile task list" })).not.toBeInTheDocument();
   });
 
-  it("filters visible node states and keeps a blocked task unavailable for launch", async () => {
+  it("keeps review launch available for blocked, errored, and completed work", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
@@ -134,10 +134,10 @@ describe("FlowchartPage", () => {
     expect(screen.getByRole("button", { name: "I0 Integration blocked" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "U1 Coordinator UI ready" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "I0 Integration blocked" }));
-    expect(screen.getByRole("button", { name: "Review launch for I0" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review launch for I0" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Show all tasks" }));
     await user.click(screen.getByRole("button", { name: "U1 Coordinator UI ready" }));
-    expect(screen.getByRole("button", { name: "Review launch for U1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review launch for U1" })).toBeEnabled();
   });
 
   it("opens the shared editable launch review from a ready task", async () => {

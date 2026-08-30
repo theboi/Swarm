@@ -21,6 +21,11 @@ describe("task authority", () => {
     const domainPaths = ["P", "C", "Q", "A", "E", "G"];
 
     expect(production.blueprintId).toBe("2026-08-14-mvp3");
+    expect(production.lifecycle).toEqual({
+      mode: "two_pass",
+      activePass: "planning",
+      planningGatePath: "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md",
+    });
     expect(production.tasks).toHaveLength(32);
     expect(production.tasks.filter((task) => task.kind === "planning")).toHaveLength(26);
     expect(production.tasks.filter((task) => task.kind === "ui").map((task) => task.id)).toEqual(["PD", "CD", "QD", "AD", "ED", "GD"]);
@@ -35,6 +40,11 @@ describe("task authority", () => {
     expect(production.tasks.some((task) => task.id === "PG0")).toBe(false);
     expect(domainPaths.map((pathId) => production.tasks.filter((task) => task.pathId === pathId).length)).toEqual([4, 4, 4, 4, 4, 4]);
     expect(production.tasks.filter((task) => task.pathId === "shared").map((task) => task.id)).toEqual(["F0", "X0"]);
+    expect(production.tasks.filter((task) => task.kind !== "ui").every((task) => task.passes?.join(",") === "planning,execution")).toBe(true);
+    expect(production.tasks.filter((task) => task.kind === "ui").every((task) => task.passes?.join(",") === "planning")).toBe(true);
+    expect(production.tasks.find((task) => task.id === "P3")?.executionDependsOn).toEqual(["P2", "Q2"]);
+    expect(production.tasks.find((task) => task.id === "C3")?.executionDependsOn).toEqual(["C2"]);
+    expect(production.tasks.find((task) => task.id === "X0")?.executionDependsOn).toEqual(["P4", "C4", "Q4", "A4", "E4", "G4"]);
     expect(production.tasks.filter((task) => task.dependsOn.length === 0).map((task) => task.id)).toEqual(["F0"]);
     for (const [designId, layerTwoId, layerThreeId] of [["PD", "P2", "P3"], ["CD", "C2", "C3"], ["QD", "Q2", "Q3"], ["AD", "A2", "A3"], ["ED", "E2", "E3"], ["GD", "G2", "G3"]]) {
       expect(production.tasks.find((task) => task.id === designId)?.dependsOn).toEqual([layerTwoId]);

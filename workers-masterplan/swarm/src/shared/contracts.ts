@@ -55,6 +55,13 @@ export interface AccountSnapshot {
 
 export type TaskKind = "planning" | "execution" | "ui" | "gate";
 export type PromptTemplate = "planning" | "execution" | "ui";
+export type ManifestPass = "planning" | "execution";
+
+export interface TaskManifestLifecycle {
+  mode: "two_pass";
+  activePass: ManifestPass;
+  planningGatePath: string;
+}
 
 export interface TaskManifestTask {
   id: string;
@@ -69,6 +76,10 @@ export interface TaskManifestTask {
   uiRequirementsPath?: string;
   uiHandoffPath?: string;
   promptTemplate: PromptTemplate;
+  /** Stable lifecycle passes owned by this worker ID. UI-design workers exist only in Pass 1. */
+  passes?: ManifestPass[];
+  /** Hard implemented predecessors used when this stable worker ID advances to Pass 2. */
+  executionDependsOn?: string[];
   preferredAccount?: AccountId;
 }
 
@@ -77,6 +88,7 @@ export interface TaskManifest {
   title: string;
   masterplanPath: string;
   coordinationRoot: string;
+  lifecycle?: TaskManifestLifecycle;
   tasks: TaskManifestTask[];
 }
 

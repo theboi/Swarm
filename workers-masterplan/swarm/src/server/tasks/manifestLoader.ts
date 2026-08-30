@@ -54,6 +54,7 @@ export async function loadManifest(path: string, repositoryRoot: string): Promis
       await validateRepositoryPath(root, field, task.kind === "planning" || task.kind === "ui");
     }
   }
+  if (result.data.lifecycle) await validateRepositoryPath(root, result.data.lifecycle.planningGatePath, false);
   return result.data;
 }
 
