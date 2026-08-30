@@ -20,6 +20,11 @@ const remote = new Map<string, string>([
     "| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |",
     "| --- | --- | --- | --- | --- | --- | --- |",
     "| P1 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |",
+    "",
+    "## Unresolved contradictions",
+    "",
+    "| Contradiction | Owner | Unblock criterion |",
+    "| --- | --- | --- |",
   ].join("\n")],
 ]);
 
@@ -129,8 +134,8 @@ function completeGateReceipt(options: {
     acceptedAppCommit = "`abc123`",
     uiApproval = "accepted by product owner",
     liveReview = "complete",
-    uiReconciliation = "reconciled",
-    transfer = "P3",
+    uiReconciliation = "reconciled with P3",
+    transfer = "PD -> P3",
     uiRemoteCommit = "`abc123`",
     extraRows = [],
   } = options;
@@ -149,6 +154,11 @@ function completeGateReceipt(options: {
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     `| PD | \`docs/design/requirements/pd.md\` | \`docs/design/handoffs/pd.md\` | ${acceptedAppCommit} | ${uiApproval} | ${liveReview} | ${uiReconciliation} | ${transfer} | ${uiRemoteCommit} |`,
     ...extraRows,
+    "",
+    "## Unresolved contradictions",
+    "",
+    "| Contradiction | Owner | Unblock criterion |",
+    "| --- | --- | --- |",
   ].join("\n");
 }
 
@@ -234,6 +244,13 @@ describe("blueprint evidence", () => {
     expect(readiness.find((item) => item.taskId === "P3X")?.state).toBe("ready");
   });
 
+  it("blocks Pass 2 while the receipt records an unresolved contradiction", async () => {
+    const records = completePass2Records();
+    records.set("docs/workers/two-pass/PLANNING_GATE.md", `${completeGateReceipt()}\n| API payload remains undecided | P3 | pending |`);
+
+    expect((await twoPassReadiness(records)).find((item) => item.taskId === "P3X")?.state).toBe("blocked");
+  });
+
   it("pins execution evidence to the gate's authorized commit rather than the later remote head", async () => {
     const readiness = await twoPassReadiness(completePass2Records(), "def456");
     const gateEvidence = readiness.find((item) => item.taskId === "P3X")?.evidence.find((item) => item.code === "PLANNING_GATE");
@@ -256,7 +273,12 @@ describe("blueprint evidence", () => {
       "",
       "| UI worker | Accepted app commit | Approval evidence | Presentation handoff | UI requirements | Live review | Requirements-to-plan reconciliation | Mutable owner transfer | Remote commit |",
       "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-      "| PD | `abc123` | approved by product owner | `docs/design/handoffs/pd.md` | `docs/design/requirements/pd.md` | fixture/mock complete | reconciled | P3 | `abc123` |",
+      "| PD | `abc123` | approved by product owner | `docs/design/handoffs/pd.md` | `docs/design/requirements/pd.md` | fixture/mock complete | reconciled with P3 | PD -> P3 | `abc123` |",
+      "",
+      "## Unresolved contradictions",
+      "",
+      "| Contradiction | Owner | Unblock criterion |",
+      "| --- | --- | --- |",
     ].join("\n"));
 
     expect((await twoPassReadiness(records)).find((item) => item.taskId === "P3X")?.state).toBe("ready");
@@ -308,6 +330,8 @@ describe("blueprint evidence", () => {
     ["negative reconciliation", { uiReconciliation: "unreconciled" }],
     ["pending transfer", { transfer: "transfer pending" }],
     ["unexpected transfer target", { transfer: "BANANA" }],
+    ["reconciliation for a different live-wiring planner", { uiReconciliation: "reconciled with P4" }],
+    ["ambiguous ownership transfer", { transfer: "PD -> P3 and P4" }],
   ])("rejects a UI receipt row with %s", async (_name, mutation) => {
     const records = completePass2Records();
     records.set("docs/workers/two-pass/PLANNING_GATE.md", completeGateReceipt(mutation));

@@ -201,7 +201,7 @@ function planningEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvi
     && planningArtifactsAreRemote(task, source));
 }
 
-const NEGATIVE_EVIDENCE = /\b(?:pending|unapproved|unreconciled|incomplete|rejected|denied|declined|failed|false|missing|absent|open|reopened|blocked|provisional|draft|tbd|revoked|in progress|not applicable|not\s+(?:approved|accepted|complete|completed|passed|integrated|reconciled))\b/i;
+const NEGATIVE_EVIDENCE = /\b(?:pending|unapproved|unreconciled|unresolved|incomplete|rejected|denied|declined|failed|false|missing|absent|open|reopened|blocked|provisional|draft|tbd|revoked|in progress|not applicable|not\s+(?:approved|accepted|complete|completed|passed|integrated|reconciled))\b/i;
 
 function positiveEvidence(value: string, positive: RegExp): boolean {
   return !NEGATIVE_EVIDENCE.test(plainCell(value)) && positive.test(plainCell(value));
@@ -377,6 +377,33 @@ function expectedUiTransferTarget(task: TaskManifestTask, taskById: Map<string, 
   return consumers.length === 1 ? consumers[0]?.id : undefined;
 }
 
+function mentionsTask(value: string, taskId: string): boolean {
+  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^A-Za-z0-9])${escaped}(?=$|[^A-Za-z0-9])`, "i").test(plainCell(value));
+}
+
+function reconciliationNamesExpectedConsumer(value: string, task: TaskManifestTask, target: string, taskById: Map<string, TaskManifestTask>): boolean {
+  const mentionedTaskIds = [...taskById.keys()].filter((id) => mentionsTask(value, id));
+  return positiveEvidence(value, /\b(?:reconciled|complete|completed|passed)\b/i)
+    && mentionedTaskIds.includes(target)
+    && mentionedTaskIds.every((id) => id === task.id || id === target);
+}
+
+function transferIsDirectional(value: string, sourceWorker: string, targetWorker: string): boolean {
+  const escapedSource = sourceWorker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedTarget = targetWorker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return positiveEvidence(value, new RegExp(`^\\s*${escapedSource}\\s*(?:->|→|to)\\s*${escapedTarget}\\s*$`, "i"));
+}
+
+function unresolvedContradictionsAreClosed(receipt: string): boolean {
+  if (!/^##\s+Unresolved contradictions\s*$/im.test(receipt)) return false;
+  const contradictionTable = markdownTables(receipt).find((table) => {
+    const headers = table.headers.map(normalizeLabel);
+    return ["contradiction", "owner", "unblock criterion"].every((header) => headers.filter((candidate) => candidate === header).length === 1);
+  });
+  return Boolean(contradictionTable && contradictionTable.rows.length === 0);
+}
+
 function uiReceiptRowIsComplete(task: TaskManifestTask, receipt: string, source: BlueprintEvidence, taskById: Map<string, TaskManifestTask>): boolean {
   const row = rowForWorker(receiptRows(receipt, UI_RECEIPT_COLUMNS), task.id);
   const handoff = task.uiHandoffPath ? source.records.get(task.uiHandoffPath) : undefined;
@@ -392,9 +419,9 @@ function uiReceiptRowIsComplete(task: TaskManifestTask, receipt: string, source:
     && acceptedReceiptCommit === acceptedHandoffCommit
     && positiveEvidence(row.cells.approval ?? "", /\b(?:approved|accepted)\b/i)
     && positiveEvidence(row.cells.liveReview ?? "", /\b(?:complete|completed|passed|accepted)\b/i)
-    && positiveEvidence(row.cells.reconciliation ?? "", /\b(?:reconciled|complete|completed|passed)\b/i)
+    && reconciliationNamesExpectedConsumer(row.cells.reconciliation ?? "", task, transferTarget ?? "", taskById)
     && transferTarget
-    && positiveEvidence(row.cells.transfer ?? "", new RegExp(`(?:^|[^A-Za-z0-9])${transferTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Za-z0-9])`, "i"))
+    && transferIsDirectional(row.cells.transfer ?? "", task.id, transferTarget)
     && integratedCommitFromCell(row.cells.remoteCommit ?? "", source));
 }
 
@@ -410,7 +437,8 @@ function gateEvidenceIsComplete(task: TaskManifestTask, taskById: Map<string, Ta
   if (!source.remoteCommit
     || !gateStateIsPassed(receipt)
     || !authorizedCommit
-    || !source.integratedCommits?.has(authorizedCommit)) return false;
+    || !source.integratedCommits?.has(authorizedCommit)
+    || !unresolvedContradictionsAreClosed(receipt)) return false;
   const ordinaryRowsComplete = [...taskById.values()].filter((candidate) => candidate.kind === "planning").every((planning) =>
     planningEvidenceIsComplete(planning, source)
       && ordinaryReceiptRowIsComplete(planning, receipt, source));

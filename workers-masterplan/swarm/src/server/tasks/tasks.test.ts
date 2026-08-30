@@ -171,7 +171,7 @@ describe("task authority", () => {
       ["docs/blueprint.md", "# Blueprint: mvp3\nIntegration authority: origin/main\n"],
       ["docs/workers/mvp3/T0.md", "status: complete\nremoteCommit: abc123\n"],
       ["docs/spec.md", "# spec\n"], ["docs/plan.md", "# plan\n"],
-      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n"],
+      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n\n## Unresolved contradictions\n\n| Contradiction | Owner | Unblock criterion |\n| --- | --- | --- |\n"],
     ]);
     const evidence = await loadBlueprintEvidence(manifest, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(manifest, evidence).find((item) => item.taskId === "I0")?.state).toBe("ready");
@@ -186,7 +186,7 @@ describe("task authority", () => {
       ["docs/workers/mvp3/T0.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |"],
       ["docs/spec.md", "# Approved specification\n"],
       ["docs/plan.md", "# Approved plan\n"],
-      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n"],
+      ["docs/workers/mvp3/G0.md", "| Field | Value |\n| --- | --- |\n| Gate state | passed |\n| Authorized `origin/main` commit | `abc123` |\n\n| Worker | Manifest specification path | Manifest implementation plan path | Approval | Authority sync / no-impact | Cross-plan reconciliation | Remote commit |\n| --- | --- | --- | --- | --- | --- | --- |\n| T0 | `docs/spec.md` | `docs/plan.md` | approved | authority-sync complete | reconciled | `abc123` |\n\n## Unresolved contradictions\n\n| Contradiction | Owner | Unblock criterion |\n| --- | --- | --- |\n"],
     ]);
     const result = await loadBlueprintEvidence(authoritative, { fetch: async () => "abc123", readRemote: async (path) => remote.get(path) });
     expect(evaluateTaskReadiness(authoritative, result).find((item) => item.taskId === "I0")?.state).toBe("ready");

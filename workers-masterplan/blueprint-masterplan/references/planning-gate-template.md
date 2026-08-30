@@ -26,13 +26,16 @@ approve, or alter this whole-blueprint execution authorization.
 
 | UI worker | Accepted app commit | Approval evidence | Presentation handoff | UI requirements | Live review | Requirements-to-plan reconciliation | Mutable owner transfer | Remote commit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `<design-worker-id>` | `<accepted-app-commit>` | `<approval-evidence>` | `<handoff-path>` | `<ui-requirements-path>` | fixture/mock complete / pending | `<consumer-plan mapping>` | `<implementation-owner>` | `<origin-main-commit>` |
+| `<design-worker-id>` | `<accepted-app-commit>` | `<approval-evidence>` | `<handoff-path>` | `<ui-requirements-path>` | fixture/mock complete / pending | reconciled with `<implementation-owner>` | `<design-worker-id>` -> `<implementation-owner>` | `<origin-main-commit>` |
 
 ## Unresolved contradictions
 
 | Contradiction | Owner | Unblock criterion |
 | --- | --- | --- |
 | `<contradiction>` | `<owner>` | `<unblock-criterion>` |
+
+For a passed receipt, delete every contradiction data row. Any retained row is
+unresolved and blocks execution; do not write a synthetic `none` row.
 
 ## Verification and review evidence
 
