@@ -464,6 +464,27 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
+  it("shows the waiting notice immediately from durable state while the selected chat is still lazy-loading", () => {
+    setViewport(1440);
+    const now = Date.now();
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      accounts: chatSnapshot.accounts.map((account) => account.id === "bot3" ? {
+        ...account,
+        rateLimits: [{ id: "five-hour", label: "Five-hour", usedPercent: 100, resetsAt: Math.floor(now / 1_000) + 7_500, updatedAt: now }],
+      } : account),
+      threads: [],
+      workerAssignments: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: now }],
+    };
+    const listThreads = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(<ChatsPage snapshot={waitingSnapshot} api={{ ...api, listThreads }} initialTarget={{ accountId: "bot3", threadId: "thread-1" }} />);
+
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent(/Waiting for limit to reset in 2h \d+m before resuming\./);
+    expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
+  });
+
   it("shows the resume controls immediately from the live limit event before the durable snapshot refresh finishes", () => {
     setViewport(1440);
     render(<ChatsPage snapshot={{ ...chatSnapshot, workerAssignments: [], limitResumes: [] }} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);

@@ -514,10 +514,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
   const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
-  const resumeRecord = selectedThread && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === selectedThread.id) : undefined;
-  const transferredAway = selectedThread && accountId ? snapshot.workerAssignments?.some((assignment) => assignment.transferHistory.some((transfer) => transfer.fromAccountId === accountId && transfer.fromThreadId === selectedThread.id)) : false;
+  const resumeRecord = threadId && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === threadId) : undefined;
+  const transferredAway = threadId && accountId ? snapshot.workerAssignments?.some((assignment) => assignment.transferHistory.some((transfer) => transfer.fromAccountId === accountId && transfer.fromThreadId === threadId)) : false;
   const liveLimitExhausted = Boolean(activeTurnKey && limitExhaustedTurnKeys.has(activeTurnKey));
-  const limitExhausted = Boolean(selectedThread && activeTurnKey && (resumeRecord?.state === "waiting_for_limit" || (liveLimitExhausted && resumeRecord?.state !== "transferred" && !transferredAway)));
+  const limitExhausted = Boolean(activeTurnKey && (resumeRecord?.state === "waiting_for_limit" || (liveLimitExhausted && resumeRecord?.state !== "transferred" && !transferredAway)));
+  const resumeCountdown = limitCountdown(exhaustedLimit?.resetsAt ?? null, clock) ?? "under 1m";
   const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
   const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
   const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);
@@ -567,11 +568,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   const moveToAccount = async () => {
-    if (!accountId || !selectedThread || !moveTarget || !api.moveThreadToAccount) return;
+    if (!accountId || !threadId || !moveTarget || !api.moveThreadToAccount) return;
     setMoving(true);
     try {
       const turnSettings = normalizeExecutionSettings(models, executionSettings);
-      const result = await api.moveThreadToAccount(accountId, selectedThread.id, moveTarget, turnSettings);
+      const result = await api.moveThreadToAccount(accountId, threadId, moveTarget, turnSettings);
       if ("error" in result && result.error) return reportError(result.error.message);
       setSettingsByChat((current) => ({ ...current, [chatExecutionSettingsKey(moveTarget, result.data.id)]: turnSettings }));
       setGlobalSettings(turnSettings);
@@ -643,11 +644,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           })}</div></section>)}</div> : null}
           {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
           <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div>
+          {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>Waiting for limit to reset in {resumeCountdown} before resuming.</p><button type="button" onClick={openMove}>Move to another account</button></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
             {pendingSteer && pendingSteer.accountId === accountId && pendingSteer.threadId === selectedThread?.id ? <section className="pending-steer" role="status" aria-label="Pending steer"><p>{pendingSteer.text}</p><div><button type="button" aria-label="Edit pending steer" title="Edit" onClick={() => { setDraft(pendingSteer.text); setPendingSteer(null); composerRef.current?.focus(); }}><Pencil aria-hidden="true" size={14} /></button><button type="button" aria-label="Cancel pending steer" title="Cancel" onClick={() => setPendingSteer(null)}><X aria-hidden="true" size={14} /></button></div></section> : null}
             <div className="chat-compose__field"><textarea ref={composerRef} id="message" aria-label="Message" rows={2} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
             <TurnOptions models={models} settings={executionSettings} onChange={updateExecutionSettings} />
-            {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>Waiting for limit to reset{limitCountdown(exhaustedLimit?.resetsAt ?? null, clock) ? ` in ${limitCountdown(exhaustedLimit?.resetsAt ?? null, clock)}` : ""} before resuming.</p><button type="button" onClick={openMove}>Move to another account</button></section> : null}
             <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><button type="button" aria-label="Steer" title="Steer" disabled={!canSteer} onClick={() => void steerMessage()}><CornerUpRight aria-hidden="true" size={16} strokeWidth={1.75} /></button><button type="button" aria-label="Interrupt" title="Interrupt" disabled={!canInterrupt} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}><CircleStop aria-hidden="true" size={16} strokeWidth={1.75} /></button></div><button className="primary-button chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={!canSend}><Send aria-hidden="true" size={16} strokeWidth={2} /></button></div>
           </form>
         </section>
