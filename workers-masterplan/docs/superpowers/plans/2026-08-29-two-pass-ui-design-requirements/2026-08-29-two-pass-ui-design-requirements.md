@@ -740,7 +740,7 @@ node evals/verify-swarm-prompt-parity.mjs
 
 Expected: all Vitest cases pass and the parity script prints PASS for planning, execution, UI, and the three-packet summary.
 
-- [ ] **Step 7: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 7: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 cd ..
@@ -872,7 +872,7 @@ git merge-base --is-ancestor HEAD origin/main
 - Consumes: all 26 ordinary task paths and six UI artifact pairs from the production manifest.
 - Produces: one open coordinator receipt and one current aggregate snapshot. Existing files under `gates/` remain preserved as historical rolling receipts and no longer authorize execution.
 
-- [ ] **Step 1: Pull and capture the inspected remote baseline**
+- [x] **Step 1: Pull and capture the inspected remote baseline**
 
 ```bash
 git status --short --branch
@@ -882,7 +882,7 @@ git rev-parse origin/main
 
 Use the printed commit as the inspected baseline in both coordinator-owned documents. An open gate has `Authorized origin/main commit: not authorized while open`; do not claim a passed receipt.
 
-- [ ] **Step 2: Create the global planning receipt in the open state**
+- [x] **Step 2: Create the global planning receipt in the open state**
 
 Create `PLANNING_GATE.md` with blueprint ID `2026-08-14-mvp3`, the MVP3 masterplan path, state `open`, coordinator owner, inspected baseline commit, `approval time: pending`, and the material-change reopening rule.
 
@@ -898,7 +898,7 @@ Add one UI table row for `PD`, `CD`, `QD`, `AD`, `ED`, and `GD` with exact requi
 
 Add a UI requirement reconciliation section stating the gate remains open until every row in every UI requirements contract maps to an approved producer specification/plan and the matching Layer 3 consumer plan.
 
-- [ ] **Step 3: Refresh aggregate status without overwriting workers**
+- [x] **Step 3: Refresh aggregate status without overwriting workers**
 
 Rewrite stale claims in `STATUS.md` so it:
 
@@ -916,11 +916,11 @@ Use one aggregate task table whose worker rows begin with the exact task ID in t
 
 Do not edit any file in `docs/workers/2026-08-14-mvp3/status/`.
 
-- [ ] **Step 4: Preserve and demote rolling receipts**
+- [x] **Step 4: Preserve and demote rolling receipts**
 
 Update `gates/README.md` to say every existing file in `gates/` is preserved historical evidence from the superseded rolling model. State that none independently authorizes Pass 2 and that only `../PLANNING_GATE.md` may authorize execution after all ordinary and UI rows reconcile.
 
-- [ ] **Step 5: Verify counts, ownership, and gate language**
+- [x] **Step 5: Verify counts, ownership, and gate language**
 
 ```bash
 test "$(rg -c '^\| (F0|P[1-4]|C[1-4]|Q[1-4]|A[1-4]|E[1-4]|G[1-4]|X0) \|' docs/workers/2026-08-14-mvp3/PLANNING_GATE.md)" -eq 26
@@ -933,7 +933,7 @@ git diff --check
 
 Expected: counts are 26 and six; open/unauthorized language and UI requirements are present; no worker-owned status path is printed.
 
-- [ ] **Step 6: Commit, reconcile, push, and prove remote reachability**
+- [x] **Step 6: Commit, reconcile, push, and prove remote reachability**
 
 ```bash
 git add docs/workers/2026-08-14-mvp3/PLANNING_GATE.md docs/workers/2026-08-14-mvp3/STATUS.md docs/workers/2026-08-14-mvp3/gates/README.md
@@ -961,7 +961,7 @@ If reconciliation changes the manifest or a cited worker artifact, refresh the i
 - Consumes: the complete implementation from Tasks 1–7.
 - Produces: passing full verification, code/contract review closure, clean owned state, and remote ancestry proof.
 
-- [ ] **Step 1: Pull current `main` and read completion/review skills**
+- [x] **Step 1: Pull current `main` and read completion/review skills**
 
 ```bash
 git status --short --branch
@@ -986,7 +986,7 @@ git diff --check
 
 Expected: Vitest, both TypeScript configurations, the Vite/server build, Playwright, prompt parity, and whitespace validation all pass.
 
-- [ ] **Step 3: Run deterministic contract audits**
+- [x] **Step 3: Run deterministic contract audits**
 
 ```bash
 node -e 'const fs=require("fs");const m=JSON.parse(fs.readFileSync("workers-masterplan/swarm/manifests/mvp3.json","utf8"));const ui=m.tasks.filter(t=>t.kind==="ui");if(m.tasks.length!==32||m.tasks.filter(t=>t.kind==="planning").length!==26||ui.length!==6||ui.some(t=>!t.uiRequirementsPath||!t.uiHandoffPath||t.implementationPlanPath)||m.tasks.some(t=>t.id==="PG0"))process.exit(1)'
@@ -1000,7 +1000,7 @@ git diff --name-only -- docs/plans/EdenMind_Business_Masterplan.md docs/plans/Ed
 
 Expected: the manifest audit exits zero; lifecycle terms are present; superseded language is absent from current authorities; receipt counts are exact; unaffected or worker-owned paths are not printed.
 
-- [ ] **Step 4: Request a fresh review against the approved spec**
+- [x] **Step 4: Request a fresh review against the approved spec**
 
 Ask the reviewer to check these questions explicitly:
 
@@ -1012,6 +1012,14 @@ Ask the reviewer to check these questions explicitly:
 6. Did coordinator changes avoid worker-owned statuses and unaffected business/product authorities?
 
 Address every finding with the focused test that would have caught it, then rerun Steps 2 and 3.
+
+> **Execution note — 30 August 2026:** Fresh review findings were closed in
+> `8a9b1939`, `4c4ed8fd`, and `9f429ab0`, each pushed to `origin/main`. The
+> focused receipt, launch-packet, manifest, e2e fixture, typecheck, parity, and
+> deterministic contract checks pass. Task 8 Step 2 remains open because the
+> unrelated default Vitest run has a timing-sensitive `AppServerClient` approval
+> router failure, and the browser suite reproducibly fails the unrelated Chats
+> rename-dialog test before completion. Neither surface is owned by Tasks 1–7.
 
 - [ ] **Step 5: Commit any review fixes and publish final evidence**
 
