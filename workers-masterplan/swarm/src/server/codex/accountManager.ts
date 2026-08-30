@@ -25,6 +25,15 @@ export interface ConnectAccountInput {
 
 type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient };
 
+function isExpiredAuthentication(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const structured = error && typeof error === "object" && !Array.isArray(error) ? error as { code?: unknown; data?: unknown } : {};
+  const metadata = structured.data === undefined ? "" : JSON.stringify(structured.data);
+  return structured.code === 401
+    || /token[_ -]?expired|provided authentication token is expired/i.test(`${message} ${metadata}`)
+    || /(?:\b401\b.{0,80}\bunauthorized\b|\bunauthorized\b.{0,80}\b401\b)/i.test(message);
+}
+
 /** Tracks the one app-server process permitted for each macOS account. */
 export class AccountManager {
   private readonly connections = new Map<AccountId, ManagedConnection>();
@@ -64,7 +73,7 @@ export class AccountManager {
   }
 
   async openTerminal(account: AccountId): Promise<void> {
-    if (this.connections.has(account)) await this.options.launcher.openTerminal(account);
+    if (this.connections.has(account) && this.requireSnapshot(account).authentication === "authenticated") await this.options.launcher.openTerminal(account);
     else await this.options.launcher.openLoginTerminal(account, this.options.codexBin);
   }
 
@@ -75,6 +84,27 @@ export class AccountManager {
 
   updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange">): AccountSnapshot {
     return this.setSnapshot(account, patch);
+  }
+
+  recordRateLimitReadSuccess(account: AccountId, rateLimits: RateLimitWindow[]): AccountSnapshot {
+    return this.setSnapshot(account, {
+      connection: "connected",
+      authentication: "authenticated",
+      rateLimits,
+      terminalCommand: undefined,
+      errorCode: undefined,
+    });
+  }
+
+  recordRateLimitReadFailure(account: AccountId, error: unknown): AccountSnapshot {
+    this.options.onRateLimitReadError?.(account, error);
+    if (!isExpiredAuthentication(error)) return this.setSnapshot(account, { errorCode: "USAGE_UNAVAILABLE" });
+    return this.setSnapshot(account, {
+      connection: "action_required",
+      authentication: "unauthenticated",
+      errorCode: "ACCOUNT_AUTH_REQUIRED",
+      terminalCommand: this.manualLoginCommand(account),
+    });
   }
 
   async disconnect(account: AccountId): Promise<void> {
@@ -101,15 +131,18 @@ export class AccountManager {
       const account = await client.connect();
       if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
       let rateLimits = this.requireSnapshot(input.account).rateLimits;
-      let usageUnavailable = false;
+      let rateLimitError: unknown;
       try {
         rateLimits = await client.readRateLimitWindows();
       } catch (error) {
-        this.options.onRateLimitReadError?.(input.account, error);
-        usageUnavailable = true;
+        rateLimitError = error;
       }
       this.connections.set(input.account, { handle, client });
-      return this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined, errorCode: usageUnavailable ? "USAGE_UNAVAILABLE" : undefined });
+      if (rateLimitError !== undefined) {
+        this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined });
+        return this.recordRateLimitReadFailure(input.account, rateLimitError);
+      }
+      return this.recordRateLimitReadSuccess(input.account, rateLimits);
     } catch (error) {
       await handle?.stop();
       this.setSnapshot(input.account, {

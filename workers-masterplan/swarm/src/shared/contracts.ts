@@ -178,6 +178,8 @@ export interface LimitResumeRecord {
   threadId: string;
   state: LimitResumeState;
   updatedAt: number;
+  /** Number of messages durably queued while this chat waits for its usage limit. */
+  queuedMessageCount?: number;
   /** Stable idempotency key retained while a limit-resume turn is being reconciled. */
   resumeClientUserMessageId?: string;
 }

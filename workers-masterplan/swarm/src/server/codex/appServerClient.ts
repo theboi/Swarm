@@ -47,6 +47,7 @@ export interface NormalizedAppServerEvent {
   threadId?: string;
   turnId?: string;
   state?: string;
+  historical?: boolean;
 }
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -175,7 +176,6 @@ export class AppServerClient {
     this.requireReady();
     let response: { thread: Record<string, unknown> };
     try {
-      if (this.unloadedThreadIds.has(threadId)) await this.resumeThread(threadId);
       response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
     } catch (error) {
       if (!this.readLockedThread || !(error instanceof Error) || !/already has an active writer/i.test(error.message)) throw error;
@@ -369,7 +369,7 @@ export class AppServerClient {
       .at(-1);
     const turnId = latest && typeof latest.id === "string" ? latest.id : undefined;
     const state = latest ? turnActivityState(latest) : undefined;
-    if (turnId && state) this.emit({ type: "turn", accountId: this.account, threadId, turnId, state });
+    if (turnId && state) this.emit({ type: "turn", accountId: this.account, threadId, turnId, state, historical: true });
   }
 
   private applyTranscriptNotification(notification: { method: string; params?: unknown }): void {

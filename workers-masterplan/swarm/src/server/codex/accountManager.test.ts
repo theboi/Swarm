@@ -91,19 +91,21 @@ describe("AccountManager", () => {
     expect(report).toHaveBeenCalledWith(account, expect.objectContaining({ message: "usage unavailable" }));
   });
 
-  it("keeps chat connected and preserves prior usage when the usage endpoint reports an expired token", async () => {
+  it("marks an expired Codex token unauthenticated while preserving the live app-server and prior usage", async () => {
     const { manager, handle, client } = fixture();
     manager.updateSnapshot(account, { rateLimits: [{ id: "codex:primary", label: "Codex five-hour", usedPercent: 25, resetsAt: 1_800, updatedAt: 1_000 }] });
     client.connect.mockResolvedValueOnce({ account: { type: "chatgpt" }, requiresOpenaiAuth: false });
     client.readRateLimitWindows.mockRejectedValueOnce(new Error("usage request failed: 401 Unauthorized; token_expired"));
 
     await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({
-      connection: "connected",
-      authentication: "authenticated",
+      connection: "action_required",
+      authentication: "unauthenticated",
+      errorCode: "ACCOUNT_AUTH_REQUIRED",
       rateLimits: [{ id: "codex:primary", usedPercent: 25 }],
     });
 
     expect(handle.stop).not.toHaveBeenCalled();
+    expect(manager.client(account)).toBe(client);
   });
 
   it("keeps chat connected when account/read succeeds but the read-only usage probe fails", async () => {
@@ -111,9 +113,29 @@ describe("AccountManager", () => {
     client.connect.mockResolvedValueOnce({ account: { type: "chatgpt" }, requiresOpenaiAuth: true });
     client.readRateLimitWindows.mockRejectedValueOnce(new Error("OpenAI authentication required"));
 
-    await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({ connection: "connected", authentication: "authenticated" });
+    await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({ connection: "connected", authentication: "authenticated", errorCode: "USAGE_UNAVAILABLE" });
     expect(client.readRateLimitWindows).toHaveBeenCalledOnce();
     expect(handle.stop).not.toHaveBeenCalled();
+  });
+
+  it("updates stale authentication after later usage failures and recovers after a successful probe", async () => {
+    const { manager } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+
+    manager.recordRateLimitReadFailure(account, new Error("GET /usage failed: 401 Unauthorized; code=token_expired"));
+    expect(manager.snapshot(account)).toMatchObject({ connection: "action_required", authentication: "unauthenticated", errorCode: "ACCOUNT_AUTH_REQUIRED" });
+
+    manager.recordRateLimitReadSuccess(account, [{ id: "codex:primary", label: "Codex five-hour", usedPercent: 5, resetsAt: 2_000, updatedAt: 1_500 }]);
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated", errorCode: undefined, rateLimits: [{ id: "codex:primary", usedPercent: 5 }] });
+  });
+
+  it("recognizes structured 401 and token-expired metadata regardless of message wording", async () => {
+    const { manager } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+
+    manager.recordRateLimitReadFailure(account, Object.assign(new Error("Unauthorized"), { code: 401, data: { code: "token_expired" } }));
+
+    expect(manager.snapshot(account)).toMatchObject({ connection: "action_required", authentication: "unauthenticated", errorCode: "ACCOUNT_AUTH_REQUIRED" });
   });
 
   it("fails closed into action_required and stops the launcher when app-server authentication cannot complete", async () => {
@@ -165,6 +187,17 @@ describe("AccountManager", () => {
     await (manager as unknown as { openTerminal(account: "bot1"): Promise<void> }).openTerminal(account);
 
     expect(openTerminal).toHaveBeenCalledWith(account);
+  });
+
+  it("opens the sign-in terminal instead of the app-server console after a token expires", async () => {
+    const { manager, openTerminal, openLoginTerminal } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("token_expired"));
+
+    await manager.openTerminal(account);
+
+    expect(openLoginTerminal).toHaveBeenCalledWith(account, "/opt/homebrew/bin/codex");
+    expect(openTerminal).not.toHaveBeenCalled();
   });
 
   it("allows the coordinator to merge normalized non-secret account status", () => {

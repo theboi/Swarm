@@ -14,10 +14,21 @@ interface CoordinatorStoreValue {
   activeTurnKeys: ReadonlySet<string>;
   activeTurnIds: ReadonlyMap<string, string>;
   limitExhaustedTurnKeys: ReadonlySet<string>;
+  unreadTurnKeys: ReadonlySet<string>;
   markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
+  markThreadRead: (accountId: string, threadId: string) => void;
 }
 
 const CoordinatorStore = createContext<CoordinatorStoreValue | null>(null);
+const UNREAD_STORAGE_KEY = "swarm.unread-turns.v1";
+
+function readUnreadTurns(): ReadonlySet<string> {
+  try {
+    const value = window.localStorage.getItem(UNREAD_STORAGE_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []);
+  } catch { return new Set(); }
+}
 
 export function classifyRealtimeMessage(value: unknown, currentSequence: number): { kind: "snapshot" | "event" | "gap" | "invalid"; sequence?: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "invalid" };
@@ -26,6 +37,18 @@ export function classifyRealtimeMessage(value: unknown, currentSequence: number)
   if (message.type === "snapshot") return { kind: "snapshot", sequence: message.sequence as number };
   if ((message.sequence as number) !== currentSequence + 1) return { kind: "gap", sequence: message.sequence as number };
   return { kind: "event", sequence: message.sequence as number };
+}
+
+export function unreadAfterTurnEvent(current: ReadonlySet<string>, key: string, state: unknown, historical = false): ReadonlySet<string> {
+  if (state !== "completed" || historical || current.has(key)) return current;
+  return new Set([...current, key]);
+}
+
+export function clearUnreadTurn(current: ReadonlySet<string>, key: string): ReadonlySet<string> {
+  if (!current.has(key)) return current;
+  const next = new Set(current);
+  next.delete(key);
+  return next;
 }
 
 function browserWebSocketUrl(): string {
@@ -41,10 +64,15 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const [activeTurnKeys, setActiveTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [activeTurnIds, setActiveTurnIds] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [limitExhaustedTurnKeys, setLimitExhaustedTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [unreadTurnKeys, setUnreadTurnKeys] = useState<ReadonlySet<string>>(readUnreadTurns);
   const markTurnActive = useCallback((accountId: string, threadId: string, turnId?: string) => {
     const key = `${accountId}\u0000${threadId}`;
     setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
     if (turnId) setActiveTurnIds((current) => current.get(key) === turnId ? current : new Map([...current, [key, turnId]]));
+  }, []);
+  const markThreadRead = useCallback((accountId: string, threadId: string) => {
+    const key = `${accountId}\u0000${threadId}`;
+    setUnreadTurnKeys((current) => clearUnreadTurn(current, key));
   }, []);
   const refresh = useCallback(async () => {
     try {
@@ -71,6 +99,10 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   useEffect(() => startUsagePolling(refreshUsage), [refreshUsage]);
 
   useEffect(() => {
+    try { window.localStorage.setItem(UNREAD_STORAGE_KEY, JSON.stringify([...unreadTurnKeys])); } catch { /* storage is optional */ }
+  }, [unreadTurnKeys]);
+
+  useEffect(() => {
     let disposed = false;
     let socket: WebSocket | undefined;
     let retry: number | undefined;
@@ -95,7 +127,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
         if (outcome.kind === "event") {
           sequence.current = outcome.sequence ?? sequence.current;
           const message = payload as { type?: unknown; payload?: unknown };
-          const eventPayload = message.payload && typeof message.payload === "object" && !Array.isArray(message.payload) ? message.payload as { accountId?: unknown; threadId?: unknown; turnId?: unknown; state?: unknown } : undefined;
+          const eventPayload = message.payload && typeof message.payload === "object" && !Array.isArray(message.payload) ? message.payload as { accountId?: unknown; threadId?: unknown; turnId?: unknown; state?: unknown; historical?: unknown } : undefined;
           const accountId = typeof eventPayload?.accountId === "string" ? eventPayload.accountId : undefined;
           const threadId = typeof eventPayload?.threadId === "string" ? eventPayload.threadId : undefined;
           if (message.type === "transcript" && accountId && threadId) {
@@ -104,6 +136,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
           }
           if (message.type === "turn" && accountId && threadId) {
             const key = `${accountId}\u0000${threadId}`;
+            setUnreadTurnKeys((current) => unreadAfterTurnEvent(current, key, eventPayload?.state, eventPayload?.historical === true));
             if (eventPayload?.state === "started") {
               setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
               setLimitExhaustedTurnKeys((current) => {
@@ -143,7 +176,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
     return () => { disposed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
   }, [refresh]);
 
-  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, markTurnActive }), [activeTurnIds, activeTurnKeys, api, error, limitExhaustedTurnKeys, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevision]);
+  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevision, unreadTurnKeys]);
   return <CoordinatorStore.Provider value={value}>{children}</CoordinatorStore.Provider>;
 }
 

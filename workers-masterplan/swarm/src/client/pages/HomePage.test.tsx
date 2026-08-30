@@ -54,6 +54,9 @@ describe("HomePage", () => {
     const layered = screen.getByLabelText("bot3: five-hour remaining 10%; weekly remaining 80%");
     expect(layered.querySelector(".account-summary__five-hour")).toHaveClass("usage-tone--critical");
     expect(layered.querySelector(".account-summary__weekly")).toHaveClass("usage-tone--healthy");
+    const rearOpacity = (layered.querySelector(".account-summary__weekly") as HTMLElement).style.opacity;
+    expect(rearOpacity).not.toBe("");
+    expect(Number(rearOpacity)).toBeLessThan(1);
 
     rerender(<HomePage snapshot={{ ...coloredSnapshot, accounts: [{ ...coloredSnapshot.accounts[0], rateLimits: [
       { id: "five-hour", label: "Five-hour", usedPercent: 10, resetsAt: null, updatedAt: 1 },

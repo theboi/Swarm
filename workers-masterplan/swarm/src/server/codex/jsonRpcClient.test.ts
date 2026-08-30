@@ -174,6 +174,20 @@ describe("JsonRpcClient", () => {
     await client.close();
   });
 
+  it("preserves structured app-server error metadata for authentication classification", async () => {
+    const client = await connectedClient();
+    server!.onMessage((message, peer) => {
+      if (message.method === "account/rateLimits/read") peer.send(JSON.stringify({ id: message.id, error: { code: 401, message: "Unauthorized", data: { code: "token_expired" } } }));
+    });
+
+    await expect(client.request("account/rateLimits/read", {})).rejects.toMatchObject({
+      code: 401,
+      data: { code: "token_expired" },
+      message: expect.stringContaining("Unauthorized"),
+    });
+    await client.close();
+  });
+
   it("proves the local fixture returns 401 for missing or wrong bearer tokens and 101 only for the digest match", async () => {
     server = createFakeAppServer(tokenDigest);
     await server.start();

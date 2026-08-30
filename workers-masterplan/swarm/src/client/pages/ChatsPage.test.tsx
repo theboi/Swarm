@@ -466,6 +466,55 @@ describe("ChatsPage", () => {
     expect(await screen.findByRole("heading", { name: "(Handoff) T0 · Graph planning" })).toBeVisible();
   });
 
+  it("queues messages for automatic resume while the selected chat is waiting for its limit", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const startTurn = vi.fn(async () => ({ data: { queued: true, clientUserMessageId: "queued-1" } }));
+    const markTurnActive = vi.fn();
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      pendingApprovals: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: 2 }],
+    };
+    render(<ChatsPage snapshot={waitingSnapshot} api={{ ...api, startTurn }} markTurnActive={markTurnActive} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Also inspect the latest failure.");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(startTurn).toHaveBeenCalledWith("bot3", "thread-1", "Also inspect the latest failure.", expect.any(Object));
+    expect(markTurnActive).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+    expect(screen.getByText("Message queued for resume.")).toBeVisible();
+  });
+
+  it("shows a yellow account wait indicator whenever one of its chats hit a usage limit", () => {
+    setViewport(1440);
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      pendingApprovals: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: 2 }],
+    };
+
+    render(<ChatsPage snapshot={waitingSnapshot} api={api} />);
+
+    expect(screen.getByLabelText("bot3 waiting for limit")).toHaveClass("chat-account-picker__activity--limit");
+  });
+
+  it("shows unread reply dots on the chat and owning bot until that chat is opened", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const markThreadRead = vi.fn();
+    const unreadKey = "bot3\u0000thread-2";
+    render(<ChatsPage snapshot={{ ...chatSnapshot, pendingApprovals: [] }} api={api} unreadTurnKeys={new Set([unreadKey])} markThreadRead={markThreadRead} />);
+
+    expect(screen.getByLabelText("bot3 has unread replies")).toBeVisible();
+    expect(screen.getByLabelText("U1 · Coordinator UI has an unread reply")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "U1 · Coordinator UI" }));
+
+    await waitFor(() => expect(markThreadRead).toHaveBeenCalledWith("bot3", "thread-2"));
+  });
+
   it("flags an unassigned chat for resume when its durable limit record is waiting", () => {
     setViewport(1440);
     const unassignedLimitSnapshot = {
@@ -519,6 +568,23 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={transferredSnapshot} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
 
     expect(screen.queryByRole("status", { name: "Session limit reached" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "T0 · Graph planning" })).not.toHaveTextContent("Waiting for limit");
+  });
+
+  it("does not show stale yellow limit state after an unassigned chat is transferred", () => {
+    setViewport(1440);
+    const transferredSnapshot = {
+      ...chatSnapshot,
+      workerAssignments: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "transferred" as const, updatedAt: 2 }],
+    };
+
+    render(<ChatsPage snapshot={transferredSnapshot} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+
+    expect(screen.queryByRole("status", { name: "Session limit reached" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "T0 · Graph planning" })).not.toHaveTextContent("Waiting for limit");
   });
 
   it("enables thread controls only for reported capabilities", async () => {

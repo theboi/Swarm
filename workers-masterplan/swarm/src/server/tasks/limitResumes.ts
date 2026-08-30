@@ -1,22 +1,46 @@
-import type { AccountId, LimitResumeRecord, LimitResumeState } from "../../shared/contracts.js";
+import type { AccountId, ChatExecutionSettings, LimitResumeRecord, LimitResumeState } from "../../shared/contracts.js";
+
+export interface PendingLimitMessage {
+  id: string;
+  text: string;
+  queuedAt: number;
+  settings?: ChatExecutionSettings;
+}
+
+export interface DurableLimitResumeRecord extends LimitResumeRecord {
+  pendingMessages?: PendingLimitMessage[];
+  inFlightMessages?: PendingLimitMessage[];
+}
 
 function key(accountId: AccountId, threadId: string): string { return `${accountId}\u0000${threadId}`; }
-function clone(record: LimitResumeRecord): LimitResumeRecord { return { ...record }; }
+function clone(record: DurableLimitResumeRecord): DurableLimitResumeRecord {
+  return {
+    ...record,
+    ...(record.pendingMessages ? { pendingMessages: record.pendingMessages.map((message) => ({ ...message, ...(message.settings ? { settings: { ...message.settings } } : {}) })) } : {}),
+    ...(record.inFlightMessages ? { inFlightMessages: record.inFlightMessages.map((message) => ({ ...message, ...(message.settings ? { settings: { ...message.settings } } : {}) })) } : {}),
+  };
+}
 
 /** Owns durable usage-limit recovery state independently of worker/task assignment. */
 export class LimitResumeManifest {
-  private readonly records = new Map<string, LimitResumeRecord>();
+  private readonly records = new Map<string, DurableLimitResumeRecord>();
 
-  constructor(initial: LimitResumeRecord[] = [], private readonly persist: (records: LimitResumeRecord[]) => Promise<void> = async () => undefined) {
+  constructor(initial: DurableLimitResumeRecord[] = [], private readonly persist: (records: DurableLimitResumeRecord[]) => Promise<void> = async () => undefined) {
     for (const record of initial) this.records.set(key(record.accountId, record.threadId), clone(record));
   }
 
-  list(): LimitResumeRecord[] { return [...this.records.values()].map(clone); }
-  forThread(accountId: AccountId, threadId: string): LimitResumeRecord | undefined {
+  list(): DurableLimitResumeRecord[] { return [...this.records.values()].map(clone); }
+  publicList(): LimitResumeRecord[] {
+    return this.list().map(({ pendingMessages, inFlightMessages: _inFlightMessages, ...record }) => ({
+      ...record,
+      ...(pendingMessages?.length ? { queuedMessageCount: pendingMessages.length } : {}),
+    }));
+  }
+  forThread(accountId: AccountId, threadId: string): DurableLimitResumeRecord | undefined {
     const value = this.records.get(key(accountId, threadId));
     return value && clone(value);
   }
-  waitingForAccount(accountId: AccountId): LimitResumeRecord[] {
+  waitingForAccount(accountId: AccountId): DurableLimitResumeRecord[] {
     return [...this.records.values()].filter((record) => record.accountId === accountId && record.state === "waiting_for_limit").map(clone);
   }
 
@@ -24,8 +48,34 @@ export class LimitResumeManifest {
     const current = this.records.get(key(accountId, threadId));
     if (current && current.state !== "waiting_for_limit") return;
     await this.mutate(() => {
-      this.records.set(key(accountId, threadId), { accountId, threadId, state: "waiting_for_limit", updatedAt: now });
+      this.records.set(key(accountId, threadId), { accountId, threadId, state: "waiting_for_limit", updatedAt: now, ...(current?.pendingMessages ? { pendingMessages: current.pendingMessages } : {}) });
     });
+  }
+
+  async enqueueMessage(accountId: AccountId, threadId: string, message: PendingLimitMessage): Promise<boolean> {
+    const record = this.records.get(key(accountId, threadId));
+    if (!record || (record.state !== "waiting_for_limit" && record.state !== "resuming")) return false;
+    await this.mutate(() => {
+      record.pendingMessages ??= [];
+      record.pendingMessages.push({ ...message, ...(message.settings ? { settings: { ...message.settings } } : {}) });
+      record.updatedAt = Math.max(record.updatedAt, message.queuedAt);
+    });
+    return true;
+  }
+
+  resumeTurnInput(record: DurableLimitResumeRecord): { text: string; settings?: ChatExecutionSettings } {
+    const messages = record.inFlightMessages ?? record.pendingMessages ?? [];
+    const continuation = "Continue from where you stopped after the usage limit reset.";
+    const text = messages.length
+      ? `${continuation}\n\nMessages sent by the user while this chat was waiting:\n\n${messages.map((message, index) => `${index + 1}. ${message.text}`).join("\n\n")}`
+      : continuation;
+    const settings = [...messages].reverse().find((message) => message.settings)?.settings;
+    return { text, ...(settings ? { settings: { ...settings } } : {}) };
+  }
+
+  queuedMessagesText(record: DurableLimitResumeRecord): string {
+    const messages = record.pendingMessages ?? [];
+    return messages.length ? `Messages sent by the user while this chat was waiting:\n\n${messages.map((message, index) => `${index + 1}. ${message.text}`).join("\n\n")}` : "";
   }
 
   async clear(accountId: AccountId, threadId: string): Promise<void> {
@@ -33,12 +83,14 @@ export class LimitResumeManifest {
     await this.mutate(() => { this.records.delete(key(accountId, threadId)); });
   }
 
-  async claimResume(accountId: AccountId, threadId: string, clientUserMessageId: string, now = Date.now()): Promise<LimitResumeRecord | undefined> {
+  async claimResume(accountId: AccountId, threadId: string, clientUserMessageId: string, now = Date.now()): Promise<DurableLimitResumeRecord | undefined> {
     const record = this.records.get(key(accountId, threadId));
     if (!record || record.state !== "waiting_for_limit") return undefined;
     await this.mutate(() => {
       record.state = "resuming";
       record.resumeClientUserMessageId = clientUserMessageId;
+      record.inFlightMessages = record.pendingMessages ?? [];
+      record.pendingMessages = [];
       record.updatedAt = now;
     });
     return this.forThread(accountId, threadId);
@@ -49,9 +101,39 @@ export class LimitResumeManifest {
     if (!record || record.state !== "resuming" || record.resumeClientUserMessageId !== clientUserMessageId) return;
     await this.mutate(() => {
       record.state = "waiting_for_limit";
+      record.pendingMessages = [...(record.inFlightMessages ?? []), ...(record.pendingMessages ?? [])];
+      delete record.inFlightMessages;
       delete record.resumeClientUserMessageId;
       record.updatedAt = now;
     });
+  }
+
+  async recoverOrphanedResume(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
+    const record = this.records.get(key(accountId, threadId));
+    if (!record || record.state !== "resuming" || record.resumeClientUserMessageId) return;
+    await this.mutate(() => {
+      record.state = "waiting_for_limit";
+      record.pendingMessages = [...(record.inFlightMessages ?? []), ...(record.pendingMessages ?? [])];
+      delete record.inFlightMessages;
+      record.updatedAt = now;
+    });
+  }
+
+  /** Completes only the accepted batch and reports whether newer messages remain queued. */
+  async completeAcceptedResume(accountId: AccountId, threadId: string, clientUserMessageId: string, now = Date.now()): Promise<boolean> {
+    const record = this.records.get(key(accountId, threadId));
+    if (!record || record.state !== "resuming" || record.resumeClientUserMessageId !== clientUserMessageId) return false;
+    if (!record.pendingMessages?.length) {
+      await this.clear(accountId, threadId);
+      return false;
+    }
+    await this.mutate(() => {
+      record.state = "waiting_for_limit";
+      delete record.inFlightMessages;
+      delete record.resumeClientUserMessageId;
+      record.updatedAt = now;
+    });
+    return true;
   }
 
   async claimTransfer(accountId: AccountId, threadId: string, now = Date.now()): Promise<LimitResumeState | undefined> {

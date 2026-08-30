@@ -122,6 +122,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-account-picker__status--action_required, .chat-account-picker__status--error { border-color: #ffd9d3; background: #e15343; }
 .chat-account-picker__activity { display: grid; inline-size: 15px; block-size: 15px; place-items: center; border: 2px solid #45534a; border-inline-end-color: #8ee39a; border-radius: 50%; animation: swarm-spin .75s linear infinite; }
 .chat-account-picker__activity .chat-account-picker__status { animation: swarm-spin-reverse .75s linear infinite; }
+.chat-account-picker__activity--limit { border-color: #e3b75a; animation: none; }
+.chat-account-picker__activity--limit .chat-account-picker__status { animation: none; }
 .chat-account-picker__count { position: relative; min-inline-size: 20px; border-radius: 999px; background: #263034; padding: 2px 6px; color: #9eaaa2; font-size: .68rem; text-align: center; font-variant-numeric: tabular-nums; }
 .thread-picker { display: grid; min-inline-size: 0; grid-template-rows: auto auto minmax(0, 1fr) auto; align-content: start; padding: 12px 8px; border-inline-end: 1px solid #313a3d; background: #1c2224; }
 .thread-picker__new { display: inline-flex; min-block-size: 40px; align-items: center; justify-content: center; gap: 7px; margin: 0 4px 8px; border: 1px solid #496f50; border-radius: 9px; background: #294532; color: #d7f7dc; padding: 7px 10px; font-size: .8rem; font-weight: 650; }

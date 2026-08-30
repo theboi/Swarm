@@ -21,6 +21,13 @@ export interface ApprovalRequestHandler {
   handle(request: AppServerRequest): Promise<Record<string, unknown>>;
 }
 
+export class JsonRpcRequestError extends Error {
+  constructor(message: string, readonly code: number, readonly data?: unknown) {
+    super(message);
+    this.name = "JsonRpcRequestError";
+  }
+}
+
 /** Codex app-server RPC transport that holds the only plaintext loopback capability token. */
 export class JsonRpcClient {
   private readonly pending = new Map<AppServerId, PendingRequest>();
@@ -177,7 +184,7 @@ export class JsonRpcClient {
     clearTimeout(pending.timeout);
     this.pending.delete(message.id);
     if ("error" in message) {
-      pending.reject(new Error(`Codex app-server RPC ${pending.method} failed: ${message.error.message}`));
+      pending.reject(new JsonRpcRequestError(`Codex app-server RPC ${pending.method} failed: ${message.error.message}`, message.error.code, message.error.data));
     } else {
       pending.resolve(message.result);
     }

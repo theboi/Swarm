@@ -15,12 +15,12 @@ type ChatSelection = { accountId: AccountId; threadId?: string };
 import "./styles.css";
 
 function Page({ page, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat, selectedChat, onNavigate }: { page: AppPage; api: CoordinatorApi; onOpenAccountChat: (accountId: AccountId) => void; onOpenThread: (threadId: string) => void; onOpenLaunchedChat: (target: ChatTarget) => void; selectedChat: ChatSelection | null; onNavigate: (page: AppPage) => void }) {
-  const { snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, markTurnActive } = useCoordinatorStore();
+  const { snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const title = page === "home" ? "Home" : page === "flowchart" ? "Flowchart" : page === "chats" ? "Chats" : "Accounts";
   if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
   if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ connectAccount: api.connectAccount, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
   if (page === "flowchart" && snapshot) return <FlowchartPage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} onOpenChat={onOpenThread} onOpenLaunchedChat={onOpenLaunchedChat} />;
-  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={selectedChat?.accountId} transcriptRevision={transcriptRevision} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} markTurnActive={markTurnActive} onRefresh={refresh} />;
+  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={selectedChat?.accountId} transcriptRevision={transcriptRevision} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
   return (
     <section className="page" aria-labelledby="page-title">
       <h1 id="page-title">{title}</h1>

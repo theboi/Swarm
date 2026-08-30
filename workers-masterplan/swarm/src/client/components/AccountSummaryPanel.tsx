@@ -22,7 +22,7 @@ export function AccountUsageBar({ account, showLabels = false }: { account: Acco
   const fiveHourText = displayPercent(fiveHour);
   const weeklyText = displayPercent(weekly);
   const bar = <div className="account-summary__usage" role="img" aria-label={`${account.id}: five-hour remaining ${fiveHourText}; weekly remaining ${weeklyText}`}>
-    <span className={`account-summary__weekly usage-tone--${usageTone(weekly)}`} aria-hidden="true" style={{ width: usageWidth(weekly) }} />
+    <span className={`account-summary__weekly usage-tone--${usageTone(weekly)}`} aria-hidden="true" style={{ width: usageWidth(weekly), opacity: 0.55 }} />
     <span className={`account-summary__five-hour usage-tone--${usageTone(fiveHour)}`} aria-hidden="true" style={{ width: usageWidth(fiveHour) }} />
   </div>;
   if (!showLabels) return bar;

@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadResumeError?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -63,7 +63,8 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
       const cursor = (message.params as { cursor?: string }).cursor;
       reply(cursor ? { data: [{ id: "thread-2", name: "Later" }], nextCursor: null } : { data: [{ id: "thread-1", name: "First", ...(options.threadStatus ? { status: { type: options.threadStatus } } : {}) }], nextCursor: "page-2" });
     }
-    if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: threadHistory } });
+    if (message.method === "thread/read" && options.threadReadError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadReadError } }));
+    else if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: threadHistory } });
     if (message.method === "account/rateLimits/read") reply({
       rateLimits: { limitId: "codex", primary: { usedPercent: 20, resetsAt: 1_800 }, secondary: { usedPercent: 73, resetsAt: null } },
       rateLimitsByLimitId: {
@@ -244,20 +245,20 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
-  it("resumes a persisted not-loaded chat before reading its transcript", async () => {
+  it("reads a persisted not-loaded transcript without resuming the worker", async () => {
     const client = await readyClient({ threadStatus: "notLoaded" });
     await client.listAllThreads();
     await client.readThread("thread-1", { includeTurns: true });
 
     const methods = server!.received.map((message) => message.method);
-    expect(methods.indexOf("thread/resume")).toBeGreaterThan(methods.lastIndexOf("thread/list"));
-    expect(methods.indexOf("thread/read")).toBeGreaterThan(methods.indexOf("thread/resume"));
+    expect(methods).not.toContain("thread/resume");
+    expect(methods.indexOf("thread/read")).toBeGreaterThan(methods.lastIndexOf("thread/list"));
     await client.close();
   });
 
   it("reads a desktop-owned local transcript without stealing its active writer", async () => {
     const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: fullThreadHistory() } }));
-    const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/EdenMind", threadStatus: "notLoaded", threadResumeError: "thread thread-1 already has an active writer", readLockedThread });
+    const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/EdenMind", threadStatus: "notLoaded", threadReadError: "thread thread-1 already has an active writer", readLockedThread });
     await client.listAllThreads();
 
     await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual(expect.objectContaining({ thread: expect.objectContaining({ turns: expect.any(Array) }) }));
@@ -373,7 +374,19 @@ describe("AppServerClient", () => {
 
     await client.readThread("thread-1", { includeTurns: true });
 
-    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-live", state: "started" });
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-live", state: "started", historical: true });
+    await client.close();
+  });
+
+  it("marks a completed turn recovered from thread history as historical", async () => {
+    threadHistory = [{ id: "turn-old", status: "completed", startedAt: 10, items: [] }];
+    const client = await readyClient();
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.readThread("thread-1", { includeTurns: true });
+
+    expect(events).toContainEqual({ type: "turn", accountId: account, threadId: "thread-1", turnId: "turn-old", state: "completed", historical: true });
     await client.close();
   });
 
