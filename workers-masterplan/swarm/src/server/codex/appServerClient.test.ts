@@ -137,9 +137,8 @@ describe("AppServerClient", () => {
       method: "item/fileChange/requestApproval",
       params: { threadId: "thread-1", turnId: "turn-1", itemId: "item-1", startedAtMs: 1_000, reason: "extra root", grantRoot: "/Users/bot2/Dev/EdenMind" },
     });
-    await new Promise((resolve) => setTimeout(resolve, 15));
 
-    expect(server!.received).toContainEqual({ id: "approval-1", result: { decision: "cancel" } });
+    await vi.waitFor(() => expect(server!.received).toContainEqual({ id: "approval-1", result: { decision: "cancel" } }));
     expect(approvalJournal?.append).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ id: "approval-1" }) }));
     await client.close();
   });

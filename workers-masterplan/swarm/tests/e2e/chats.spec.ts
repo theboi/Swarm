@@ -14,8 +14,10 @@ async function signIn(page: Page): Promise<void> {
 }
 
 async function selectBot3Thread(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "bot3" }).click();
-  await page.getByRole("button", { name }).click();
+  const account = page.getByRole("button", { name: "bot3" });
+  if (await account.getAttribute("aria-pressed") !== "true") await account.click();
+  const thread = page.getByRole("button", { name });
+  await expect(thread).toHaveAttribute("aria-pressed", "true");
 }
 
 test.describe("Chats", () => {
@@ -53,6 +55,7 @@ test.describe("Chats", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     await selectBot3Thread(page, "T0 · Graph planning");
+    await expect(page.getByRole("dialog", { name: "Rename chat" })).toHaveCount(0);
 
     const transcript = page.getByTestId("transcript-scroll");
     await expect.poll(async () => transcript.evaluate((element) => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(2);
@@ -78,14 +81,16 @@ test.describe("Chats", () => {
     expect(targetSizes.every(({ width, height }) => width >= 36 && height >= 36)).toBe(true);
 
     await page.getByRole("button", { name: "Decline approval" }).first().click();
-    await expect(page.getByRole("status")).toHaveText("Approval response sent.");
+    const toast = page.locator(".app-toast[role='status']");
+    await expect(toast).toHaveText("Approval response sent.");
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("status")).toHaveText("Message sent.");
+    await expect(toast).toHaveText("Message sent.");
+    await page.getByLabel("Message", { exact: true }).fill("Clarify the fixture handoff");
     await page.getByRole("button", { name: "Steer" }).click();
-    await expect(page.getByRole("status")).toHaveText("Turn steered.");
+    await expect(toast).toHaveText("Turn steered.");
     await page.getByRole("button", { name: "Interrupt" }).click();
-    await expect(page.getByRole("status")).toHaveText("Turn interrupted.");
+    await expect(toast).toHaveText("Turn interrupted.");
 
     await page.getByRole("button", { name: "U1 · Coordinator UI" }).click();
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -99,6 +104,6 @@ test.describe("Chats", () => {
     await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
     await page.getByLabel("Message", { exact: true }).fill("Start a fixture chat");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("status")).toHaveText("Message sent.");
+    await expect(toast).toHaveText("Message sent.");
   });
 });
