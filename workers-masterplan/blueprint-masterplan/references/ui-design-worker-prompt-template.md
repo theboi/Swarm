@@ -110,6 +110,14 @@ origin and the API Supabase origin, issuer, and JWKS endpoint identify the same
 local project. Prove one documented local fixture identity authenticates without
 publishing secret values, then use the resulting application session to obtain
 an accepted API identity, enter the protected presentation route, and sign out.
+For a protected fixture presentation, start from `edenmind-client`, export the
+same runtime-specific value through `EDENMIND_AUTH_COOKIE_NAME` and
+`NEXT_PUBLIC_EDENMIND_AUTH_COOKIE_NAME`, and launch with
+`--fixture --review-as <FIXTURE_IDENTITY>`; generic `--fixture` is not a review
+launcher. Complete sign-out evidence before a final cookie-free protected-route
+check that proves automatic bootstrap, matching API `/v1/me`, visible content,
+and the account-specific cookie namespace. Leave that route authenticated and
+do not globally revoke the review identity afterward.
 When a browser is available, complete that full journey there. A protected-route
 redirect, sign-in-page `200`, or Supabase-only password grant is not login proof
 or a review-ready handoff. If browser integration is unavailable, record that
@@ -147,7 +155,8 @@ contract only inside the handoff.
 Record the accepted app-state commit, user approval, affected routes/components,
 reused design-system foundations, verified states, development-server command
 and reviewed localhost URL, access-runtime commands and endpoint-health proof,
-the source of the documented fixture identity without secret values,
+the source of the documented fixture identity without secret values, the final
+cookie-free protected-route check,
 limitations, functional decisions returned to planning, and ownership transfer
 in `<DESIGN_HANDOFF_PATH>`. Update `<STATUS_PATH>` with coherent progress and
 both artifact paths.

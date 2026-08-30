@@ -40,6 +40,46 @@ mismatched, an assigned port is occupied, the complete port inventory cannot
 be derived, the pinned tool cannot scope the generated workdir/network, or an
 operation would mutate tracked configuration or another runtime.
 
+## Protected fixture-review client launch
+
+Use this contract whenever a UI worker gives the user a protected fixture route
+to review. A generic `npm run dev -- --fixture` launch is not review-ready: it
+requires manual authentication and can consume a stale cookie issued by another
+account's localhost runtime.
+
+Before launch, verify that the current `origin/main` client supports
+`--review-as` and configurable Supabase cookie names. Load the documented local
+fixture password into the client server process from its ignored server-only
+source without printing, persisting, or recording it. Then start from the
+`edenmind-client` package directory with the fully substituted equivalent of:
+
+```bash
+export EDENMIND_AUTH_COOKIE_NAME=edenmind-auth-u<UID>
+export NEXT_PUBLIC_EDENMIND_AUTH_COOKIE_NAME=edenmind-auth-u<UID>
+export NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:<SUPABASE_API_PORT>
+export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<ACCOUNT_LOCAL_PUBLISHABLE_KEY>
+export EDENMIND_SUPABASE_URL=http://127.0.0.1:<SUPABASE_API_PORT>
+export EDENMIND_API_URL=http://127.0.0.1:<API_PORT>
+npm run dev -- --fixture --review-as <FIXTURE_IDENTITY> \
+  --hostname 127.0.0.1 --port <CLIENT_PORT>
+```
+
+Set the publishable-key value from the ignored account-local Supabase status
+output without printing or recording it. The server and browser cookie variables
+must be identical; for example, account UID `506` uses
+`edenmind-auth-u506` for both. Do not fall back to `edenmind-auth-token` for an
+account-local presentation.
+
+Run sign-out evidence in an isolated canary context before the final
+review-readiness canary. Do not globally revoke the shared review identity after
+that final check. The final review-readiness canary starts with a cookie-free
+browser context, opens the exact protected presentation URL, follows the local
+fixture-review bootstrap back to that URL, proves visible presentation content
+and API `/v1/me` success, and confirms that only the runtime-specific cookie
+namespace was issued. Leave that authenticated review path and every required
+process running. A final redirect to sign-in, a generic error page, or a canary
+that signs out after this check is not a presentation handoff.
+
 ## Locked EdenMind allocation
 
 Runtime identity follows the macOS account UID, not the worker ID:
@@ -83,7 +123,7 @@ does not authorize leaving another port shared.
 | Namespaces | Supabase project `edenmind-u<UID>`, Docker network `supabase_network_edenmind-u<UID>`, container/volume/cache names, ignored generated workdir, and auth cookie `edenmind-auth-u<UID>` are distinct for this runtime. |
 | Configuration | Use an existing account-isolated helper or direct explicit pinned-tool commands; render the tracked `supabase/config.toml` into the ignored account-local workdir; use explicit workdir/network ID; propagate one coherent public Supabase origin, private server/API origin, API origin, Auth site/redirect allowlist, and cookie name. |
 | Safety | Validate identity, paths, and every assigned port before mutation. A conflict fails before Docker/Supabase changes. Start, stop, seed, reset, and clean only the exact `u<UID>` namespace; never alter another account's runtime or an existing compatibility preview. |
-| Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. A redirect or sign-in-page `200` is not readiness. |
+| Readiness | Prove health at the exact Supabase/API/client endpoints, real fixture sign-in through this runtime's public Auth origin, matching API `/v1/me`, the matching protected route, same-runtime browser/server/proxy cookie equality, cross-runtime cookie inequality, and redacted sign-out evidence. For a protected fixture presentation, also pass the final cookie-free protected-route check above and leave it authenticated. A redirect or sign-in-page `200` is not readiness. |
 
 Replace every placeholder with an exact value. A missing wrapper is not failure
 to satisfy a row: use the authorized direct procedure above. If neither an
@@ -130,7 +170,8 @@ keys, JWTs, refresh tokens, or cookie values.
 | Offset only `15431`–`15436` | Inventory and offset every enabled numeric runtime port, including shadow and optional services. |
 | Reuse `edenmind-local` or one Docker network | Namespace project, network, containers, volumes, caches, and workdir with `u<UID>`. |
 | Assume ports isolate cookies | Use a distinct runtime cookie name and prove same-runtime equality/cross-runtime inequality. |
+| Launch protected review with generic `--fixture` | From `edenmind-client`, export both matching account cookie variables and use `--fixture --review-as <identity>`, then pass the final cookie-free protected-route check. |
 | Edit tracked Supabase config locally | Render it into the ignored account-local workdir. |
 | Treat a missing wrapper as a review blocker | Execute the deterministic procedure directly when the brief authorizes runtime operation; record the redacted commands. |
 | Stop another stack to free a port | Report the collision; never mutate another account's runtime. |
-| Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary. |
+| Treat health or a redirect as readiness | Run the real Auth → matching `/v1/me` → protected-route → sign-out canary, then run the final cookie-free protected-route check without signing out afterward. |

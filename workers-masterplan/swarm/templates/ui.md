@@ -20,6 +20,16 @@ You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. I
 
 Use the real application and existing design system to design only presentation and contents with explicit fixture/mock-backed state. Show the reviewed presentation through the established development server; preserve deterministic fixture scenarios for loading, empty, validation, success, failure, attention, and recovery states. Do not add or change live wiring, live APIs, authorization, persistence, migrations, domain rules, scoring, model behavior, background processing, or provider integration.
 
+When the reviewed route is protected and uses fixture data, the established
+review launcher must start from `edenmind-client`, export identical
+account-specific `EDENMIND_AUTH_COOKIE_NAME` and
+`NEXT_PUBLIC_EDENMIND_AUTH_COOKIE_NAME` values, and use
+`--fixture --review-as <FIXTURE_IDENTITY>` rather than generic `--fixture`.
+Complete sign-out evidence first. The last readiness action is a final
+cookie-free protected-route check proving automatic bootstrap, API `/v1/me`,
+visible presentation content, and the account cookie namespace; leave that
+review route authenticated and keep its dependencies running.
+
 Confirm every listed UI prerequisite is reachable from `origin/main` before editing. Treat missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`.
 
 Write `{{UI_REQUIREMENTS_PATH}}` as a separate UI requirements contract with: authority and accepted presentation reference; surface inventory; actor/capability matrix; read and command requirements; async/lifecycle states; navigation/client state; files/exports; accessibility; deterministic fixture scenarios; planned-contract traceability; Pass 2 acceptance mapping; and open product decisions. Write `{{UI_HANDOFF_PATH}}` with the accepted app-state commit, user approval, reviewed states, affected presentation files, design foundations, limitations, and mutable ownership transfer to the named Layer 3 live-wiring consumer in the task brief. Do not embed the requirements contract only inside the handoff.

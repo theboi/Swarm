@@ -13,6 +13,14 @@ const uiRequirementsTemplatePath = resolve(
   workspaceRoot,
   "blueprint-masterplan/references/ui-requirements-template.md",
 );
+const runtimeIsolationPath = resolve(
+  workspaceRoot,
+  "blueprint-masterplan/references/account-local-runtime-isolation.md",
+);
+const uiDesignPromptTemplatePath = resolve(
+  workspaceRoot,
+  "blueprint-masterplan/references/ui-design-worker-prompt-template.md",
+);
 const coordinatorTemplateDirectory = resolve(workspaceRoot, "swarm/templates");
 const coordinatorRendererPath = resolve(
   workspaceRoot,
@@ -55,6 +63,14 @@ const uiRequirementsContractRules = [
   "Decision owner | Blocking behavior | Affected plans",
   "Observable closure evidence",
   "Record `none` only after explicitly reconciling",
+];
+const fixtureReviewRuntimeRules = [
+  "EDENMIND_AUTH_COOKIE_NAME=edenmind-auth-u<UID>",
+  "NEXT_PUBLIC_EDENMIND_AUTH_COOKIE_NAME=edenmind-auth-u<UID>",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<ACCOUNT_LOCAL_PUBLISHABLE_KEY>",
+  "npm run dev -- --fixture --review-as <FIXTURE_IDENTITY>",
+  "cookie-free browser context",
+  "final review-readiness canary",
 ];
 const coordinatorLaunchValues = {
   accountId: "bot3",
@@ -123,10 +139,18 @@ function resolveBlueprintEntryPoint(reference, templateId) {
   return resolve(repositoryRoot, match[1]);
 }
 
-const [skill, reference, uiRequirementsTemplate] = await Promise.all([
+const [
+  skill,
+  reference,
+  uiRequirementsTemplate,
+  runtimeIsolation,
+  uiDesignPromptTemplate,
+] = await Promise.all([
   readFile(skillPath, "utf8"),
   readFile(referencePath, "utf8"),
   readFile(uiRequirementsTemplatePath, "utf8"),
+  readFile(runtimeIsolationPath, "utf8"),
+  readFile(uiDesignPromptTemplatePath, "utf8"),
 ]);
 
 if (!skill.includes("EdenMind swarm coordinator launch packets")) {
@@ -144,6 +168,29 @@ if (!reference.includes("## EdenMind swarm coordinator launch packets")) {
 for (const rule of uiRequirementsContractRules) {
   if (!uiRequirementsTemplate.includes(rule)) {
     throw new Error(`UI requirements template omits required contract rule: ${rule}`);
+  }
+}
+
+const whitespaceNormalizedRuntimeIsolation = runtimeIsolation.replace(/\s+/g, " ");
+for (const rule of fixtureReviewRuntimeRules) {
+  if (!whitespaceNormalizedRuntimeIsolation.includes(rule)) {
+    throw new Error(`Account-local runtime authority omits fixture-review rule: ${rule}`);
+  }
+}
+
+for (const [sourceName, source] of [
+  ["Blueprint Masterplan skill", skill],
+  ["UI-design worker prompt template", uiDesignPromptTemplate],
+]) {
+  const whitespaceNormalizedSource = source.replace(/\s+/g, " ");
+  for (const rule of [
+    "--review-as",
+    "EDENMIND_AUTH_COOKIE_NAME",
+    "final cookie-free protected-route check",
+  ]) {
+    if (!whitespaceNormalizedSource.includes(rule)) {
+      throw new Error(`${sourceName} omits fixture-review launch invariant: ${rule}`);
+    }
   }
 }
 
@@ -223,8 +270,16 @@ for (const templateId of templateIds) {
     throw new Error(`${templateId} must not render the UI-design source-read checklist`);
   }
   if (templateId === "ui") {
-    for (const expected of [coordinatorLaunchValues.uiRequirementsPath, coordinatorLaunchValues.uiHandoffPath, "fixture/mock-backed state", "Do not add or change live wiring"]) {
-      if (!renderedPacket.includes(expected)) throw new Error(`ui does not render required two-pass UI contract: ${expected}`);
+    for (const expected of [
+      coordinatorLaunchValues.uiRequirementsPath,
+      coordinatorLaunchValues.uiHandoffPath,
+      "fixture/mock-backed state",
+      "Do not add or change live wiring",
+      "--review-as",
+      "EDENMIND_AUTH_COOKIE_NAME",
+      "final cookie-free protected-route check",
+    ]) {
+      if (!whitespaceNormalizedPacket.includes(expected)) throw new Error(`ui does not render required two-pass UI contract: ${expected}`);
     }
     if (!renderedPacket.includes("This UI design does not authorize ordinary execution.")) throw new Error("ui authorizes ordinary execution");
   }
