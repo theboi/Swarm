@@ -970,7 +970,7 @@ git pull --ff-only origin main
 
 Completely read `superpowers:requesting-code-review` and `superpowers:verification-before-completion` before making any completion claim.
 
-- [ ] **Step 2: Run the complete automated suite**
+- [x] **Step 2: Run the complete automated suite**
 
 ```bash
 cd workers-masterplan/swarm
@@ -1014,14 +1014,15 @@ Ask the reviewer to check these questions explicitly:
 Address every finding with the focused test that would have caught it, then rerun Steps 2 and 3.
 
 > **Execution note — 30 August 2026:** Fresh review findings were closed in
-> `8a9b1939`, `4c4ed8fd`, and `9f429ab0`, each pushed to `origin/main`. The
-> focused receipt, launch-packet, manifest, e2e fixture, typecheck, parity, and
-> deterministic contract checks pass. Task 8 Step 2 remains open because the
-> unrelated default Vitest run has a timing-sensitive `AppServerClient` approval
-> router failure, and the browser suite reproducibly fails the unrelated Chats
-> rename-dialog test before completion. Neither surface is owned by Tasks 1–7.
+> `8a9b1939`, `4c4ed8fd`, and `9f429ab0`. With product-owner approval, the
+> unrelated verification blockers were also closed in `d0af29c0` (event-based
+> AppServer approval waiting and corrected Chats journeys) and `6184e25f`
+> (bounded Vitest worker fan-out for CPU-bound JSDOM interactions). The final
+> merged verification run passed 415 Vitest tests, both TypeScript
+> configurations, the Vite/server build, all 13 Playwright tests, prompt parity,
+> and whitespace validation.
 
-- [ ] **Step 5: Commit any review fixes and publish final evidence**
+- [x] **Step 5: Commit any review fixes and publish final evidence**
 
 If review changed files:
 
