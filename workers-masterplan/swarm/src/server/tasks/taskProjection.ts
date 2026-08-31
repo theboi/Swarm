@@ -1,4 +1,4 @@
-import type { DispatchRecord, TaskNode, ThreadSummary, WorkerAssignmentRecord } from "../../shared/contracts.js";
+import type { DispatchRecord, TaskNode, TaskReadiness, ThreadSummary, WorkerAssignmentRecord } from "../../shared/contracts.js";
 
 const ACTIVE_DISPATCH_STATES = new Set<DispatchRecord["state"]>(["queued", "submitting", "accepted", "waiting_for_limit"]);
 
@@ -14,16 +14,19 @@ export function latestUnarchivedTaskThread(threads: ThreadSummary[], taskId: str
     .sort((left, right) => right.updatedAt - left.updatedAt)[0];
 }
 
+/** Completion is monotonic: a later incomplete refresh must not reopen finished work. */
+export function retainCompletedTaskIds(previous: ReadonlySet<string>, readiness: readonly TaskReadiness[]): Set<string> {
+  return new Set([...previous, ...readiness.filter((task) => task.state === "complete").map((task) => task.taskId)]);
+}
+
 /** Overlay durable launches and live named project chats without hiding a completed task. */
 export function projectDispatchState(nodes: TaskNode[], dispatches: DispatchRecord[], threads: ThreadSummary[] = [], assignments: WorkerAssignmentRecord[] = [], completedTaskIds: ReadonlySet<string> = new Set()): TaskNode[] {
   const runningTaskIds = new Set(dispatches.filter((dispatch) => ACTIVE_DISPATCH_STATES.has(dispatch.state)).map((dispatch) => dispatch.taskId));
-  // Completion is owned by repository evidence. Durable dispatch and assignment
-  // records describe orchestration state and must never promote an unfinished phase.
-  void completedTaskIds;
   for (const node of nodes) {
     if (latestUnarchivedTaskThread(threads, node.id)) runningTaskIds.add(node.id);
   }
   return nodes.map((node) => {
+    if (completedTaskIds.has(node.id)) return { ...node, readiness: { ...node.readiness, state: "complete", blockingCodes: [] } };
     const assignment = assignments.find((candidate) => candidate.taskId === node.id);
     if (assignment?.state === "attention_required" && node.readiness.state !== "complete") return { ...node, readiness: { ...node.readiness, state: "attention_required" } };
     if (node.readiness.state !== "complete" && (assignment?.state === "assigned" || assignment?.state === "waiting_for_limit" || assignment?.state === "resuming" || assignment?.state === "transferring" || runningTaskIds.has(node.id))) {

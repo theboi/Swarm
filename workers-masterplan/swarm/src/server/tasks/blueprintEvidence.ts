@@ -102,13 +102,16 @@ export interface EvidenceSource {
 function remoteCommitFrom(text: string | undefined): string | undefined {
   return uniqueCommitFromLabel(text, (label) => label === "remotecommit"
     || label.startsWith("latest integrated origin main commit")
+    || label.startsWith("latest integrated origin main before")
     || label.startsWith("latest origin main reconciled")
     || label === "authorized origin main commit"
-    || label === "latest proven integration head before this status edit");
+    || label === "latest proven integration head before this status edit")
+    ?? uniqueCommitFromLabel(text, (label) => label === "inspected origin main commit");
 }
 
 function acceptedAppStateCommitFrom(text: string | undefined): string | undefined {
-  return uniqueCommitFromLabel(text, (label) => label === "accepted app state commit");
+  return uniqueCommitFromLabel(text, (label) => label === "accepted app state commit"
+    || label === "integrated presentation head");
 }
 
 function authorizedGateCommitFrom(text: string | undefined): string | undefined {
@@ -241,10 +244,10 @@ function planningStatusIsApproved(text: string | undefined): boolean {
 }
 
 function planningStatusHasAuthorityEvidence(text: string | undefined): boolean {
-  const authority = /\b(?:authority[- ](?:sync|synchronization|synchronised|synchronized)|no[- ]impact)\b/i;
+  const authoritySync = /\bauthority[- ](?:sync|synchronization|synchronised|synchronized)\b/i;
   return evidenceFragments(text).some((fragment) => fragment
     .split(";")
-    .some((clause) => completedEvidence(clause, authority)));
+    .some((clause) => positiveEvidence(clause, /\bno[- ]impact\b/i) || completedEvidence(clause, authoritySync)));
 }
 
 function approvedPlanningEvidenceIsComplete(task: TaskManifestTask, source: BlueprintEvidence): boolean {
@@ -258,7 +261,7 @@ function uiArtifactsAreRemote(task: TaskManifestTask, source: BlueprintEvidence)
   const handoff = task.uiHandoffPath ? source.records.get(task.uiHandoffPath) : undefined;
   const acceptedCommit = acceptedAppStateCommitFrom(handoff);
   const approvalValues = labelledValues(handoff)
-    .filter(({ label }) => label === "product owner approval" || label === "user approval")
+    .filter(({ label }) => label === "product owner approval" || label === "product owner receipt" || label === "user approval")
     .map(({ value }) => value);
   return Boolean(
     task.uiRequirementsPath

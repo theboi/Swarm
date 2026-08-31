@@ -226,6 +226,46 @@ describe("blueprint evidence", () => {
     expect(readiness.find((item) => item.taskId === "P3")?.state).toBe("ready");
   });
 
+  it("accepts the integrated-presentation wording used by completed UI handoffs", async () => {
+    const records = twoPassRecords();
+    records.set("docs/workers/two-pass/status/pd.md", "| State | ui-complete / accepted / transferred |\n| Inspected `origin/main` commit | `abc123` |");
+    records.set("docs/design/handoffs/pd.md", [
+      "| Integrated presentation head | `abc123` |",
+      "| Product-owner receipt | Accepted in chat after final fixes |",
+    ].join("\n"));
+    records.set("docs/design/requirements/pd.md", "# PD UI requirements");
+
+    expect((await twoPassReadiness(records)).find((item) => item.taskId === "PD")?.state).toBe("complete");
+  });
+
+  it("accepts a terminal planning status whose remote proof says before this status checkpoint", async () => {
+    const records = planningOnlyRecords();
+    records.set("docs/workers/two-pass/status/p2.md", [
+      "| State | planning-complete / execution-blocked |",
+      "| Latest integrated `origin/main` before this status checkpoint | `abc123` |",
+    ].join("\n"));
+
+    expect((await planningOnlyReadiness(records)).find((item) => item.taskId === "P2")?.state).toBe("complete");
+  });
+
+  it("prefers latest integrated proof when a status also cites an inspected baseline", async () => {
+    const records = planningOnlyRecords();
+    records.set("docs/workers/two-pass/status/p2.md", [
+      "| State | planning-complete / execution-blocked |",
+      "| Inspected `origin/main` commit | `def456` |",
+      "| Latest integrated `origin/main` commit | `abc123` |",
+    ].join("\n"));
+
+    expect((await planningOnlyReadiness(records)).find((item) => item.taskId === "P2")?.state).toBe("complete");
+  });
+
+  it("accepts a terminal no-impact authority finding without requiring redundant complete wording", async () => {
+    const records = planningOnlyRecords();
+    records.set("docs/workers/two-pass/status/p2.md", records.get("docs/workers/two-pass/status/p2.md")!.replace("no-impact finding complete", "no impact"));
+
+    expect((await planningOnlyReadiness(records)).find((item) => item.taskId === "PD")?.state).toBe("ready");
+  });
+
   it("blocks Pass 2 live wiring when a passed receipt omits the UI row", async () => {
     const records = twoPassRecords();
     records.set("docs/workers/two-pass/status/pd.md", "| State | complete |\n| Latest integrated `origin/main` commit | `abc123` |");

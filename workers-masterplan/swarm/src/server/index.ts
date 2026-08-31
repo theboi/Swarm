@@ -38,7 +38,7 @@ import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
-import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
+import { latestUnarchivedTaskThread, projectDispatchState, retainCompletedTaskIds } from "./tasks/taskProjection.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { handoffThreadName } from "./tasks/handoff.js";
@@ -133,7 +133,7 @@ async function createRuntime(config: SwarmConfig) {
     .filter((record) => record.state === "waiting_for_limit" || record.state === "resuming" || record.state === "transferring")
     .map((record): LimitResumeRecord => ({ accountId: record.accountId, threadId: record.threadId, state: record.state as LimitResumeRecord["state"], updatedAt: record.updatedAt, ...(record.resumeClientUserMessageId ? { resumeClientUserMessageId: record.resumeClientUserMessageId } : {}) }));
   const limitResumes = new LimitResumeManifest(root.limitResumes, async (records) => state.mutate((value) => { value.limitResumes = records; }));
-  const completedTaskIds = new Set([...(root.completedTaskIds ?? []), ...(root.dispatches ?? []).filter((record) => record.state === "completed").map((record) => record.taskId)]);
+  const completedTaskIds = new Set(root.completedTaskIds ?? []);
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
   const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
   const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
@@ -155,7 +155,7 @@ async function createRuntime(config: SwarmConfig) {
     openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
-  const localRollouts = new LocalRolloutTranscriptReader(`/Users/${config.localAccount}/.codex`);
+  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(`/Users/${account}/.codex`)]));
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   let accounts: AccountManager;
@@ -174,7 +174,7 @@ async function createRuntime(config: SwarmConfig) {
     const taskId = assignment?.taskId ?? accepted?.taskId;
     if (!taskId) return;
     await refreshTasks(true);
-    const provenComplete = nodes.find((node) => node.id === taskId)?.readiness.state === "complete";
+    const provenComplete = completedTaskIds.has(taskId) || nodes.find((node) => node.id === taskId)?.readiness.state === "complete";
     if (provenComplete) {
       await assignments.complete(account, threadId);
       await outbox.completeAcceptedForThread(account, threadId);
@@ -182,7 +182,6 @@ async function createRuntime(config: SwarmConfig) {
     } else {
       await assignments.markAttentionRequired(account, threadId);
       if (accepted) await outbox.abandon(accepted.id);
-      completedTaskIds.delete(taskId);
     }
     await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
     completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
@@ -195,7 +194,7 @@ async function createRuntime(config: SwarmConfig) {
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     createClient: (handle) => {
       const localWorkspaceRoot = workspaceFor(handle.account);
-      const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), ...(handle.account === LOCAL_ACCOUNT_ID ? { readLockedThread: (threadId: string) => localRollouts.readThread(threadId) } : {}) });
+      const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
       client.onEvent((event) => {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
         if (event.type === "turn" && event.threadId && event.turnId && event.state === "started") {
@@ -275,12 +274,12 @@ async function createRuntime(config: SwarmConfig) {
       try {
         manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
         const readiness = evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
-        const provenCompletedTaskIds = new Set(readiness.filter((task) => task.state === "complete").map((task) => task.taskId));
-        const completionChanged = provenCompletedTaskIds.size !== completedTaskIds.size || [...provenCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId));
+        const retainedCompletedTaskIds = retainCompletedTaskIds(completedTaskIds, readiness);
+        const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size;
         if (completionChanged || !root.completedTaskIds) {
+          await state.mutate((value) => { value.completedTaskIds = [...retainedCompletedTaskIds]; });
           completedTaskIds.clear();
-          for (const taskId of provenCompletedTaskIds) completedTaskIds.add(taskId);
-          await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
+          for (const taskId of retainedCompletedTaskIds) completedTaskIds.add(taskId);
         }
         nodes = taskNode(manifest, readiness);
         manifestError = undefined;
@@ -331,8 +330,9 @@ async function createRuntime(config: SwarmConfig) {
     for (const node of nodes) {
       const existing = assignments.forTask(node.id);
       if (existing) {
-        if (node.readiness.state === "complete" && existing.state !== "completed") await assignments.complete(existing.accountId, existing.threadId);
-        else if (node.readiness.state !== "complete" && existing.state === "completed") await assignments.markAttentionRequired(existing.accountId, existing.threadId);
+        const taskComplete = completedTaskIds.has(node.id) || node.readiness.state === "complete";
+        if (taskComplete && existing.state !== "completed") await assignments.complete(existing.accountId, existing.threadId);
+        else if (!taskComplete && existing.state === "completed") await assignments.markAttentionRequired(existing.accountId, existing.threadId);
         continue;
       }
       const thread = latestUnarchivedTaskThread(threadSummaries, node.id);
