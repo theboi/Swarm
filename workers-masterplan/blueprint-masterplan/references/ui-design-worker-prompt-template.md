@@ -153,6 +153,18 @@ Include a visible task header only when the approved surface contract assigns it
 distinct changing state, context, or actions that cannot live with the content
 controls. Verify this shape before requesting presentation review.
 
+Apply the same necessity test to visible copy across the entire surface, not
+only above the primary content. Every visible copy block must do at least one
+of these jobs: label an operable control or destination; expose changing
+context, state, or value; state an actionable consequence, blocker, error, or
+recovery; or provide a required legal, safety, privacy, or mock-data
+disclosure. If it does none of them, omit it. Do not fill open layout space with
+explanatory headings, subtitles, welcome or reassurance copy, tips, helper
+cards, summary prose, or restatements of controls and values already visible
+nearby. Preserve useful whitespace and solve hierarchy with composition and
+spacing. Audit every visible copy block against this test before presentation
+review.
+
 When alternatives make feedback cheaper, you may offer a small set of
 substantively different options in one temporary toggleable comparison surface
 backed by shared components. Do not duplicate full pages or build independent

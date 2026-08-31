@@ -20,6 +20,16 @@ You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. I
 
 Use the real application and existing design system to design only presentation and contents with explicit fixture/mock-backed state. Show the reviewed presentation through the established development server; preserve deterministic fixture scenarios for loading, empty, validation, success, failure, attention, and recovery states. Do not add or change live wiring, live APIs, authorization, persistence, migrations, domain rules, scoring, model behavior, background processing, or provider integration.
 
+Apply a necessity test to visible copy across the entire surface. Every visible
+copy block must label an operable control or destination; expose changing
+context, state, or value; state an actionable consequence, blocker, error, or
+recovery; or provide a required legal, safety, privacy, or mock-data
+disclosure. If it does none of those jobs, omit it. Do not fill layout space
+with explanatory headings, subtitles, welcome or reassurance copy, tips,
+helper cards, summary prose, or restatements of controls and values already
+visible nearby. Preserve useful whitespace and solve hierarchy with composition
+and spacing. Audit every visible copy block before presentation review.
+
 When the reviewed route is protected and uses fixture data, the established
 review launcher must start from `edenmind-client`, export identical
 account-specific `EDENMIND_AUTH_COOKIE_NAME` and
