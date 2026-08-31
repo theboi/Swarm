@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DispatchRecord, TaskNode, ThreadSummary } from "../../shared/contracts.js";
-import { projectDispatchState } from "./taskProjection.js";
+import { projectDispatchState, retainCompletedTaskIds } from "./taskProjection.js";
 
 const task = (id: string, state: TaskNode["readiness"]["state"]): TaskNode => ({
   id,
@@ -44,8 +44,12 @@ describe("task dispatch projection", () => {
     expect(projectDispatchState([task("P1", "attention_required")], [dispatch("P1", "completed")])[0]?.readiness.state).toBe("attention_required");
   });
 
-  it("does not let a stale durable completion ledger override current repository evidence", () => {
-    expect(projectDispatchState([task("A1", "blocked")], [], [], [], new Set(["A1"]))[0]?.readiness.state).toBe("blocked");
+  it("keeps a durably proven completion terminal across later evidence refreshes", () => {
+    expect(projectDispatchState([task("A1", "blocked")], [], [], [], new Set(["A1"]))[0]?.readiness.state).toBe("complete");
+  });
+
+  it("adds newly proven completions without deleting earlier ones", () => {
+    expect([...retainCompletedTaskIds(new Set(["F0"]), [task("F0", "blocked").readiness, task("P1", "complete").readiness])]).toEqual(["F0", "P1"]);
   });
 
   it("projects an active named EdenMind task thread as running without a historical dispatch", () => {

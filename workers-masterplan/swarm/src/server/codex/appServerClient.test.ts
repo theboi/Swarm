@@ -263,6 +263,18 @@ describe("AppServerClient", () => {
 
     await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual(expect.objectContaining({ thread: expect.objectContaining({ turns: expect.any(Array) }) }));
     expect(readLockedThread).toHaveBeenCalledWith("thread-1");
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(0);
+    expect(client.transcriptSnapshot().items).toEqual([expect.objectContaining({ id: "item-1", type: "agentMessage" })]);
+    await client.close();
+  });
+
+  it("falls back to the account rollout when app-server cannot read a persisted bot chat", async () => {
+    const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: fullThreadHistory() } }));
+    const client = await readyClient({ account: "bot2", threadStatus: "notLoaded", threadReadError: "no rollout found for thread id thread-1", readLockedThread });
+    await client.listAllThreads();
+
+    await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual(expect.objectContaining({ thread: expect.objectContaining({ turns: expect.any(Array) }) }));
+    expect(readLockedThread).toHaveBeenCalledWith("thread-1");
     expect(client.transcriptSnapshot().items).toEqual([expect.objectContaining({ id: "item-1", type: "agentMessage" })]);
     await client.close();
   });

@@ -17,7 +17,7 @@ export interface AppServerClientOptions {
   approvalRouter: ApprovalRouter;
   /** Coordinator-owned workspace path for the direct local account only. */
   workspaceRoot?: string;
-  /** Read-only fallback when Codex desktop owns the local thread's writer lock. */
+  /** Read-only filesystem fallback when app-server cannot hydrate a persisted rollout. */
   readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>;
 }
 
@@ -174,12 +174,23 @@ export class AppServerClient {
 
   async readThread(threadId: string, options: { includeTurns: true }): Promise<{ thread: Record<string, unknown> }> {
     this.requireReady();
-    let response: { thread: Record<string, unknown> };
-    try {
-      response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
-    } catch (error) {
-      if (!this.readLockedThread || !(error instanceof Error) || !/already has an active writer/i.test(error.message)) throw error;
-      response = await this.readLockedThread(threadId);
+    let response: { thread: Record<string, unknown> } | undefined;
+    if (this.unloadedThreadIds.has(threadId) && this.readLockedThread) {
+      try {
+        response = await this.readLockedThread(threadId);
+      } catch { /* fall through to app-server */ }
+    }
+    if (!response) {
+      try {
+        response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
+      } catch (error) {
+        if (!this.readLockedThread) throw error;
+        try {
+          response = await this.readLockedThread(threadId);
+        } catch {
+          throw error;
+        }
+      }
     }
     this.trackedThreadIds.add(threadId);
     this.hydrateThreadRead(threadId, response);
