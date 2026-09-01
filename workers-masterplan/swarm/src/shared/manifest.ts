@@ -171,6 +171,7 @@ export function validateTaskManifest(value: unknown): ManifestValidationResult {
     if (!isRecord(value.lifecycle)) return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle", reason: "type" } };
     if (value.lifecycle.mode !== "two_pass") return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle.mode", reason: "value" } };
     if (value.lifecycle.activePass !== "planning" && value.lifecycle.activePass !== "execution") return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle.activePass", reason: "value" } };
+    if (value.lifecycle.parallelPasses !== undefined && typeof value.lifecycle.parallelPasses !== "boolean") return { ok: false, error: { code: "MANIFEST_INVALID", field: "lifecycle.parallelPasses", reason: "type" } };
     const gateError = requiredString(value.lifecycle.planningGatePath, "lifecycle.planningGatePath");
     if (gateError) return { ok: false, error: gateError };
   }

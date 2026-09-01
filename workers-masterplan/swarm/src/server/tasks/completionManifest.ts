@@ -23,6 +23,10 @@ export interface CompletionManifestSnapshot {
   completedTaskIds: ReadonlySet<string>;
 }
 
+export function completedTaskIdsForPass(completion: Pick<CompletionManifestSnapshot, "receipts">, pass: ManifestPass): Set<string> {
+  return new Set([...completion.receipts].filter(([, receipt]) => receipt.passes[pass]?.state === "complete").map(([taskId]) => taskId));
+}
+
 export interface CompletionManifestSource {
   fetch(repositoryRoot: string): Promise<void>;
   resolveRevision(repositoryRoot: string): Promise<string>;
@@ -96,21 +100,25 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
   if (!completion.authoritative) return [...fallback];
   const activePass = manifest.lifecycle?.activePass ?? "planning";
   const fallbackById = new Map(fallback.map((task) => [task.taskId, task]));
+  const completedForPass = new Set([...completion.completedTaskIds, ...completedTaskIdsForPass(completion, activePass)]);
+  const planningComplete = completedTaskIdsForPass(completion, "planning");
   return manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)).map((task) => {
-    const completed = completion.completedTaskIds.has(task.id);
+    const completed = completedForPass.has(task.id);
     const dependencies = activePass === "execution" ? task.executionDependsOn ?? [] : task.dependsOn;
-    const prerequisitesComplete = dependencies.every((taskId) => completion.completedTaskIds.has(taskId));
+    const prerequisitesComplete = dependencies.every((taskId) => completedForPass.has(taskId));
+    const ownPlanningComplete = activePass !== "execution" || planningComplete.has(task.id);
     const prior = fallbackById.get(task.id);
     const phase = activePass === "execution" ? "execution" : task.kind === "ui" ? "ui" : task.kind;
     return {
       taskId: task.id,
       phase,
-      state: completed ? "complete" : prerequisitesComplete ? "ready" : "blocked",
+      state: completed ? "complete" : prerequisitesComplete && ownPlanningComplete ? "ready" : "blocked",
       evidence: [
         { code: "COMPLETION_MANIFEST", satisfied: completed, path: completionReceiptPath(manifest, task.id) },
+        ...(activePass === "execution" ? [{ code: "PLANNING_COMPLETE", satisfied: ownPlanningComplete, path: completionReceiptPath(manifest, task.id), commit: completion.revision }] : []),
         { code: "REMOTE_PREREQUISITES", satisfied: prerequisitesComplete, details: dependencies.join(", ") || "none" },
       ],
-      blockingCodes: completed || prerequisitesComplete ? [] : ["TASK_NOT_READY"],
+      blockingCodes: completed || (prerequisitesComplete && ownPlanningComplete) ? [] : ["TASK_NOT_READY"],
       ...(prior?.suggestedAccount ? { suggestedAccount: prior.suggestedAccount } : {}),
     };
   });
@@ -119,5 +127,18 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
 /** Removes workers that do not own the active pass, such as UI presentation workers in execution. */
 export function projectManifestToActivePass(manifest: TaskManifest): TaskManifest {
   const activePass = manifest.lifecycle?.activePass ?? "planning";
-  return { ...manifest, tasks: manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)) };
+  return projectManifestToPass(manifest, activePass);
+}
+
+export function projectManifestToPass(manifest: TaskManifest, pass: ManifestPass): TaskManifest {
+  return {
+    ...manifest,
+    lifecycle: manifest.lifecycle ? { ...manifest.lifecycle, activePass: pass } : undefined,
+    tasks: manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(pass)).map((task) => pass === "execution" ? {
+      ...task,
+      kind: "execution" as const,
+      promptTemplate: "execution" as const,
+      dependsOn: task.executionDependsOn ?? [],
+    } : { ...task }),
+  };
 }

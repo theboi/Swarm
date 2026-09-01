@@ -6,6 +6,7 @@
   "lifecycle": {
     "mode": "two_pass",
     "activePass": "planning",
+    "parallelPasses": true,
     "planningGatePath": "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md"
   },
   "tasks": [

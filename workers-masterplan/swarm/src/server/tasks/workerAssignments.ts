@@ -1,4 +1,6 @@
-import type { AccountId, WorkerAssignmentRecord, WorkerAssignmentState } from "../../shared/contracts.js";
+import type { AccountId, ManifestPass, WorkerAssignmentRecord, WorkerAssignmentState } from "../../shared/contracts.js";
+
+function recordKey(taskId: string, pass: ManifestPass): string { return `${pass}\u0000${taskId}`; }
 
 function clone(record: WorkerAssignmentRecord): WorkerAssignmentRecord {
   return { ...record, transferHistory: record.transferHistory.map((transfer) => ({ ...transfer })) };
@@ -9,11 +11,14 @@ export class WorkerAssignmentManifest {
   private readonly records = new Map<string, WorkerAssignmentRecord>();
 
   constructor(initial: WorkerAssignmentRecord[] = [], private readonly persist: (records: WorkerAssignmentRecord[]) => Promise<void> = async () => undefined) {
-    for (const record of initial) this.records.set(record.taskId, clone(record));
+    for (const record of initial) {
+      const normalized = { ...clone(record), pass: record.pass ?? "planning" as const };
+      this.records.set(recordKey(record.taskId, normalized.pass), normalized);
+    }
   }
 
   list(): WorkerAssignmentRecord[] { return [...this.records.values()].map(clone); }
-  forTask(taskId: string): WorkerAssignmentRecord | undefined { const value = this.records.get(taskId); return value && clone(value); }
+  forTask(taskId: string, pass: ManifestPass = "planning"): WorkerAssignmentRecord | undefined { const value = this.records.get(recordKey(taskId, pass)); return value && clone(value); }
   forThread(accountId: AccountId, threadId: string): WorkerAssignmentRecord | undefined {
     const value = [...this.records.values()].find((record) => record.accountId === accountId && record.threadId === threadId);
     return value && clone(value);
@@ -24,9 +29,10 @@ export class WorkerAssignmentManifest {
       .map(clone);
   }
 
-  async assign(taskId: string, accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    const prior = this.records.get(taskId);
-    this.records.set(taskId, { taskId, accountId, threadId, state: "assigned", assignedAt: prior?.assignedAt ?? now, updatedAt: now, transferHistory: prior?.transferHistory.map((item) => ({ ...item })) ?? [] });
+  async assign(taskId: string, accountId: AccountId, threadId: string, now = Date.now(), pass: ManifestPass = "planning"): Promise<void> {
+    const key = recordKey(taskId, pass);
+    const prior = this.records.get(key);
+    this.records.set(key, { taskId, pass, accountId, threadId, state: "assigned", assignedAt: prior?.assignedAt ?? now, updatedAt: now, transferHistory: prior?.transferHistory.map((item) => ({ ...item })) ?? [] });
     await this.flush();
   }
 
@@ -107,7 +113,7 @@ export class WorkerAssignmentManifest {
     const prior = clone(record);
     operation(record);
     if (JSON.stringify(record) === JSON.stringify(prior)) return;
-    try { await this.flush(); } catch (error) { this.records.set(prior.taskId, prior); throw error; }
+    try { await this.flush(); } catch (error) { this.records.set(recordKey(prior.taskId, prior.pass ?? "planning"), prior); throw error; }
   }
 
   private async flush(): Promise<void> { await this.persist(this.list()); }

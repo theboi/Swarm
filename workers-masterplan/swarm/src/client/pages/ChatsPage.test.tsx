@@ -265,6 +265,24 @@ describe("ChatsPage", () => {
     }
   });
 
+  it("keeps a loaded transcript and silently recovers from a transient background read failure", async () => {
+    const readTranscript = vi.fn()
+      .mockResolvedValueOnce({ data: chatTranscript })
+      .mockRejectedValueOnce(new Error("temporary app-server disconnect"))
+      .mockResolvedValueOnce({ data: [...chatTranscript, { ...chatTranscript[1], id: "recovered-message", payload: { text: "Recovered reply" } }] });
+    const chatApi = { ...api, readTranscript };
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevision={0} />);
+    expect(await screen.findByRole("article", { name: "agentMessage" })).toBeVisible();
+
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevision={1} />);
+    await waitFor(() => expect(readTranscript).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Unable to load this chat.")).not.toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "agentMessage" })).toBeVisible();
+
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevision={2} />);
+    expect(await screen.findByText("Recovered reply")).toBeVisible();
+  });
+
   it("reconciles an open chat even when cached activity incorrectly says idle", async () => {
     vi.useFakeTimers();
     const readTranscript = vi.fn(async () => ({ data: chatTranscript }));

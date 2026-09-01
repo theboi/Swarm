@@ -36,6 +36,30 @@ HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 afterEach(cleanup);
 
 describe("FlowchartPage", () => {
+  it("shows separate planning and execution tabs without hiding unfinished planning", async () => {
+    const user = userEvent.setup();
+    const executionTasks = dashboardSnapshot.tasks.map((task) => ({ ...task, readiness: { ...task.readiness, phase: "execution" as const, state: task.id === "T0" ? "ready" as const : "blocked" as const } }));
+    const snapshot = { ...dashboardSnapshot, taskPasses: { planning: dashboardSnapshot.tasks, execution: executionTasks } };
+    render(<FlowchartPage snapshot={snapshot} onOpenChat={() => undefined} />);
+
+    expect(screen.getByRole("tab", { name: "Pass 1 · Planning" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "Pass 2 · Execution" }));
+    expect(screen.getByRole("button", { name: "T0 Graph planning ready" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Pass 2 · Execution" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("restores the full graph when a live update empties the selected state filter", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Show running tasks" }));
+    expect(screen.getByRole("button", { name: "T0 Graph planning running" })).toBeVisible();
+
+    const noLongerRunning = { ...dashboardSnapshot, tasks: dashboardSnapshot.tasks.map((task) => ({ ...task, readiness: { ...task.readiness, state: "complete" as const } })) };
+    rerender(<FlowchartPage snapshot={noLongerRunning} onOpenChat={() => undefined} />);
+
+    expect(await screen.findByRole("button", { name: "T0 Graph planning complete" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Show all tasks" })).toHaveAttribute("aria-pressed", "true");
+  });
   it("provides left-to-right connector handles and arrowheads for dependency edges", () => {
     render(<FlowchartPage snapshot={dashboardSnapshot} onOpenChat={() => undefined} />);
 

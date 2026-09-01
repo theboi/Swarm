@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 
-import { ACCOUNT_IDS, type AccountId, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type HealthSnapshot, type PendingApproval } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
@@ -19,8 +19,8 @@ export interface CoordinatorRouteServices {
   refreshRateLimits(accountId: AccountId): Promise<unknown>;
   refreshAllRateLimits(): Promise<unknown>;
   listModels(accountId: AccountId): Promise<ChatModelOption[]>;
-  previewLaunch(taskId: string, accountId?: AccountId): Promise<unknown>;
-  launch(taskId: string, input: { accountId?: AccountId; prompt?: string; settings?: ChatExecutionSettings }): Promise<unknown>;
+  previewLaunch(taskId: string, accountId?: AccountId, pass?: ManifestPass): Promise<unknown>;
+  launch(taskId: string, input: { accountId?: AccountId; prompt?: string; settings?: ChatExecutionSettings; pass?: ManifestPass }): Promise<unknown>;
   listThreads(accountId: AccountId): Promise<unknown>;
   readTranscript(accountId: AccountId, threadId: string): Promise<unknown>;
   startThread(accountId: AccountId): Promise<unknown>;
@@ -36,6 +36,7 @@ export interface CoordinatorRouteServices {
 }
 
 const accounts = new Set<AccountId>(ACCOUNT_IDS);
+function manifestPass(value: unknown): ManifestPass | undefined { return value === "planning" || value === "execution" ? value : undefined; }
 function account(value: unknown): AccountId | undefined { return typeof value === "string" && accounts.has(value as AccountId) ? value as AccountId : undefined; }
 function record(value: unknown): Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function text(value: unknown, field: string): string | undefined { return typeof value === "string" && value.trim() ? value : undefined; }
@@ -164,8 +165,8 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   router.post("/accounts/:account/threads/:thread/interrupt", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const turnId = text(record(request.body).turnId, "turnId"); if (!id || !turnId) { apiError(response, 400, "INVALID_REQUEST", "A known account and turnId are required"); return; } await services.interruptTurn(id, param(request.params.thread), { turnId }); sendData(response, {}); }));
   router.post("/accounts/:account/files/read", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const path = text(record(request.body).path, "path"); if (!id || !path) { apiError(response, 400, "INVALID_REQUEST", "A known account and file path are required"); return; } sendData(response, await services.readMarkdown(id, path)); }));
 
-  router.post("/tasks/:task/preview", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.previewLaunch(param(request.params.task), accountId)); }));
-  router.post("/tasks/:task/launch", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const prompt = body.prompt === undefined ? undefined : text(body.prompt, "prompt"); const settings = executionSettings(body.settings); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.prompt !== undefined && !prompt) { apiError(response, 400, "INVALID_REQUEST", "A non-empty prompt is required"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.launch(param(request.params.task), { accountId, prompt, ...(settings ? { settings } : {}) })); }));
+  router.post("/tasks/:task/preview", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const pass = body.pass === undefined ? undefined : manifestPass(body.pass); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.pass !== undefined && !pass) { apiError(response, 400, "INVALID_REQUEST", "Unknown worker pass"); return; } sendData(response, pass ? await services.previewLaunch(param(request.params.task), accountId, pass) : await services.previewLaunch(param(request.params.task), accountId)); }));
+  router.post("/tasks/:task/launch", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const prompt = body.prompt === undefined ? undefined : text(body.prompt, "prompt"); const settings = executionSettings(body.settings); const pass = body.pass === undefined ? undefined : manifestPass(body.pass); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.pass !== undefined && !pass) { apiError(response, 400, "INVALID_REQUEST", "Unknown worker pass"); return; } if (body.prompt !== undefined && !prompt) { apiError(response, 400, "INVALID_REQUEST", "A non-empty prompt is required"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.launch(param(request.params.task), { accountId, prompt, ...(settings ? { settings } : {}), ...(pass ? { pass } : {}) })); }));
   router.post("/approvals/:approval", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const decision = text(body.decision, "decision"); if (!decision) { apiError(response, 400, "INVALID_REQUEST", "An approval decision is required"); return; } await services.decideApproval(param(request.params.approval), { decision, permissions: record(body.permissions) }); sendData(response, {}); }));
   router.use((_request, response) => apiError(response, 404, "NOT_FOUND", "API route not found"));
   return router;

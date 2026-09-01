@@ -93,7 +93,7 @@ describe("repository completion manifest", () => {
     }));
     const readiness = applyCompletionManifest(production, [], completion);
 
-    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "G1", "G2", "P1", "P2", "P4", "PD", "Q1", "Q2"]);
+    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "G1", "G2", "P1", "P2", "P3", "P4", "PD", "Q1", "Q2"]);
     expect(readiness.find((task) => task.taskId === "C3")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "C4")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "E2")?.state).toBe("complete");
@@ -108,7 +108,17 @@ describe("repository completion manifest", () => {
     const readiness = applyCompletionManifest(execution, [], completion);
 
     expect(readiness.map((task) => task.taskId)).not.toEqual(expect.arrayContaining(["PD", "CD", "QD", "AD", "ED", "GD"]));
-    expect(readiness.find((task) => task.taskId === "F0")?.state).toBe("ready");
+    expect(readiness.find((task) => task.taskId === "F0")?.state).toBe("blocked");
+  });
+
+  it("allows execution per worker after its own planning receipt without waiting for every planning worker", async () => {
+    const execution = { ...manifest, lifecycle: { ...manifest.lifecycle!, activePass: "execution" as const } };
+    const receipts = new Map([
+      ["C3", { schemaVersion: 1 as const, taskId: "C3", passes: { planning: { state: "complete" as const, completedBy: "bot8" as const, completedAt: "2026-08-31T13:00:00.000Z" } } }],
+    ]);
+    const readiness = applyCompletionManifest(execution, [], { authoritative: true, revision: "origin-main", receipts, completedTaskIds: new Set() });
+
+    expect(readiness.map((task) => [task.taskId, task.state])).toEqual([["C3", "ready"], ["C4", "blocked"]]);
   });
 });
 

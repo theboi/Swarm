@@ -40,7 +40,7 @@ import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { latestUnarchivedTaskThread, projectDispatchState, retainCompletedTaskIds } from "./tasks/taskProjection.js";
 import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
-import { applyCompletionManifest, loadCompletionManifest, projectManifestToActivePass } from "./tasks/completionManifest.js";
+import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { handoffThreadName } from "./tasks/handoff.js";
@@ -177,17 +177,22 @@ async function createRuntime(config: SwarmConfig) {
     const accepted = outbox.list().find((record) => record.accountId === account && record.threadId === threadId && record.state === "accepted");
     const taskId = assignment?.taskId ?? accepted?.taskId;
     if (!taskId) return;
+    const pass = assignment?.pass ?? accepted?.pass ?? "planning";
     await refreshTasks(true);
-    const provenComplete = completedTaskIds.has(taskId) || nodes.find((node) => node.id === taskId)?.readiness.state === "complete";
+    const provenComplete = completedByPass[pass].has(taskId) || nodesByPass[pass].find((node) => node.id === taskId)?.readiness.state === "complete";
     if (provenComplete) {
       await assignments.complete(account, threadId);
       await outbox.completeAcceptedForThread(account, threadId);
-      completedTaskIds.add(taskId);
+      completedByPass[pass].add(taskId);
     } else {
       await assignments.markAttentionRequired(account, threadId);
       if (accepted) await outbox.abandon(accepted.id);
     }
-    await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; });
+    if (pass === (manifest?.lifecycle?.activePass ?? "planning")) {
+      completedTaskIds.clear();
+      for (const completedId of completedByPass[pass]) completedTaskIds.add(completedId);
+      await state.mutate((value) => { value.completedTaskIds = [...completedTaskIds]; value.completedTaskPass = pass; });
+    }
     completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
     const snapshot = accounts.snapshot(account);
     accounts.updateSnapshot(account, { activeTurns: Math.max(0, snapshot.activeTurns - 1) });
@@ -267,6 +272,9 @@ async function createRuntime(config: SwarmConfig) {
   });
   let manifest: TaskManifest | undefined;
   let nodes: TaskNode[] = [];
+  let nodesByPass: Record<ManifestPass, TaskNode[]> = { planning: [], execution: [] };
+  let completedByPass: Record<ManifestPass, Set<string>> = { planning: new Set(), execution: new Set() };
+  if (completedTaskPass) completedByPass[completedTaskPass] = new Set(completedTaskIds);
   let manifestError: string | undefined;
   let tasksRefreshedAt = 0;
   let taskRefreshPromise: Promise<void> | undefined;
@@ -275,17 +283,24 @@ async function createRuntime(config: SwarmConfig) {
     if (taskRefreshPromise) return taskRefreshPromise;
     taskRefreshPromise = (async () => {
       if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
+      let candidatePasses: Record<ManifestPass, TaskNode[]> | undefined;
+      let candidateCompleted: Record<ManifestPass, Set<string>> | undefined;
       const refreshed = await refreshTaskGraphAtomically({ manifest, nodes }, async () => {
         const fullManifest = await loadManifest(config.masterplanPath!, resolve(config.coordinationRoot ?? process.cwd()));
         const completion = await loadCompletionManifest(fullManifest, coordinationWorkspaceRoot);
-        const candidateManifest = projectManifestToActivePass(fullManifest);
-        const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(candidateManifest, await loadBlueprintEvidence(candidateManifest));
-        const activePass = candidateManifest.lifecycle?.activePass ?? "planning";
-        const retainedCompletedTaskIds = completion.authoritative
-          ? new Set(completedTaskPass === activePass ? [...completedTaskIds, ...completion.completedTaskIds] : completion.completedTaskIds)
-          : retainCompletedTaskIds(completedTaskIds, fallbackReadiness);
-        const readiness = applyCompletionManifest(candidateManifest, fallbackReadiness, completion.authoritative ? { ...completion, completedTaskIds: retainedCompletedTaskIds } : completion);
-        const candidateNodes = taskNode(candidateManifest, readiness);
+        const passEntries = await Promise.all((["planning", "execution"] as const).map(async (pass) => {
+          const candidateManifest = projectManifestToPass(fullManifest, pass);
+          const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(candidateManifest, await loadBlueprintEvidence(candidateManifest));
+          const receiptCompleted = completedTaskIdsForPass(completion, pass);
+          const retained = completion.authoritative ? new Set([...completedByPass[pass], ...receiptCompleted]) : retainCompletedTaskIds(completedByPass[pass], fallbackReadiness);
+          const readiness = applyCompletionManifest(candidateManifest, fallbackReadiness, { ...completion, completedTaskIds: retained });
+          return [pass, { nodes: taskNode(candidateManifest, readiness), completed: retained }] as const;
+        }));
+        candidatePasses = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.nodes])) as Record<ManifestPass, TaskNode[]>;
+        candidateCompleted = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.completed])) as Record<ManifestPass, Set<string>>;
+        const activePass = fullManifest.lifecycle?.activePass ?? "planning";
+        const retainedCompletedTaskIds = candidateCompleted[activePass];
+        const candidateNodes = candidatePasses[activePass];
         const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size
           || [...retainedCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId))
           || completedTaskPass !== activePass;
@@ -295,10 +310,11 @@ async function createRuntime(config: SwarmConfig) {
           for (const taskId of retainedCompletedTaskIds) completedTaskIds.add(taskId);
           completedTaskPass = activePass;
         }
-        return { manifest: candidateManifest, nodes: candidateNodes };
+        return { manifest: fullManifest, nodes: candidateNodes };
       }, (error) => error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID");
       manifest = refreshed.manifest;
       nodes = refreshed.nodes;
+      if (!refreshed.manifestError && candidatePasses && candidateCompleted) { nodesByPass = candidatePasses; completedByPass = candidateCompleted; }
       manifestError = refreshed.manifestError;
       tasksRefreshedAt = Date.now();
     })();
@@ -361,12 +377,24 @@ async function createRuntime(config: SwarmConfig) {
     const dispatches = outbox.list();
     const threadSummaries = [...threadCache.values()].flat();
     await reconcileAssignments(threadSummaries);
-    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: projectDispatchState(nodes, dispatches, threadSummaries, assignments.list(), completedTaskIds), dispatches, workerAssignments: assignments.list(), limitResumes: limitResumes.publicList(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
+    const assignmentList = assignments.list();
+    const taskPasses = Object.fromEntries((["planning", "execution"] as const).map((pass) => [pass, projectDispatchState(
+      nodesByPass[pass],
+      dispatches.filter((record) => (record.pass ?? "planning") === pass),
+      // Thread-title inference predates pass-aware assignments. Keep it for
+      // planning recovery only so an old planning chat cannot make the
+      // execution projection look in progress.
+      pass === "planning" ? threadSummaries : [],
+      assignmentList.filter((record) => (record.pass ?? "planning") === pass),
+      completedByPass[pass],
+    )])) as Record<ManifestPass, TaskNode[]>;
+    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: taskPasses[manifest?.lifecycle?.activePass ?? "planning"], taskPasses, dispatches, workerAssignments: assignmentList, limitResumes: limitResumes.publicList(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
   };
   const allowedOrigins = () => dashboardOrigins(config.port, config.host);
   const createPrompt = async (task: TaskNode, id: AccountId) => {
-    const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task, nodes) : {};
-    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...taskArtifactLaunchMetadata(task, nodes), ...execution, ...launchGitMetadata(id, workspaceFor(id)), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
+    const relatedNodes = [...nodesByPass.planning, ...nodesByPass.execution];
+    const execution = task.promptTemplate === "execution" ? executionLaunchMetadata(task, relatedNodes) : {};
+    return renderWorkerPrompt(task.promptTemplate, { workerId: task.id, accountId: id, taskId: task.id, taskTitle: task.title, phase: task.readiness.phase, phaseTerminalCondition: task.promptTemplate === "planning" ? "Stop after the approved planning handoff is integrated on origin/main; do not begin implementation." : task.promptTemplate === "execution" ? "Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main." : "Stop at the user's review boundary after the accepted presentation handoff is integrated on origin/main.", blueprintPath: manifest?.masterplanPath ?? "", masterplanPath: manifest?.masterplanPath ?? "", coordinationRoot: manifest?.coordinationRoot, statusPath: task.statusPath ?? "", specificationPath: task.specificationPath, implementationPlanPath: task.implementationPlanPath, ...taskArtifactLaunchMetadata(task, relatedNodes), ...execution, ...launchGitMetadata(id, workspaceFor(id)), ownedSurfaces: "Assigned task surfaces only", excludedSurfaces: "Other workers' owned surfaces" });
   };
   const launchAccounts = async () => {
     const current = accountSnapshot();
@@ -487,10 +515,11 @@ async function createRuntime(config: SwarmConfig) {
     },
     refreshAllRateLimits,
     listModels: async (id) => (await liveClient(id)).listModels(),
-    previewLaunch: async (taskId, requested) => {
+    previewLaunch: async (taskId, requested, requestedPass) => {
       await refreshTasks();
       if (!manifest) throw new Error(manifestError ?? "MASTERPLAN_NOT_READY");
-      const task = nodes.find((candidate) => candidate.id === taskId);
+      const pass = requestedPass ?? manifest.lifecycle?.activePass ?? "planning";
+      const task = nodesByPass[pass].find((candidate) => candidate.id === taskId);
       if (!task) throw new Error("TASK_NOT_READY");
       let options = await launchAccounts();
       let selected = requested ? options.find((account) => account.id === requested && account.available) : options.find((account) => account.available);
@@ -503,7 +532,8 @@ async function createRuntime(config: SwarmConfig) {
       return { task, accountId: selected.id, prompt: await createPrompt(task, selected.id), dependencies: task.dependsOn, accounts: options };
     },
     launch: async (taskId, input) => {
-      const preview = await services.previewLaunch(taskId, input.accountId) as { task: TaskNode; accountId: AccountId; prompt: string };
+      const pass = input.pass ?? manifest?.lifecycle?.activePass ?? "planning";
+      const preview = await services.previewLaunch(taskId, input.accountId, pass) as { task: TaskNode; accountId: AccountId; prompt: string };
       if (preview.task.readiness.state !== "ready") throw new Error(preview.task.readiness.blockingCodes[0] ?? "TASK_NOT_READY");
       const client = await liveClient(preview.accountId);
       const rawThread = await client.startThread();
@@ -511,9 +541,9 @@ async function createRuntime(config: SwarmConfig) {
       upsertCachedThread(thread);
       await client.setThreadName(thread.id, `${preview.task.id} · ${preview.task.title}`);
       const now = Date.now();
-      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
+      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, pass, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
       await outbox.enqueue(record);
-      await assignments.assign(taskId, preview.accountId, thread.id, now);
+      await assignments.assign(taskId, preview.accountId, thread.id, now, pass);
       await outbox.markSubmitting(record.id);
       try { await client.startTurn({ threadId: thread.id, clientUserMessageId: record.clientUserMessageId, text: input.prompt ?? preview.prompt, settings: input.settings }); }
       catch (error) {

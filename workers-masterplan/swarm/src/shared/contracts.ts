@@ -61,6 +61,8 @@ export interface TaskManifestLifecycle {
   mode: "two_pass";
   activePass: ManifestPass;
   planningGatePath: string;
+  /** Allows individually planned workers to enter execution before all planning finishes. */
+  parallelPasses?: boolean;
 }
 
 export interface TaskManifestTask {
@@ -136,6 +138,7 @@ export interface DispatchRecord {
   id: string;
   clientUserMessageId: string;
   taskId: string;
+  pass?: ManifestPass;
   accountId: AccountId;
   threadId: string;
   state: DispatchState;
@@ -160,6 +163,7 @@ export interface WorkerTransferRecord {
 /** Durable ownership manifest for one blueprint worker across account transfers. */
 export interface WorkerAssignmentRecord {
   taskId: string;
+  pass?: ManifestPass;
   accountId: AccountId;
   threadId: string;
   state: WorkerAssignmentState;
@@ -276,6 +280,7 @@ export interface CoordinatorSnapshot {
   accounts: AccountSnapshot[];
   localWorkspace?: LocalWorkspaceSnapshot;
   tasks: TaskNode[];
+  taskPasses?: Partial<Record<ManifestPass, TaskNode[]>>;
   dispatches: DispatchRecord[];
   workerAssignments?: WorkerAssignmentRecord[];
   limitResumes?: LimitResumeRecord[];

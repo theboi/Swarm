@@ -276,7 +276,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const renameCloseButton = useRef<HTMLButtonElement>(null);
   const selectedTranscriptKeyRef = useRef<string | null>(null);
+  const itemsRef = useRef<TranscriptItem[]>([]);
   const transcriptRequestsRef = useRef(new Map<string, { running: boolean; pending: boolean; scrollOnSuccess: boolean }>());
+  itemsRef.current = items;
   selectedTranscriptKeyRef.current = accountId && threadId && !isDraftChat ? `${accountId}\u0000${threadId}` : null;
   const compact = useCompactPicker();
   const threads = useMemo(() => {
@@ -335,7 +337,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           try {
             const result = await api.readTranscript(accountId, threadId);
             if (selectedTranscriptKeyRef.current !== openedKey) continue;
-            if ("error" in result && result.error) { setError(result.error.message); continue; }
+            if ("error" in result && result.error) { if (itemsRef.current.length === 0) setError(result.error.message); continue; }
             setItems(result.data);
             markThreadRead(accountId, threadId);
             if (state.scrollOnSuccess) {
@@ -343,7 +345,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
               setScrollRequest((request) => request + 1);
             }
           } catch {
-            if (selectedTranscriptKeyRef.current === openedKey) setError("Unable to load this chat.");
+            if (selectedTranscriptKeyRef.current === openedKey && itemsRef.current.length === 0) setError("Unable to load this chat.");
           }
         }
       } finally {

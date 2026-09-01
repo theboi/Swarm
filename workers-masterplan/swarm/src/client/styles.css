@@ -250,6 +250,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes swarm-spin { to { transform: rotate(360deg); } }
 @keyframes swarm-spin-reverse { to { transform: rotate(-360deg); } }
 
+.flowchart-page { grid-template-rows: auto auto auto minmax(0, 1fr); }
+.flow-pass-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.flow-pass-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: #aebabc; padding: 8px 10px; }
+.flow-pass-tabs button[aria-selected="true"] { border-bottom-color: #8ee39a; color: #effff0; }
 .flowchart-surface { height: 100%; }
 .flowchart-surface > .react-flow { position: relative; width: 100%; height: 100%; }
 

@@ -27,8 +27,8 @@ export interface CoordinatorApi {
   getSnapshot(): Promise<CoordinatorSnapshot>;
   startLogin(input: { email: string; password: string }): Promise<ApiResult<LoginChallenge>>;
   completeLogin(input: { challengeId: string; code: string }): Promise<ApiResult<SessionState>>;
-  previewLaunch(taskId: string, accountId?: string): Promise<ApiResult<LaunchPreview>>;
-  launch(taskId: string, accountId: string, prompt?: string, settings?: ChatExecutionSettings): Promise<ApiResult<DispatchRecord>>;
+  previewLaunch(taskId: string, accountId?: string, pass?: "planning" | "execution"): Promise<ApiResult<LaunchPreview>>;
+  launch(taskId: string, accountId: string, prompt?: string, settings?: ChatExecutionSettings, pass?: "planning" | "execution"): Promise<ApiResult<DispatchRecord>>;
   connectAccount(accountId: string): Promise<ApiResult<unknown>>;
   refreshAllRateLimits(): Promise<ApiResult<unknown>>;
   listModels(accountId: string): Promise<ApiResult<ChatModelOption[]>>;
@@ -89,8 +89,8 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
     startLogin: (input) => request<LoginChallenge>("/auth/challenge", { method: "POST", body: JSON.stringify(input) }),
     completeLogin: (input) => request<SessionState>("/auth/complete", { method: "POST", body: JSON.stringify(input) }),
-    previewLaunch: (taskId, accountId) => request<LaunchPreview>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST", body: JSON.stringify(accountId ? { accountId } : {}) }),
-    launch: (taskId, accountId, prompt, settings) => request<DispatchRecord>(`/tasks/${encodeURIComponent(taskId)}/launch`, { method: "POST", body: JSON.stringify({ accountId, ...(prompt ? { prompt } : {}), ...(settings ? { settings } : {}) }) }),
+    previewLaunch: (taskId, accountId, pass) => request<LaunchPreview>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST", body: JSON.stringify({ ...(accountId ? { accountId } : {}), ...(pass ? { pass } : {}) }) }),
+    launch: (taskId, accountId, prompt, settings, pass) => request<DispatchRecord>(`/tasks/${encodeURIComponent(taskId)}/launch`, { method: "POST", body: JSON.stringify({ accountId, ...(prompt ? { prompt } : {}), ...(settings ? { settings } : {}), ...(pass ? { pass } : {}) }) }),
     connectAccount: (accountId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/connect`, { method: "POST" }),
     refreshAllRateLimits: () => request<unknown>("/accounts/rate-limits/refresh", { method: "POST" }),
     listModels: (accountId) => request<ChatModelOption[]>(`/accounts/${encodeURIComponent(accountId)}/models`),

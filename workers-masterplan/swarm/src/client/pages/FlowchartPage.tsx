@@ -2,7 +2,7 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlo
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AccountId, ChatExecutionSettings, CoordinatorSnapshot, TaskNode, TaskState, WorkerAssignmentRecord } from "../../shared/contracts.js";
+import type { AccountId, ChatExecutionSettings, CoordinatorSnapshot, ManifestPass, TaskNode, TaskState, WorkerAssignmentRecord } from "../../shared/contracts.js";
 import type { CoordinatorApi, LaunchPreview } from "../api.js";
 import { LaunchDialog, type ChatTarget } from "./HomePage.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
@@ -119,6 +119,7 @@ function TaskInspector({ task, assignment, onOpenChat, onReviewLaunch, threadId,
 type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<Pick<CoordinatorApi, "listModels">>;
 
 export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, initialViewport = { x: 0, y: 0, zoom: 1 } }: { snapshot: CoordinatorSnapshot; api?: FlowLaunchApi; onOpenChat: (threadId: string) => void; onOpenLaunchedChat?: (target: ChatTarget) => void; initialViewport?: Viewport }) {
+  const [pass, setPass] = useState<ManifestPass>("planning");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTask, setSelectedTask] = useState<TaskNode | null>(null);
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
@@ -133,16 +134,19 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   useEffect(() => {
     if (!selectedTask) selectionTrigger.current?.focus();
   }, [selectedTask]);
-  const visibleTasks = useMemo(() => snapshot.tasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, snapshot.tasks]);
-  const nodes = useMemo(() => taskNodes(visibleTasks, selectTask, snapshot.tasks, snapshot.workerAssignments), [selectTask, snapshot.tasks, snapshot.workerAssignments, visibleTasks]);
+  const passTasks = snapshot.taskPasses?.[pass] ?? (pass === "planning" ? snapshot.tasks : []);
+  const visibleTasks = useMemo(() => passTasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, passTasks]);
+  useEffect(() => { if (filter !== "all" && passTasks.length > 0 && visibleTasks.length === 0) setFilter("all"); }, [filter, passTasks.length, visibleTasks.length]);
+  const passAssignments = snapshot.workerAssignments?.filter((assignment) => (assignment.pass ?? "planning") === pass);
+  const nodes = useMemo(() => taskNodes(visibleTasks, selectTask, passTasks, passAssignments), [passAssignments, passTasks, selectTask, visibleTasks]);
   const edges = useMemo(() => taskEdges(visibleTasks), [visibleTasks]);
-  const selectedAssignment = selectedTask ? snapshot.workerAssignments?.find((assignment) => assignment.taskId === selectedTask.id) : undefined;
+  const selectedAssignment = selectedTask ? passAssignments?.find((assignment) => assignment.taskId === selectedTask.id) : undefined;
   const selectedThread = selectedAssignment?.threadId ?? (selectedTask ? snapshot.dispatches.find((dispatch) => dispatch.taskId === selectedTask.id)?.threadId : undefined);
   const reviewLaunch = async (task: TaskNode, accountId?: AccountId) => {
     if (!api) return;
     setError(null);
     try {
-      const result = await api.previewLaunch(task.id, accountId);
+      const result = await api.previewLaunch(task.id, accountId, pass);
       if ("error" in result && result.error) return setError(result.error.message);
       setPreview(result.data);
     } catch {
@@ -152,7 +156,7 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   const sendLaunch = async (prompt: string, settings: ChatExecutionSettings) => {
     if (!api || !preview) return;
     try {
-      const result = await api.launch(preview.task.id, preview.accountId, prompt, settings);
+      const result = await api.launch(preview.task.id, preview.accountId, prompt, settings, pass);
       if ("error" in result && result.error) { setError(result.error.message); return; }
       setPreview(null);
       saveThreadExecutionSettings(result.data.accountId, result.data.threadId, settings);
@@ -166,11 +170,12 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
     <section className="flowchart-page" aria-labelledby="flowchart-title">
       <header><p className="eyebrow">Dependency graph</p><h1 id="flowchart-title">Flowchart</h1></header>
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
+      <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "planning"} onClick={() => { setPass("planning"); setFilter("all"); setSelectedTask(null); }}>Pass 1 · Planning</button><button role="tab" aria-selected={pass === "execution"} onClick={() => { setPass("execution"); setFilter("all"); setSelectedTask(null); }}>Pass 2 · Execution</button></div>
       <div className="flow-filters" aria-label="Task state filters">{(["all", "ready", "blocked", "running", "complete"] as Filter[]).map((state) => <button key={state} type="button" aria-pressed={filter === state} onClick={() => setFilter(state)}>Show {state} tasks</button>)}</div>
       <div className="flow-layout">
         <div className="flowchart-surface" data-testid="flowchart-surface" data-viewport={`${viewport.x},${viewport.y},${viewport.zoom}`}>
           <ReactFlowProvider>
-            <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} defaultViewport={initialViewport} fitView onMoveEnd={(_, nextViewport) => setViewport(nextViewport)} aria-label="Task dependency graph" minZoom={0.2} maxZoom={2.5}>
+            <ReactFlow key={pass} nodes={nodes} edges={edges} nodeTypes={nodeTypes} defaultViewport={initialViewport} fitView onMoveEnd={(_, nextViewport) => setViewport(nextViewport)} aria-label="Task dependency graph" minZoom={0.2} maxZoom={2.5}>
               <Background gap={18} size={1} /><Controls showInteractive={false} />
             </ReactFlow>
           </ReactFlowProvider>

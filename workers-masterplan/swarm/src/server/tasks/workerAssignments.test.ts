@@ -13,7 +13,7 @@ describe("WorkerAssignmentManifest", () => {
     await manifest.complete("bot8", "new-thread", 40);
 
     expect(manifest.forTask("A1")).toEqual({
-      taskId: "A1", accountId: "bot8", threadId: "new-thread", state: "completed",
+      taskId: "A1", pass: "planning", accountId: "bot8", threadId: "new-thread", state: "completed",
       assignedAt: 10, updatedAt: 40,
       transferHistory: [{ fromAccountId: "bot6", fromThreadId: "old-thread", toAccountId: "bot8", toThreadId: "new-thread", transferredAt: 30 }],
     });
@@ -73,5 +73,15 @@ describe("WorkerAssignmentManifest", () => {
     expect(await manifest.claimResume("bot8", "cd-thread", "resume", 40)).toBeUndefined();
     await manifest.restoreTransfer("bot8", "cd-thread", prior!, 50);
     expect(manifest.forTask("CD")?.state).toBe("waiting_for_limit");
+  });
+
+  it("keeps planning and execution assignments for the same worker independent", async () => {
+    const manifest = new WorkerAssignmentManifest([]);
+    await manifest.assign("F0", "bot3", "planning-thread", 10, "planning");
+    await manifest.complete("bot3", "planning-thread", 20);
+    await manifest.assign("F0", "bot5", "execution-thread", 30, "execution");
+
+    expect(manifest.forTask("F0", "planning")).toMatchObject({ state: "completed", threadId: "planning-thread", pass: "planning" });
+    expect(manifest.forTask("F0", "execution")).toMatchObject({ state: "assigned", threadId: "execution-thread", pass: "execution" });
   });
 });
