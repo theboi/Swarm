@@ -43,18 +43,22 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
   await server.start();
+  let turnStartFailed = false;
   server.onMessage((message, peer) => {
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
     if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
     if (message.method === "thread/resume" && options.threadResumeError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadResumeError } }));
     else if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
-    if (message.method === "turn/start") reply({ turn: { id: "turn-1" } });
+    if (message.method === "turn/start" && options.turnStartErrorOnce && !turnStartFailed) {
+      turnStartFailed = true;
+      peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.turnStartErrorOnce } }));
+    } else if (message.method === "turn/start") reply({ turn: { id: "turn-1" } });
     if (message.method === "model/list") reply({
       data: [{ id: "gpt-5.3-codex", model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", description: "Coding", hidden: false, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "high", serviceTiers: [{ id: "standard", name: "Standard" }, { id: "priority", name: "Fast" }], defaultServiceTier: "standard", isDefault: true }],
       nextCursor: null,
@@ -242,6 +246,16 @@ describe("AppServerClient", () => {
 
     expect(server!.received.filter((message) => message.method === "thread/resume")).toHaveLength(1);
     expect(server!.received.filter((message) => message.method === "turn/start")).toHaveLength(1);
+    await client.close();
+  });
+
+  it("reopens a persisted chat and retries once when turn start reports thread not found", async () => {
+    const client = await readyClient({ turnStartErrorOnce: "thread not found: thread-1" });
+
+    await expect(client.startTurn({ threadId: "thread-1", clientUserMessageId: "resume-after-miss", text: "Continue." })).resolves.toEqual({ turn: { id: "turn-1" } });
+
+    expect(server!.received.filter((message) => message.method === "turn/start")).toHaveLength(2);
+    expect(server!.received.filter((message) => message.method === "thread/resume")).toHaveLength(1);
     await client.close();
   });
 

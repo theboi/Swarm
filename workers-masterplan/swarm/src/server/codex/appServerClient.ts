@@ -227,12 +227,20 @@ export class AppServerClient {
     this.requireReady();
     this.turnSettingsByThread.set(input.threadId, { ...(input.settings ?? {}) });
     if (this.unloadedThreadIds.has(input.threadId)) await this.resumeThread(input.threadId);
-    return this.rpc.request("turn/start", {
+    const params = {
       threadId: input.threadId,
       clientUserMessageId: input.clientUserMessageId,
       input: [{ type: "text", text: input.text, text_elements: [] }, ...(input.attachments ?? []).map((attachment) => ({ type: "mention", name: attachment.name, path: attachment.path }))],
       ...safeTurnSettings(this.account, this.workspaceRootOverride, input.settings),
-    });
+    };
+    try {
+      return await this.rpc.request("turn/start", params);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/thread (?:id )?not found|no rollout found for thread id/i.test(message)) throw error;
+      await this.resumeThread(input.threadId);
+      return this.rpc.request("turn/start", params);
+    }
   }
 
   turnSettings(threadId: string): ChatExecutionSettings | undefined {

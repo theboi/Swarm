@@ -519,7 +519,7 @@ describe("ChatsPage", () => {
     };
     render(<ChatsPage snapshot={continuationSnapshot} api={{ ...api, moveThreadToAccount }} />);
 
-    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for usage availability before resuming. Retrying automatically.");
     await user.click(screen.getByRole("button", { name: "Move to another account" }));
     const dialog = screen.getByRole("dialog", { name: "Move to another account" });
     expect(dialog).toBeVisible();
@@ -624,7 +624,7 @@ describe("ChatsPage", () => {
 
     render(<ChatsPage snapshot={unassignedLimitSnapshot} api={api} />);
 
-    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for usage availability before resuming. Retrying automatically.");
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
@@ -671,11 +671,26 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
+  it("shows automatic retry instead of an invented under-one-minute reset when reset data is unavailable", () => {
+    setViewport(1440);
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      accounts: chatSnapshot.accounts.map((account) => account.id === "bot3" ? { ...account, rateLimits: [] } : account),
+      workerAssignments: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: Date.now() }],
+    };
+
+    render(<ChatsPage snapshot={waitingSnapshot} api={api} />);
+
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for usage availability before resuming. Retrying automatically.");
+    expect(screen.getByRole("status", { name: "Session limit reached" })).not.toHaveTextContent("under 1m");
+  });
+
   it("shows the resume controls immediately from the live limit event before the durable snapshot refresh finishes", () => {
     setViewport(1440);
     render(<ChatsPage snapshot={{ ...chatSnapshot, workerAssignments: [], limitResumes: [] }} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
 
-    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for limit to reset");
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for usage availability before resuming. Retrying automatically.");
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
