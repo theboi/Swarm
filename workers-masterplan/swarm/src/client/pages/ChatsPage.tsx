@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Archive, CircleStop, CornerUpRight, MessageSquarePlus, Network, Pencil, Plus, Send, SquareTerminal, X } from "lucide-react";
+import { Archive, ArrowDown, CircleStop, CornerUpRight, MessageSquarePlus, Network, Pencil, Plus, Send, SquareTerminal, UserRound, X } from "lucide-react";
 
 import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
 import type { CoordinatorApi, MarkdownDocument } from "../api.js";
@@ -336,7 +336,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     const scroll = () => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; };
     scroll();
     const timer = window.setTimeout(scroll, 0);
-    return () => window.clearTimeout(timer);
+    const settledTimer = window.setTimeout(scroll, 150);
+    return () => { window.clearTimeout(timer); window.clearTimeout(settledTimer); };
   }, [scrollRequest]);
 
   useEffect(() => {
@@ -540,6 +541,13 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
   const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);
+  const scrollToBottom = () => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  };
+  const scrollToLatestUserMessage = () => {
+    const messages = scrollRef.current?.querySelectorAll<HTMLElement>('[data-transcript-type="userMessage"]');
+    messages?.item(messages.length - 1)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
   const resumeRecord = threadId && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === threadId) : undefined;
   const transferredAway = threadId && accountId ? snapshot.workerAssignments?.some((assignment) => assignment.transferHistory.some((transfer) => transfer.fromAccountId === accountId && transfer.fromThreadId === threadId)) : false;
@@ -679,7 +687,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
           })}</div></section>)}</div> : null}
           {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
-          <div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div>
+          <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>Waiting for limit to reset in {resumeCountdown} before resuming.</p><button type="button" onClick={openMove}>Move to another account</button></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
             {pendingSteer && pendingSteer.accountId === accountId && pendingSteer.threadId === selectedThread?.id ? <section className="pending-steer" role="status" aria-label="Pending steer"><p>{pendingSteer.text}</p><div><button type="button" aria-label="Edit pending steer" title="Edit" onClick={() => { setDraft(pendingSteer.text); setPendingSteer(null); composerRef.current?.focus(); }}><Pencil aria-hidden="true" size={14} /></button><button type="button" aria-label="Cancel pending steer" title="Cancel" onClick={() => setPendingSteer(null)}><X aria-hidden="true" size={14} /></button></div></section> : null}

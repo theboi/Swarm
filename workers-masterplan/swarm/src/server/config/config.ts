@@ -66,7 +66,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     loginPasswordHash: required(env, "SWARM_LOGIN_PASSWORD_HASH"),
     totpSecret: required(env, "SWARM_TOTP_SECRET"),
     sessionSecret: required(env, "SWARM_SESSION_SECRET"),
-    codexBin: env.SWARM_CODEX_BIN ?? "/opt/homebrew/bin/codex",
+    codexBin: env.SWARM_CODEX_BIN ?? "/Applications/ChatGPT.app/Contents/Resources/codex",
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
     coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),

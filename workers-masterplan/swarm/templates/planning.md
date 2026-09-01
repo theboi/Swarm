@@ -4,6 +4,7 @@ Read these repository authorities from the account's EdenMind clone before actin
 - Masterplan: `{{MASTERPLAN_PATH}}`
 - Coordination root: `{{COORDINATION_ROOT}}`
 - Worker status: `{{STATUS_PATH}}`
+- Completion receipt: `{{COMPLETION_RECEIPT_PATH}}`
 - Task specification destination: `{{SPECIFICATION_PATH}}`
 - Implementation plan destination: `{{IMPLEMENTATION_PLAN_PATH}}`
 - Planned prerequisites:
@@ -26,5 +27,6 @@ Do not implement product code, UI, migrations, or runtime behavior in this phase
 - In `independent_main_clone` mode, do not impose a global edit lock; use the named push queue for reconciliation, affected verification, push, and remote ancestry proof.
 - At each independently testable planning checkpoint, run focused verification, stage only owned paths (staging only owned paths), commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability.
 - Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.
+- Before the final response, update only `{{COMPLETION_RECEIPT_PATH}}` so its `{{ACTIVE_PASS}}` pass is explicitly `complete`, record this macOS account and the current UTC time, commit it with the finished handoff, and push it to `origin/main`. Status wording does not complete the worker.
 
 If this planning handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:`. Hand off exact commits, checks, limitations, UI requirement mappings where applicable, and execution inputs. {{PHASE_TERMINAL_CONDITION}}

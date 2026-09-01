@@ -20,6 +20,8 @@ export interface TranscriptScope {
 export interface RawThreadTurn {
   id: string;
   startedAt: number | null;
+  /** Stable id supplied with the first user message that started this turn. */
+  clientUserMessageId?: string;
   /** Installed app-server's explicit proof that this turn contains all items. */
   itemsView: "full";
   items: Array<Record<string, unknown>>;

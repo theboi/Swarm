@@ -78,7 +78,7 @@ export class LocalRolloutTranscriptReader {
     const size = (await stat(cached.path)).size;
     if (size < cached.offset) { cached.offset = 0; cached.pending = ""; cached.turns.clear(); }
     if (size > cached.offset) await this.readAppended(cached);
-    return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, itemsView: "full", items: [...turn.items.values()] })) } };
+    return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
   }
 
   private async readAppended(cached: CachedRollout): Promise<void> {
@@ -100,13 +100,15 @@ export class LocalRolloutTranscriptReader {
     if (envelope?.type !== "event_msg") return;
     const payload = record(envelope.payload);
     if (payload?.type !== "item_completed" || typeof payload.turn_id !== "string") return;
-    const item = normalizeRolloutItem(payload.item);
+    const rawItem = record(payload.item);
+    const item = normalizeRolloutItem(rawItem);
     if (!item || typeof item.id !== "string") return;
     let turn = cached.turns.get(payload.turn_id);
     if (!turn) {
       turn = { id: payload.turn_id, startedAt: typeof payload.started_at_ms === "number" ? payload.started_at_ms / 1_000 : null, itemsView: "full", items: new Map() };
       cached.turns.set(payload.turn_id, turn);
     }
+    if (!turn.clientUserMessageId && rawItem?.type === "UserMessage" && typeof rawItem.client_id === "string" && rawItem.client_id) turn.clientUserMessageId = rawItem.client_id;
     turn.items.set(item.id, item);
   }
 }

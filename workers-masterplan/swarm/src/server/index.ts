@@ -6,7 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -39,6 +39,8 @@ import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { latestUnarchivedTaskThread, projectDispatchState, retainCompletedTaskIds } from "./tasks/taskProjection.js";
+import { retainLastGoodTaskGraph } from "./tasks/taskRefreshState.js";
+import { applyCompletionManifest, loadCompletionManifest } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { handoffThreadName } from "./tasks/handoff.js";
@@ -53,6 +55,7 @@ type DurableState = {
   workerAssignments?: WorkerAssignmentRecord[];
   limitResumes?: DurableLimitResumeRecord[];
   completedTaskIds?: string[];
+  completedTaskPass?: ManifestPass;
   approvals?: ApprovalJournalEntry[];
   notifications?: { breakingChangeAccounts?: AccountId[] };
   accountRateLimits?: Partial<Record<AccountId, RateLimitWindow[]>>;
@@ -134,6 +137,7 @@ async function createRuntime(config: SwarmConfig) {
     .map((record): LimitResumeRecord => ({ accountId: record.accountId, threadId: record.threadId, state: record.state as LimitResumeRecord["state"], updatedAt: record.updatedAt, ...(record.resumeClientUserMessageId ? { resumeClientUserMessageId: record.resumeClientUserMessageId } : {}) }));
   const limitResumes = new LimitResumeManifest(root.limitResumes, async (records) => state.mutate((value) => { value.limitResumes = records; }));
   const completedTaskIds = new Set(root.completedTaskIds ?? []);
+  let completedTaskPass = root.completedTaskPass;
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
   const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
   const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
@@ -273,17 +277,30 @@ async function createRuntime(config: SwarmConfig) {
       if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
       try {
         manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
-        const readiness = evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
-        const retainedCompletedTaskIds = retainCompletedTaskIds(completedTaskIds, readiness);
-        const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size;
+        const completion = await loadCompletionManifest(manifest, coordinationWorkspaceRoot);
+        const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
+        const activePass = manifest.lifecycle?.activePass ?? "planning";
+        const retainedCompletedTaskIds = completion.authoritative
+          ? new Set(completedTaskPass === activePass ? [...completedTaskIds, ...completion.completedTaskIds] : completion.completedTaskIds)
+          : retainCompletedTaskIds(completedTaskIds, fallbackReadiness);
+        const readiness = applyCompletionManifest(manifest, fallbackReadiness, completion.authoritative ? { ...completion, completedTaskIds: retainedCompletedTaskIds } : completion);
+        const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size
+          || [...retainedCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId))
+          || completedTaskPass !== activePass;
         if (completionChanged || !root.completedTaskIds) {
-          await state.mutate((value) => { value.completedTaskIds = [...retainedCompletedTaskIds]; });
+          await state.mutate((value) => { value.completedTaskIds = [...retainedCompletedTaskIds]; value.completedTaskPass = activePass; });
           completedTaskIds.clear();
           for (const taskId of retainedCompletedTaskIds) completedTaskIds.add(taskId);
+          completedTaskPass = activePass;
         }
         nodes = taskNode(manifest, readiness);
         manifestError = undefined;
-      } catch (error) { manifest = undefined; nodes = []; manifestError = error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID"; }
+      } catch (error) {
+        const retained = retainLastGoodTaskGraph(manifest, nodes, error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID");
+        manifest = retained.manifest;
+        nodes = retained.nodes;
+        manifestError = retained.manifestError;
+      }
       finally { tasksRefreshedAt = Date.now(); }
     })();
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }

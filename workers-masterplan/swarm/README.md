@@ -13,8 +13,9 @@ Codex Desktop must never be launched for a bot account.
 - macOS, with the coordinator run from the `claudiothe` account and local
   accounts `bot1` through `bot8` available to `su`.
 - Node.js 20 or later and npm.
-- Codex CLI 0.146.0 with `codex app-server` available at the absolute path in
-  `SWARM_CODEX_BIN`.
+- Codex Desktop installed. `SWARM_CODEX_BIN` must point to its bundled Codex
+  runtime (`/Applications/ChatGPT.app/Contents/Resources/codex`) so Desktop and
+  Swarm use the same thread database, rollout format, and model cache schema.
 - A completed Codex login in every account that will be connected.
 
 Install the locked dependencies with `npm ci` from this directory.
@@ -76,6 +77,13 @@ finding, and planning status on `origin/main`; it does not wait for Layer 2
 implementation. It writes a separate UI requirements contract and presentation
 handoff with fixture/mock-backed presentation only. Each existing Layer 3 worker
 plans against both documents in Pass 1 and performs the live wiring in Pass 2.
+
+Completion is repository-authoritative under
+`docs/workers/2026-08-14-mvp3/completion-manifest/`. Each worker owns one
+lower-case task receipt and marks `planning` and `execution` independently.
+The coordinator pulls these receipts and never infers completion from phrases
+in a status document or chat response. Because receipts are split by task,
+workers can finish concurrently without editing one shared state file.
 
 `docs/workers/2026-08-14-mvp3/PLANNING_GATE.md` is one coordinator-owned global
 receipt, not a 33rd dispatchable task. No execution projection is imported or

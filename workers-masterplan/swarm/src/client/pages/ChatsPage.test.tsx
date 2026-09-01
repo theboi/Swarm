@@ -370,6 +370,25 @@ describe("ChatsPage", () => {
     await waitFor(() => expect(transcript.scrollTop).toBe(1_240));
   });
 
+  it("offers direct jumps to the bottom and the latest message sent by the operator", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+
+    const transcript = screen.getByTestId("transcript-scroll");
+    Object.defineProperty(transcript, "scrollHeight", { configurable: true, value: 1_400 });
+    transcript.scrollTop = 120;
+    await user.click(screen.getByRole("button", { name: "Scroll to bottom" }));
+    expect(transcript.scrollTop).toBe(1_400);
+
+    const userMessages = await screen.findAllByRole("article", { name: "userMessage" });
+    const latest = userMessages.at(-1)!;
+    const scrollIntoView = vi.fn();
+    latest.scrollIntoView = scrollIntoView;
+    await user.click(screen.getByRole("button", { name: "Scroll to latest message you sent" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+  });
+
   it("does not force the transcript back to the bottom during live refreshes", async () => {
     setViewport(1440);
     const { rerender } = render(<ChatsPage snapshot={chatSnapshot} api={api} activeTurnKeys={new Set(["bot3\u0000thread-1"])} transcriptRevision={0} />);

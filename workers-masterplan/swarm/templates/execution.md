@@ -4,6 +4,7 @@ Read these repository authorities from the account's EdenMind clone before actin
 - Masterplan: `{{MASTERPLAN_PATH}}`
 - Coordination root: `{{COORDINATION_ROOT}}`
 - Worker status: `{{STATUS_PATH}}`
+- Completion receipt: `{{COMPLETION_RECEIPT_PATH}}`
 - Task specification: `{{SPECIFICATION_PATH}}`
 - Implementation plan: `{{IMPLEMENTATION_PLAN_PATH}}`
 - Planning-gate receipt: `{{PLANNING_GATE_PATH}}`
@@ -27,5 +28,6 @@ Ask the user focused questions when a missing decision would materially change t
 - In `independent_main_clone` mode, do not impose a global edit lock; use the named push queue for reconciliation, affected verification, push, and remote ancestry proof.
 - At each independently testable execution checkpoint, run focused verification, stage only owned paths (staging only owned paths), commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability.
 - Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.
+- Before the final response, update only `{{COMPLETION_RECEIPT_PATH}}` so its `{{ACTIVE_PASS}}` pass is explicitly `complete`, record this macOS account and the current UTC time, commit it with the finished handoff, and push it to `origin/main`. Status wording does not complete the worker.
 
 Use Terra High/Xhigh for implementation according to difficulty; reserve Sol High for unexpected planning during execution. If this execution handoff identifies a breaking change, begin a separate paragraph with `BREAKING CHANGE:`. Execution ends only when fresh acceptance evidence, closed review, final status, and remote-reachability proof are present. {{PHASE_TERMINAL_CONDITION}}

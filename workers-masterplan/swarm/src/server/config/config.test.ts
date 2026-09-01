@@ -41,6 +41,7 @@ describe("loadConfig", () => {
     expect(config.masterplanPath).toBe("manifests/mvp3.json");
     expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
     expect(config.host).toBe("0.0.0.0");
+    expect(config.codexBin).toBe("/Applications/ChatGPT.app/Contents/Resources/codex");
     expect(config.terminalPort).toBe(config.port + 1);
   });
 
