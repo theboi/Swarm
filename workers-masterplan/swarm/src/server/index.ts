@@ -39,8 +39,8 @@ import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
 import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
 import { latestUnarchivedTaskThread, projectDispatchState, retainCompletedTaskIds } from "./tasks/taskProjection.js";
-import { retainLastGoodTaskGraph } from "./tasks/taskRefreshState.js";
-import { applyCompletionManifest, loadCompletionManifest } from "./tasks/completionManifest.js";
+import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
+import { applyCompletionManifest, loadCompletionManifest, projectManifestToActivePass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { handoffThreadName } from "./tasks/handoff.js";
@@ -275,15 +275,17 @@ async function createRuntime(config: SwarmConfig) {
     if (taskRefreshPromise) return taskRefreshPromise;
     taskRefreshPromise = (async () => {
       if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
-      try {
-        manifest = await loadManifest(config.masterplanPath, resolve(config.coordinationRoot ?? process.cwd()));
-        const completion = await loadCompletionManifest(manifest, coordinationWorkspaceRoot);
-        const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(manifest, await loadBlueprintEvidence(manifest));
-        const activePass = manifest.lifecycle?.activePass ?? "planning";
+      const refreshed = await refreshTaskGraphAtomically({ manifest, nodes }, async () => {
+        const fullManifest = await loadManifest(config.masterplanPath!, resolve(config.coordinationRoot ?? process.cwd()));
+        const completion = await loadCompletionManifest(fullManifest, coordinationWorkspaceRoot);
+        const candidateManifest = projectManifestToActivePass(fullManifest);
+        const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(candidateManifest, await loadBlueprintEvidence(candidateManifest));
+        const activePass = candidateManifest.lifecycle?.activePass ?? "planning";
         const retainedCompletedTaskIds = completion.authoritative
           ? new Set(completedTaskPass === activePass ? [...completedTaskIds, ...completion.completedTaskIds] : completion.completedTaskIds)
           : retainCompletedTaskIds(completedTaskIds, fallbackReadiness);
-        const readiness = applyCompletionManifest(manifest, fallbackReadiness, completion.authoritative ? { ...completion, completedTaskIds: retainedCompletedTaskIds } : completion);
+        const readiness = applyCompletionManifest(candidateManifest, fallbackReadiness, completion.authoritative ? { ...completion, completedTaskIds: retainedCompletedTaskIds } : completion);
+        const candidateNodes = taskNode(candidateManifest, readiness);
         const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size
           || [...retainedCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId))
           || completedTaskPass !== activePass;
@@ -293,15 +295,12 @@ async function createRuntime(config: SwarmConfig) {
           for (const taskId of retainedCompletedTaskIds) completedTaskIds.add(taskId);
           completedTaskPass = activePass;
         }
-        nodes = taskNode(manifest, readiness);
-        manifestError = undefined;
-      } catch (error) {
-        const retained = retainLastGoodTaskGraph(manifest, nodes, error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID");
-        manifest = retained.manifest;
-        nodes = retained.nodes;
-        manifestError = retained.manifestError;
-      }
-      finally { tasksRefreshedAt = Date.now(); }
+        return { manifest: candidateManifest, nodes: candidateNodes };
+      }, (error) => error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID");
+      manifest = refreshed.manifest;
+      nodes = refreshed.nodes;
+      manifestError = refreshed.manifestError;
+      tasksRefreshedAt = Date.now();
     })();
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
@@ -349,7 +348,6 @@ async function createRuntime(config: SwarmConfig) {
       if (existing) {
         const taskComplete = completedTaskIds.has(node.id) || node.readiness.state === "complete";
         if (taskComplete && existing.state !== "completed") await assignments.complete(existing.accountId, existing.threadId);
-        else if (!taskComplete && existing.state === "completed") await assignments.markAttentionRequired(existing.accountId, existing.threadId);
         continue;
       }
       const thread = latestUnarchivedTaskThread(threadSummaries, node.id);

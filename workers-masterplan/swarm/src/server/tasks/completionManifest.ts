@@ -1,4 +1,5 @@
-import { readFile, readdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { ACCOUNT_IDS, type AccountId, type ManifestPass, type TaskManifest, type TaskReadiness } from "../../shared/contracts.js";
@@ -17,9 +18,31 @@ export interface WorkerCompletionReceipt {
 
 export interface CompletionManifestSnapshot {
   authoritative: boolean;
+  revision?: string;
   receipts: ReadonlyMap<string, WorkerCompletionReceipt>;
   completedTaskIds: ReadonlySet<string>;
 }
+
+export interface CompletionManifestSource {
+  fetch(repositoryRoot: string): Promise<void>;
+  resolveRevision(repositoryRoot: string): Promise<string>;
+  readFile(repositoryRoot: string, revision: string, path: string): Promise<string | undefined>;
+}
+
+const execFileAsync = promisify(execFile);
+
+const gitCompletionManifestSource: CompletionManifestSource = {
+  fetch: async (repositoryRoot) => { await execFileAsync("git", ["-C", repositoryRoot, "fetch", "origin", "main"]); },
+  resolveRevision: async (repositoryRoot) => (await execFileAsync("git", ["-C", repositoryRoot, "rev-parse", "origin/main"])).stdout.trim(),
+  readFile: async (repositoryRoot, revision, path) => {
+    try { return (await execFileAsync("git", ["-C", repositoryRoot, "show", `${revision}:${path}`], { maxBuffer: 4 * 1024 * 1024 })).stdout; }
+    catch (error) {
+      const stderr = typeof (error as { stderr?: unknown }).stderr === "string" ? (error as { stderr: string }).stderr : "";
+      if (/does not exist in|exists on disk, but not in|path .* not in|Path .* does not exist/.test(stderr)) return undefined;
+      throw error;
+    }
+  },
+};
 
 function inside(root: string, candidate: string): boolean {
   const value = relative(root, candidate);
@@ -46,28 +69,26 @@ export function completionReceiptPath(manifest: Pick<TaskManifest, "coordination
   return `${manifest.coordinationRoot}/completion-manifest/${taskId.toLowerCase()}.json`;
 }
 
-/** Loads collision-safe, worker-owned completion receipts from the pulled repository. */
-export async function loadCompletionManifest(manifest: TaskManifest, repositoryRoot: string): Promise<CompletionManifestSnapshot> {
+/** Loads collision-safe, worker-owned completion receipts from one fetched origin/main revision. */
+export async function loadCompletionManifest(manifest: TaskManifest, repositoryRoot: string, source: CompletionManifestSource = gitCompletionManifestSource): Promise<CompletionManifestSnapshot> {
   const root = resolve(repositoryRoot);
   const directory = resolve(root, manifest.coordinationRoot, "completion-manifest");
   if (!inside(root, directory)) throw new Error("Completion manifest is outside repository");
-  let entries;
-  try { entries = await readdir(directory, { withFileTypes: true }); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { authoritative: false, receipts: new Map(), completedTaskIds: new Set() };
-    throw error;
-  }
-  const taskByFilename = new Map(manifest.tasks.map((task) => [`${task.id.toLowerCase()}.json`, task]));
+  await source.fetch(root);
+  const revision = await source.resolveRevision(root);
+  const markerPath = `${manifest.coordinationRoot}/completion-manifest/README.md`;
+  if (await source.readFile(root, revision, markerPath) === undefined) return { authoritative: false, revision, receipts: new Map(), completedTaskIds: new Set() };
   const receipts = new Map<string, WorkerCompletionReceipt>();
-  for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
-    const task = taskByFilename.get(entry.name);
-    if (!task) throw new Error(`Unknown completion manifest receipt filename: ${entry.name}`);
-    const path = resolve(directory, entry.name);
-    if (!inside(directory, path)) throw new Error("Completion manifest receipt is outside repository");
-    receipts.set(task.id, parseReceipt(JSON.parse(await readFile(path, "utf8")), task.id, task.passes ?? ["planning"]));
+  for (const task of manifest.tasks) {
+    const path = completionReceiptPath(manifest, task.id);
+    const absolutePath = resolve(root, path);
+    if (!inside(directory, absolutePath)) throw new Error("Completion manifest receipt is outside repository");
+    const contents = await source.readFile(root, revision, path);
+    if (contents === undefined) continue;
+    receipts.set(task.id, parseReceipt(JSON.parse(contents), task.id, task.passes ?? ["planning"]));
   }
   const activePass = manifest.lifecycle?.activePass ?? "planning";
-  return { authoritative: true, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)) };
+  return { authoritative: true, revision, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)) };
 }
 
 /** Explicit repository receipts replace status-prose heuristics whenever present. */
@@ -75,7 +96,7 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
   if (!completion.authoritative) return [...fallback];
   const activePass = manifest.lifecycle?.activePass ?? "planning";
   const fallbackById = new Map(fallback.map((task) => [task.taskId, task]));
-  return manifest.tasks.map((task) => {
+  return manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)).map((task) => {
     const completed = completion.completedTaskIds.has(task.id);
     const dependencies = activePass === "execution" ? task.executionDependsOn ?? [] : task.dependsOn;
     const prerequisitesComplete = dependencies.every((taskId) => completion.completedTaskIds.has(taskId));
@@ -93,4 +114,10 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
       ...(prior?.suggestedAccount ? { suggestedAccount: prior.suggestedAccount } : {}),
     };
   });
+}
+
+/** Removes workers that do not own the active pass, such as UI presentation workers in execution. */
+export function projectManifestToActivePass(manifest: TaskManifest): TaskManifest {
+  const activePass = manifest.lifecycle?.activePass ?? "planning";
+  return { ...manifest, tasks: manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)) };
 }
