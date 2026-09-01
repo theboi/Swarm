@@ -331,6 +331,10 @@ async function createRuntime(config: SwarmConfig) {
   };
   const accountSnapshot = () => accounts.snapshotsList();
   const rateLimitRefresher = new AccountRateLimitRefresher({
+    prepare: async (id) => {
+      if (accounts.snapshot(id).authentication !== "unauthenticated") return;
+      await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+    },
     read: async (id) => (await liveClient(id)).readRateLimitWindows(),
     current: (id) => accounts.snapshot(id),
     merge: mergeRateLimits,

@@ -48,7 +48,7 @@ export class AccountManager {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
     if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
     const existing = this.connections.get(input.account);
-    if (existing?.client.isConnected()) return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
     if (existing) return this.disconnect(input.account).then(() => this.connect(input));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;

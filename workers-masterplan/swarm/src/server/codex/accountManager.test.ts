@@ -129,6 +129,19 @@ describe("AccountManager", () => {
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated", errorCode: undefined, rateLimits: [{ id: "codex:primary", usedPercent: 5 }] });
   });
 
+  it("replaces a connected app-server after its authentication expires", async () => {
+    const { manager, launch, handle, client } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_expired"));
+
+    await manager.connect({ account, password: "bot-password" });
+
+    expect(client.close).toHaveBeenCalledOnce();
+    expect(handle.stop).toHaveBeenCalledOnce();
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
   it("recognizes structured 401 and token-expired metadata regardless of message wording", async () => {
     const { manager } = fixture();
     await manager.connect({ account, password: "bot-password" });

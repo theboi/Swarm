@@ -5,6 +5,7 @@ export class AccountRateLimitRefresher {
   private readonly tails = new Map<AccountId, Promise<AccountSnapshot>>();
 
   constructor(private readonly options: {
+    prepare?(accountId: AccountId): Promise<void>;
     read(accountId: AccountId): Promise<RateLimitWindow[]>;
     current(accountId: AccountId): AccountSnapshot;
     merge(current: RateLimitWindow[], incoming: RateLimitWindow[]): RateLimitWindow[];
@@ -15,9 +16,11 @@ export class AccountRateLimitRefresher {
 
   refresh(accountId: AccountId): Promise<AccountSnapshot> {
     const prior = this.tails.get(accountId);
-    const expectedToken = this.options.token(accountId);
     const operation = (prior ? prior.catch(() => undefined) : Promise.resolve()).then(async () => {
+      let expectedToken: unknown;
       try {
+        if (this.options.prepare) await this.options.prepare(accountId);
+        expectedToken = this.options.token(accountId);
         if (!expectedToken || this.options.token(accountId) !== expectedToken) throw new Error("RATE_LIMIT_REFRESH_CANCELLED");
         const incoming = await this.options.read(accountId);
         if (this.options.token(accountId) !== expectedToken) throw new Error("RATE_LIMIT_REFRESH_CANCELLED");

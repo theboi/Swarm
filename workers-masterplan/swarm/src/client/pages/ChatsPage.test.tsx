@@ -649,6 +649,28 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
   });
 
+  it("names authentication instead of a false reset countdown when a waiting account token expired", () => {
+    setViewport(1440);
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      accounts: chatSnapshot.accounts.map((account) => account.id === "bot3" ? {
+        ...account,
+        connection: "action_required" as const,
+        authentication: "unauthenticated" as const,
+        errorCode: "ACCOUNT_AUTH_REQUIRED",
+        rateLimits: [],
+      } : account),
+      workerAssignments: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: Date.now() }],
+    };
+
+    render(<ChatsPage snapshot={waitingSnapshot} api={api} />);
+
+    expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Sign in to bot3 before this chat can resume.");
+    expect(screen.getByRole("status", { name: "Session limit reached" })).not.toHaveTextContent("under 1m");
+    expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
+  });
+
   it("shows the resume controls immediately from the live limit event before the durable snapshot refresh finishes", () => {
     setViewport(1440);
     render(<ChatsPage snapshot={{ ...chatSnapshot, workerAssignments: [], limitResumes: [] }} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);

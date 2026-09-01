@@ -59,4 +59,26 @@ describe("AccountRateLimitRefresher", () => {
     expect(success).not.toHaveBeenCalled();
     expect(failure).not.toHaveBeenCalled();
   });
+
+  it("prepares an expired account before capturing the connection used by the probe", async () => {
+    const priorConnection = {};
+    const recoveredConnection = {};
+    let connection = priorConnection;
+    const prepare = vi.fn(async () => { connection = recoveredConnection; });
+    const read = vi.fn(async () => [{ id: "primary", label: "Five-hour", usedPercent: 0, resetsAt: 2_000, updatedAt: 1_000 }]);
+    const snapshot = { id: "bot2", connection: "connected", authentication: "authenticated", activeTurns: 0, lastAssignedAt: null, rateLimits: [] } as AccountSnapshot;
+    const refresher = new AccountRateLimitRefresher({
+      prepare,
+      read,
+      current: () => snapshot,
+      merge: (_current, incoming) => incoming,
+      success: (_accountId, windows) => ({ ...snapshot, rateLimits: windows }),
+      failure: () => snapshot,
+      token: () => connection,
+    });
+
+    await expect(refresher.refresh("bot2")).resolves.toMatchObject({ rateLimits: [{ usedPercent: 0 }] });
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledOnce();
+  });
 });
