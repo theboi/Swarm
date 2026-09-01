@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { CoordinatorSnapshot } from "../../shared/contracts.js";
+import type { CoordinatorSnapshot, PendingApproval } from "../../shared/contracts.js";
 import type { CoordinatorApi } from "../api.js";
 import { startUsagePolling } from "./usagePolling.js";
 
@@ -15,20 +15,24 @@ interface CoordinatorStoreValue {
   activeTurnIds: ReadonlyMap<string, string>;
   limitExhaustedTurnKeys: ReadonlySet<string>;
   unreadTurnKeys: ReadonlySet<string>;
+  attentionTurnKeys: ReadonlySet<string>;
   markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
   markThreadRead: (accountId: string, threadId: string) => void;
 }
 
 const CoordinatorStore = createContext<CoordinatorStoreValue | null>(null);
 const UNREAD_STORAGE_KEY = "swarm.unread-turns.v1";
+const ACKNOWLEDGED_APPROVALS_STORAGE_KEY = "swarm.acknowledged-approvals.v1";
 
-function readUnreadTurns(): ReadonlySet<string> {
+function readStringSet(key: string): ReadonlySet<string> {
   try {
-    const value = window.localStorage.getItem(UNREAD_STORAGE_KEY);
+    const value = window.localStorage.getItem(key);
     const parsed = value ? JSON.parse(value) : [];
     return new Set(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []);
   } catch { return new Set(); }
 }
+
+function readUnreadTurns(): ReadonlySet<string> { return readStringSet(UNREAD_STORAGE_KEY); }
 
 export function classifyRealtimeMessage(value: unknown, currentSequence: number): { kind: "snapshot" | "event" | "gap" | "invalid"; sequence?: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "invalid" };
@@ -51,6 +55,16 @@ export function clearUnreadTurn(current: ReadonlySet<string>, key: string): Read
   return next;
 }
 
+export function acknowledgeApprovalsForThread(current: ReadonlySet<string>, approvals: PendingApproval[], accountId: string, threadId: string): ReadonlySet<string> {
+  const ids = approvals.filter((approval) => approval.accountId === accountId && approval.threadId === threadId).map((approval) => approval.id);
+  if (!ids.some((id) => !current.has(id))) return current;
+  return new Set([...current, ...ids]);
+}
+
+export function unreadApprovalTurnKeys(approvals: PendingApproval[], acknowledged: ReadonlySet<string>): ReadonlySet<string> {
+  return new Set(approvals.filter((approval) => !acknowledged.has(approval.id)).map((approval) => `${approval.accountId}\u0000${approval.threadId}`));
+}
+
 function browserWebSocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
@@ -65,6 +79,10 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const [activeTurnIds, setActiveTurnIds] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [limitExhaustedTurnKeys, setLimitExhaustedTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [unreadTurnKeys, setUnreadTurnKeys] = useState<ReadonlySet<string>>(readUnreadTurns);
+  const [acknowledgedApprovalIds, setAcknowledgedApprovalIds] = useState<ReadonlySet<string>>(() => readStringSet(ACKNOWLEDGED_APPROVALS_STORAGE_KEY));
+  const pendingApprovalsRef = useRef<PendingApproval[]>([]);
+  pendingApprovalsRef.current = snapshot?.pendingApprovals ?? [];
+  const attentionTurnKeys = useMemo(() => unreadApprovalTurnKeys(snapshot?.pendingApprovals ?? [], acknowledgedApprovalIds), [acknowledgedApprovalIds, snapshot?.pendingApprovals]);
   const markTurnActive = useCallback((accountId: string, threadId: string, turnId?: string) => {
     const key = `${accountId}\u0000${threadId}`;
     setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
@@ -73,6 +91,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const markThreadRead = useCallback((accountId: string, threadId: string) => {
     const key = `${accountId}\u0000${threadId}`;
     setUnreadTurnKeys((current) => clearUnreadTurn(current, key));
+    setAcknowledgedApprovalIds((current) => acknowledgeApprovalsForThread(current, pendingApprovalsRef.current, accountId, threadId));
   }, []);
   const refresh = useCallback(async () => {
     try {
@@ -101,6 +120,10 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   useEffect(() => {
     try { window.localStorage.setItem(UNREAD_STORAGE_KEY, JSON.stringify([...unreadTurnKeys])); } catch { /* storage is optional */ }
   }, [unreadTurnKeys]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(ACKNOWLEDGED_APPROVALS_STORAGE_KEY, JSON.stringify([...acknowledgedApprovalIds])); } catch { /* storage is optional */ }
+  }, [acknowledgedApprovalIds]);
 
   useEffect(() => {
     let disposed = false;
@@ -176,7 +199,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
     return () => { disposed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
   }, [refresh]);
 
-  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevision, unreadTurnKeys]);
+  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, attentionTurnKeys, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevision, unreadTurnKeys]);
   return <CoordinatorStore.Provider value={value}>{children}</CoordinatorStore.Provider>;
 }
 

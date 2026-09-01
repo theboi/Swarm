@@ -98,6 +98,7 @@ export class AppServerClient {
   private transcript = initialTranscriptState;
   private readonly trackedThreadIds = new Set<string>();
   private readonly unloadedThreadIds = new Set<string>();
+  private readonly turnSettingsByThread = new Map<string, ChatExecutionSettings>();
   private readonly eventListeners = new Set<(event: NormalizedAppServerEvent) => void>();
   private needsTranscriptRecovery = false;
   private readonly workspaceRootOverride: string | undefined;
@@ -224,6 +225,7 @@ export class AppServerClient {
 
   async startTurn(input: StartTurnInput): Promise<{ turn: Record<string, unknown> }> {
     this.requireReady();
+    this.turnSettingsByThread.set(input.threadId, { ...(input.settings ?? {}) });
     if (this.unloadedThreadIds.has(input.threadId)) await this.resumeThread(input.threadId);
     return this.rpc.request("turn/start", {
       threadId: input.threadId,
@@ -231,6 +233,11 @@ export class AppServerClient {
       input: [{ type: "text", text: input.text, text_elements: [] }, ...(input.attachments ?? []).map((attachment) => ({ type: "mention", name: attachment.name, path: attachment.path }))],
       ...safeTurnSettings(this.account, this.workspaceRootOverride, input.settings),
     });
+  }
+
+  turnSettings(threadId: string): ChatExecutionSettings | undefined {
+    const settings = this.turnSettingsByThread.get(threadId);
+    return settings ? { ...settings } : undefined;
   }
 
   async listModels(): Promise<ChatModelOption[]> {

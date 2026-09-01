@@ -74,6 +74,12 @@ function wasTransferredFrom(snapshot: CoordinatorSnapshot, accountId: AccountId,
   );
 }
 
+function isWaitingForLimit(snapshot: CoordinatorSnapshot, liveLimitExhaustedTurnKeys: ReadonlySet<string>, accountId: AccountId, threadId: string): boolean {
+  const durable = snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === threadId);
+  if (durable) return durable.state === "waiting_for_limit";
+  return liveLimitExhaustedTurnKeys.has(`${accountId}\u0000${threadId}`) && !wasTransferredFrom(snapshot, accountId, threadId);
+}
+
 function useCompactPicker(): boolean {
   const [compact, setCompact] = useState(() => window.innerWidth <= 768);
   useEffect(() => {
@@ -231,7 +237,7 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   </div>;
 }
 
-export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
+export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
   const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
@@ -269,6 +275,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const moveDialogRef = useRef<HTMLElement>(null);
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const renameCloseButton = useRef<HTMLButtonElement>(null);
+  const selectedTranscriptKeyRef = useRef<string | null>(null);
+  const transcriptRequestsRef = useRef(new Map<string, { running: boolean; pending: boolean; scrollOnSuccess: boolean }>());
+  selectedTranscriptKeyRef.current = accountId && threadId && !isDraftChat ? `${accountId}\u0000${threadId}` : null;
   const compact = useCompactPicker();
   const threads = useMemo(() => {
     const listed = accountId ? threadsByAccount[accountId] ?? [] : [];
@@ -307,29 +316,50 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, [isDraftChat, pendingTarget, threads]);
 
   useEffect(() => {
-    if (!accountId || !threadId || isDraftChat) { setItems([]); return; }
+    if (!accountId || !threadId || isDraftChat) { selectedTranscriptKeyRef.current = null; setItems([]); return; }
     const openedKey = `${accountId}\u0000${threadId}`;
+    selectedTranscriptKeyRef.current = openedKey;
     const shouldScrollToBottom = lastOpenedChatKey.current !== openedKey;
     if (shouldScrollToBottom) lastOpenedChatKey.current = openedKey;
-    let live = true;
-    void api.readTranscript(accountId, threadId).then((result) => {
-      if (!live) return;
-      if ("error" in result && result.error) { setError(result.error.message); setItems([]); return; }
-      setItems(result.data);
-      markThreadRead(accountId, threadId);
-      if (shouldScrollToBottom) setScrollRequest((request) => request + 1);
-    }).catch(() => {
-      if (!live) return;
-      setError("Unable to load this chat.");
-      setItems([]);
-    });
-    return () => { live = false; };
+    const requests = transcriptRequestsRef.current;
+    const state = requests.get(openedKey) ?? { running: false, pending: false, scrollOnSuccess: false };
+    requests.set(openedKey, state);
+    state.pending = true;
+    state.scrollOnSuccess ||= shouldScrollToBottom;
+    const drain = async () => {
+      if (state.running) return;
+      state.running = true;
+      try {
+        while (state.pending) {
+          state.pending = false;
+          try {
+            const result = await api.readTranscript(accountId, threadId);
+            if (selectedTranscriptKeyRef.current !== openedKey) continue;
+            if ("error" in result && result.error) { setError(result.error.message); continue; }
+            setItems(result.data);
+            markThreadRead(accountId, threadId);
+            if (state.scrollOnSuccess) {
+              state.scrollOnSuccess = false;
+              setScrollRequest((request) => request + 1);
+            }
+          } catch {
+            if (selectedTranscriptKeyRef.current === openedKey) setError("Unable to load this chat.");
+          }
+        }
+      } finally {
+        state.running = false;
+        if (state.pending) void drain();
+      }
+    };
+    void drain();
   }, [api, accountId, threadId, isDraftChat, markThreadRead, transcriptRevision, liveTranscriptRevision]);
 
   useEffect(() => {
-    if (!accountId || !threadId || isDraftChat || !unreadTurnKeys.has(`${accountId}\u0000${threadId}`)) return;
+    if (!accountId || !threadId || isDraftChat) return;
+    const key = `${accountId}\u0000${threadId}`;
+    if (!unreadTurnKeys.has(key) && !attentionTurnKeys.has(key)) return;
     markThreadRead(accountId, threadId);
-  }, [accountId, isDraftChat, markThreadRead, threadId, unreadTurnKeys]);
+  }, [accountId, attentionTurnKeys, isDraftChat, markThreadRead, threadId, unreadTurnKeys]);
 
   useLayoutEffect(() => {
     if (!scrollRequest || !scrollRef.current) return;
@@ -549,10 +579,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     messages?.item(messages.length - 1)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
-  const resumeRecord = threadId && accountId ? snapshot.limitResumes?.find((record) => record.accountId === accountId && record.threadId === threadId) : undefined;
-  const transferredAway = threadId && accountId ? snapshot.workerAssignments?.some((assignment) => assignment.transferHistory.some((transfer) => transfer.fromAccountId === accountId && transfer.fromThreadId === threadId)) : false;
-  const liveLimitExhausted = Boolean(activeTurnKey && limitExhaustedTurnKeys.has(activeTurnKey));
-  const limitExhausted = Boolean(activeTurnKey && (resumeRecord?.state === "waiting_for_limit" || (liveLimitExhausted && resumeRecord?.state !== "transferred" && !transferredAway)));
+  const limitExhausted = Boolean(threadId && accountId && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, accountId, threadId));
   const resumeCountdown = limitCountdown(exhaustedLimit?.resetsAt ?? null, clock) ?? "under 1m";
   const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
   const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
@@ -651,12 +678,12 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
             const threadCount = accountThreads.length;
             const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`));
-            const accountLimitHit = snapshot.limitResumes?.some((record) => record.accountId === account.id && (record.state === "waiting_for_limit" || record.state === "resuming")) || [...limitExhaustedTurnKeys].some((key) => {
+            const accountLimitHit = snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") || [...limitExhaustedTurnKeys].some((key) => {
               const prefix = `${account.id}\u0000`;
-              return key.startsWith(prefix) && !wasTransferredFrom(snapshot, account.id, key.slice(prefix.length));
+              return key.startsWith(prefix) && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, account.id, key.slice(prefix.length));
             });
             const accountHasUnread = [...unreadTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
-            const accountNeedsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === account.id);
+            const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
             const activityClass = accountLimitHit ? "chat-account-picker__activity chat-account-picker__activity--limit" : accountThinking ? "chat-account-picker__activity" : "";
             return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><span className={activityClass} aria-label={accountLimitHit ? `${account.id} waiting for limit` : accountThinking ? `${account.id} working` : undefined}><span className={`chat-account-picker__status chat-account-picker__status--${account.connection}`} aria-hidden="true" /></span><span>{account.id}</span><span className="chat-account-picker__count"><span aria-hidden="true">{threadCount}</span>{accountHasUnread ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span></button>;
           })}
@@ -668,9 +695,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const name = thread.name ?? "Unnamed chat";
             const threadKey = `${thread.accountId}\u0000${thread.id}`;
             const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active";
-            const waitingForLimit = snapshot.limitResumes?.some((record) => record.accountId === thread.accountId && record.threadId === thread.id && (record.state === "waiting_for_limit" || record.state === "resuming")) || (limitExhaustedTurnKeys.has(threadKey) && !wasTransferredFrom(snapshot, thread.accountId, thread.id));
+            const waitingForLimit = isWaitingForLimit(snapshot, limitExhaustedTurnKeys, thread.accountId, thread.id);
             const hasUnread = unreadTurnKeys.has(threadKey);
-            const needsAttention = snapshot.pendingApprovals.some((approval) => approval.accountId === thread.accountId && approval.threadId === thread.id);
+            const needsAttention = attentionTurnKeys.has(threadKey);
             const status = thinking ? "Thinking" : waitingForLimit ? "Waiting for limit" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
             return <button key={thread.id} type="button" aria-label={name} aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}><span className="thread-picker__icon">{thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <MessageSquarePlus aria-hidden="true" size={16} strokeWidth={1.75} />}</span><span className="thread-picker__copy"><strong>{name}</strong><small>{status}</small></span>{hasUnread ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} needs attention`} /> : null}</button>;
           }) : <p className="thread-picker__empty">No chats for this account.</p>}</div>

@@ -243,6 +243,28 @@ describe("ChatsPage", () => {
     }
   });
 
+  it("serializes slow transcript polling so a large chat cannot be starved by refresh ticks", async () => {
+    vi.useFakeTimers();
+    let resolveFirst!: (value: { data: typeof chatTranscript }) => void;
+    const firstRead = new Promise<{ data: typeof chatTranscript }>((resolve) => { resolveFirst = resolve; });
+    const readTranscript = vi.fn()
+      .mockImplementationOnce(() => firstRead)
+      .mockResolvedValue({ data: chatTranscript });
+    try {
+      setViewport(1440);
+      render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} />);
+      expect(readTranscript).toHaveBeenCalledTimes(1);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(7_500); });
+
+      expect(readTranscript).toHaveBeenCalledTimes(1);
+      await act(async () => { resolveFirst({ data: chatTranscript }); await Promise.resolve(); });
+      expect(readTranscript).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reconciles an open chat even when cached activity incorrectly says idle", async () => {
     vi.useFakeTimers();
     const readTranscript = vi.fn(async () => ({ data: chatTranscript }));
@@ -417,7 +439,14 @@ describe("ChatsPage", () => {
 
   it("shows working spinners and pending-response dots on both account and chat rows", () => {
     setViewport(1440);
-    render(<ChatsPage snapshot={chatSnapshot} api={api} activeTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+    render(
+      <ChatsPage
+        snapshot={chatSnapshot}
+        api={api}
+        activeTurnKeys={new Set(["bot3\u0000thread-1"])}
+        attentionTurnKeys={new Set(["bot3\u0000thread-1"])}
+      />,
+    );
 
     expect(screen.getByLabelText("bot3 working")).toBeVisible();
     expect(screen.getByLabelText("bot3 needs attention")).toBeVisible();
@@ -520,6 +549,21 @@ describe("ChatsPage", () => {
     expect(screen.getByLabelText("bot3 waiting for limit")).toHaveClass("chat-account-picker__activity--limit");
   });
 
+  it("clears the yellow wait state as soon as the durable chat state is resuming", () => {
+    setViewport(1440);
+    const resumingSnapshot = {
+      ...chatSnapshot,
+      pendingApprovals: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "resuming" as const, updatedAt: 2, resumeClientUserMessageId: "resume-1" }],
+    };
+
+    render(<ChatsPage snapshot={resumingSnapshot} api={api} limitExhaustedTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Session limit reached" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "T0 · Graph planning" })).not.toHaveTextContent("Waiting for limit");
+  });
+
   it("shows unread reply dots on the chat and owning bot until that chat is opened", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -532,6 +576,24 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "U1 · Coordinator UI" }));
 
     await waitFor(() => expect(markThreadRead).toHaveBeenCalledWith("bot3", "thread-2"));
+  });
+
+  it("does not recreate a notification dot from a pending approval after its chat is opened", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const attentionKey = "bot3\u0000thread-2";
+    const approval = { ...chatSnapshot.pendingApprovals[0], id: "approval-thread-2", threadId: "thread-2" };
+    const approvalSnapshot = { ...chatSnapshot, pendingApprovals: [approval] };
+    const markThreadRead = vi.fn();
+    const view = render(<ChatsPage snapshot={approvalSnapshot} api={api} attentionTurnKeys={new Set([attentionKey])} markThreadRead={markThreadRead} />);
+
+    expect(screen.getByLabelText("bot3 needs attention")).toBeVisible();
+    expect(screen.getByLabelText("U1 · Coordinator UI needs attention")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "U1 · Coordinator UI" }));
+    view.rerender(<ChatsPage snapshot={approvalSnapshot} api={api} attentionTurnKeys={new Set()} markThreadRead={markThreadRead} />);
+
+    expect(screen.queryByLabelText("bot3 needs attention")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("U1 · Coordinator UI needs attention")).not.toBeInTheDocument();
   });
 
   it("flags an unassigned chat for resume when its durable limit record is waiting", () => {

@@ -88,6 +88,19 @@ describe("LimitResumeManifest", () => {
     });
   });
 
+  it("reuses the exhausted turn settings when no newer queued message overrides them", async () => {
+    const manifest = new LimitResumeManifest([]);
+    const settings = { model: "gpt-5.6-terra", effort: "xhigh", serviceTier: "standard", permissionMode: "full_access" } as const;
+    await manifest.markWaiting("bot6", "thread-1", 10, settings);
+
+    const claimed = await manifest.claimResume("bot6", "thread-1", "resume-1", 20);
+
+    expect(manifest.resumeTurnInput(claimed!)).toEqual({
+      text: "Continue from where you stopped after the usage limit reset.",
+      settings,
+    });
+  });
+
   it("keeps messages that arrive while a resume is being accepted for a later retry", async () => {
     const manifest = new LimitResumeManifest([]);
     await manifest.markWaiting("bot6", "thread-1", 10);

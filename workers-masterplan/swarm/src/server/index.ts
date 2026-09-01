@@ -209,7 +209,7 @@ async function createRuntime(config: SwarmConfig) {
           const exhaustedThreadId = event.threadId;
           activeTurnIds.delete(activeTurnKey(event.accountId, exhaustedThreadId));
           void (async () => {
-            await limitResumes.markWaiting(event.accountId, exhaustedThreadId);
+            await limitResumes.markWaiting(event.accountId, exhaustedThreadId, Date.now(), client.turnSettings(exhaustedThreadId));
             if (limitResumes.forThread(event.accountId, exhaustedThreadId)?.state !== "waiting_for_limit") return;
             await assignments.markWaitingForLimit(event.accountId, exhaustedThreadId);
             try { await gitRunner.checkpointAndPush(event.accountId); }

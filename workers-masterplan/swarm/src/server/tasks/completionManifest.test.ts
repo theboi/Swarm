@@ -93,7 +93,7 @@ describe("repository completion manifest", () => {
     }));
     const readiness = applyCompletionManifest(production, [], completion);
 
-    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "P1", "P2", "PD", "Q1", "Q2"]);
+    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "G1", "G2", "P1", "P2", "P4", "PD", "Q1", "Q2"]);
     expect(readiness.find((task) => task.taskId === "C3")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "C4")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "E2")?.state).toBe("complete");

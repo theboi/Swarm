@@ -10,6 +10,8 @@ export interface PendingLimitMessage {
 export interface DurableLimitResumeRecord extends LimitResumeRecord {
   pendingMessages?: PendingLimitMessage[];
   inFlightMessages?: PendingLimitMessage[];
+  /** Exact options used by the turn that exhausted its usage limit. */
+  turnSettings?: ChatExecutionSettings;
 }
 
 function key(accountId: AccountId, threadId: string): string { return `${accountId}\u0000${threadId}`; }
@@ -18,6 +20,7 @@ function clone(record: DurableLimitResumeRecord): DurableLimitResumeRecord {
     ...record,
     ...(record.pendingMessages ? { pendingMessages: record.pendingMessages.map((message) => ({ ...message, ...(message.settings ? { settings: { ...message.settings } } : {}) })) } : {}),
     ...(record.inFlightMessages ? { inFlightMessages: record.inFlightMessages.map((message) => ({ ...message, ...(message.settings ? { settings: { ...message.settings } } : {}) })) } : {}),
+    ...(record.turnSettings ? { turnSettings: { ...record.turnSettings } } : {}),
   };
 }
 
@@ -31,7 +34,7 @@ export class LimitResumeManifest {
 
   list(): DurableLimitResumeRecord[] { return [...this.records.values()].map(clone); }
   publicList(): LimitResumeRecord[] {
-    return this.list().map(({ pendingMessages, inFlightMessages: _inFlightMessages, ...record }) => ({
+    return this.list().map(({ pendingMessages, inFlightMessages: _inFlightMessages, turnSettings: _turnSettings, ...record }) => ({
       ...record,
       ...(pendingMessages?.length ? { queuedMessageCount: pendingMessages.length } : {}),
     }));
@@ -44,11 +47,18 @@ export class LimitResumeManifest {
     return [...this.records.values()].filter((record) => record.accountId === accountId && record.state === "waiting_for_limit").map(clone);
   }
 
-  async markWaiting(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
+  async markWaiting(accountId: AccountId, threadId: string, now = Date.now(), turnSettings?: ChatExecutionSettings): Promise<void> {
     const current = this.records.get(key(accountId, threadId));
     if (current && current.state !== "waiting_for_limit") return;
     await this.mutate(() => {
-      this.records.set(key(accountId, threadId), { accountId, threadId, state: "waiting_for_limit", updatedAt: now, ...(current?.pendingMessages ? { pendingMessages: current.pendingMessages } : {}) });
+      this.records.set(key(accountId, threadId), {
+        accountId,
+        threadId,
+        state: "waiting_for_limit",
+        updatedAt: now,
+        ...(current?.pendingMessages ? { pendingMessages: current.pendingMessages } : {}),
+        ...(turnSettings || current?.turnSettings ? { turnSettings: { ...(turnSettings ?? current?.turnSettings) } } : {}),
+      });
     });
   }
 
@@ -69,7 +79,7 @@ export class LimitResumeManifest {
     const text = messages.length
       ? `${continuation}\n\nMessages sent by the user while this chat was waiting:\n\n${messages.map((message, index) => `${index + 1}. ${message.text}`).join("\n\n")}`
       : continuation;
-    const settings = [...messages].reverse().find((message) => message.settings)?.settings;
+    const settings = [...messages].reverse().find((message) => message.settings)?.settings ?? record.turnSettings;
     return { text, ...(settings ? { settings: { ...settings } } : {}) };
   }
 

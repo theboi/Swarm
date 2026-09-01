@@ -327,6 +327,16 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("retains the exact options of the latest turn for usage-limit recovery", async () => {
+    const client = await readyClient();
+    const settings = { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" } as const;
+
+    await client.startTurn({ threadId: "thread-1", clientUserMessageId: "turn-settings", text: "Continue.", settings });
+
+    expect(client.turnSettings("thread-1")).toEqual(settings);
+    await client.close();
+  });
+
   it("uses the configured coordinator workspace for claudiothe rather than a bot clone", async () => {
     const localWorkspace = "/Users/claudiothe/Dev/EdenMind";
     const client = await readyClient({ account: "claudiothe", workspaceRoot: localWorkspace });
