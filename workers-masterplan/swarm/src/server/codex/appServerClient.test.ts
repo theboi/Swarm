@@ -256,6 +256,21 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("prefers Codex's canonical transcript for a persisted not-loaded chat", async () => {
+    const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: [] } }));
+    const client = await readyClient({ threadStatus: "notLoaded", readLockedThread });
+    await client.listAllThreads();
+
+    await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual({
+      thread: { id: "thread-1", turns: fullThreadHistory() },
+    });
+
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(1);
+    expect(readLockedThread).not.toHaveBeenCalled();
+    expect(client.transcriptSnapshot().items).toEqual([expect.objectContaining({ id: "item-1", type: "agentMessage" })]);
+    await client.close();
+  });
+
   it("reads a desktop-owned local transcript without stealing its active writer", async () => {
     const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: fullThreadHistory() } }));
     const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/EdenMind", threadStatus: "notLoaded", threadReadError: "thread thread-1 already has an active writer", readLockedThread });
@@ -263,7 +278,7 @@ describe("AppServerClient", () => {
 
     await expect(client.readThread("thread-1", { includeTurns: true })).resolves.toEqual(expect.objectContaining({ thread: expect.objectContaining({ turns: expect.any(Array) }) }));
     expect(readLockedThread).toHaveBeenCalledWith("thread-1");
-    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(0);
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(1);
     expect(client.transcriptSnapshot().items).toEqual([expect.objectContaining({ id: "item-1", type: "agentMessage" })]);
     await client.close();
   });

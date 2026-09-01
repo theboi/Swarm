@@ -174,22 +174,15 @@ export class AppServerClient {
 
   async readThread(threadId: string, options: { includeTurns: true }): Promise<{ thread: Record<string, unknown> }> {
     this.requireReady();
-    let response: { thread: Record<string, unknown> } | undefined;
-    if (this.unloadedThreadIds.has(threadId) && this.readLockedThread) {
+    let response: { thread: Record<string, unknown> };
+    try {
+      response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
+    } catch (error) {
+      if (!this.readLockedThread) throw error;
       try {
         response = await this.readLockedThread(threadId);
-      } catch { /* fall through to app-server */ }
-    }
-    if (!response) {
-      try {
-        response = await this.rpc.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: options.includeTurns });
-      } catch (error) {
-        if (!this.readLockedThread) throw error;
-        try {
-          response = await this.readLockedThread(threadId);
-        } catch {
-          throw error;
-        }
+      } catch {
+        throw error;
       }
     }
     this.trackedThreadIds.add(threadId);
