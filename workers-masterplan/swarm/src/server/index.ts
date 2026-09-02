@@ -1,4 +1,4 @@
-import { access, realpath } from "node:fs/promises";
+import { access, realpath, stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -37,8 +37,7 @@ import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
-import { evaluateTaskReadiness, loadBlueprintEvidence } from "./tasks/blueprintEvidence.js";
-import { latestUnarchivedTaskThread, projectDispatchState, retainCompletedTaskIds } from "./tasks/taskProjection.js";
+import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
 import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
@@ -114,7 +113,7 @@ async function leasePort(): Promise<PortLease> {
   return { port: address.port, release: async () => new Promise<void>((resolveClose) => listener.close(() => resolveClose())) };
 }
 
-function taskNode(manifest: TaskManifest, readiness: ReturnType<typeof evaluateTaskReadiness>): TaskNode[] {
+function taskNode(manifest: TaskManifest, readiness: TaskReadiness[]): TaskNode[] {
   return manifest.tasks.map((task) => ({ ...task, readiness: readiness.find((candidate) => candidate.taskId === task.id) ?? { taskId: task.id, phase: task.kind, state: "blocked", evidence: [], blockingCodes: ["TASK_NOT_READY"] } }));
 }
 
@@ -201,6 +200,15 @@ async function createRuntime(config: SwarmConfig) {
     launcher,
     codexBin: config.codexBin,
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
+    credentialVersion: async (account) => {
+      try {
+        const value = await stat(`/Users/${account}/.codex/auth.json`);
+        return `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}`;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+        throw error;
+      }
+    },
     createClient: (handle) => {
       const localWorkspaceRoot = workspaceFor(handle.account);
       const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
@@ -290,11 +298,9 @@ async function createRuntime(config: SwarmConfig) {
         const completion = await loadCompletionManifest(fullManifest, coordinationWorkspaceRoot);
         const passEntries = await Promise.all((["planning", "execution"] as const).map(async (pass) => {
           const candidateManifest = projectManifestToPass(fullManifest, pass);
-          const fallbackReadiness = completion.authoritative ? [] : evaluateTaskReadiness(candidateManifest, await loadBlueprintEvidence(candidateManifest));
           const receiptCompleted = completedTaskIdsForPass(completion, pass);
-          const retained = completion.authoritative ? new Set([...completedByPass[pass], ...receiptCompleted]) : retainCompletedTaskIds(completedByPass[pass], fallbackReadiness);
-          const readiness = applyCompletionManifest(candidateManifest, fallbackReadiness, { ...completion, completedTaskIds: retained });
-          return [pass, { nodes: taskNode(candidateManifest, readiness), completed: retained }] as const;
+          const readiness = applyCompletionManifest(candidateManifest, { ...completion, completedTaskIds: receiptCompleted });
+          return [pass, { nodes: taskNode(candidateManifest, readiness), completed: receiptCompleted }] as const;
         }));
         candidatePasses = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.nodes])) as Record<ManifestPass, TaskNode[]>;
         candidateCompleted = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.completed])) as Record<ManifestPass, Set<string>>;
@@ -333,7 +339,7 @@ async function createRuntime(config: SwarmConfig) {
   const rateLimitRefresher = new AccountRateLimitRefresher({
     prepare: async (id) => {
       if (accounts.snapshot(id).authentication !== "unauthenticated") return;
-      await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+      await accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
     },
     read: async (id) => (await liveClient(id)).readRateLimitWindows(),
     current: (id) => accounts.snapshot(id),
@@ -656,6 +662,10 @@ async function createRuntime(config: SwarmConfig) {
   const accountRetryTimers = new Map<AccountId, NodeJS.Timeout>();
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
+  const credentialRefreshTimer = setInterval(() => {
+    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] })));
+  }, 15_000);
+  credentialRefreshTimer.unref();
   const connectWithRetry = async (id: AccountId): Promise<void> => {
     try {
       await services.connectAccount(id);
@@ -670,7 +680,7 @@ async function createRuntime(config: SwarmConfig) {
       accountRetryTimers.set(id, timer);
     }
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); clearTimeout(gitStartTimer); gitSynchronizer.stop(); for (const timer of accountRetryTimers.values()) clearTimeout(timer); for (const id of rateWaitTimers.keys()) clearRateWait(id); for (const timer of limitResumeTimers.values()) clearTimeout(timer); await accounts.shutdown(); } });
+  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); clearTimeout(gitStartTimer); clearInterval(credentialRefreshTimer); gitSynchronizer.stop(); for (const timer of accountRetryTimers.values()) clearTimeout(timer); for (const id of rateWaitTimers.keys()) clearRateWait(id); for (const timer of limitResumeTimers.values()) clearTimeout(timer); await accounts.shutdown(); } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
   accounts.onChange((snapshot) => {
     coordinator.hub.publish("account", {} as Record<string, unknown>);

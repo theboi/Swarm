@@ -191,7 +191,7 @@ snapshot is taken at one inspected `origin/main` commit and separates planning
 readiness from execution readiness, with evidence and blockers for each. Do not
 label a remote-uninspected row ready: it is `unverified`.
 
-The coordinator reserves artifact paths but does not pre-author the ordinary worker's detailed specification or implementation plan. The coordinator alone owns `docs/workers/<blueprint-id>/PLANNING_GATE.md`; workers never edit that receipt.
+The coordinator reserves artifact paths but does not pre-author the ordinary worker's detailed specification or implementation plan. Each worker exclusively owns its lower-case `docs/workers/<blueprint-id>/completion-manifest/<task-id>.json` pass receipt and must commit and push it before its final response. The coordinator alone owns `docs/workers/<blueprint-id>/PLANNING_GATE.md`; workers never edit that whole-blueprint receipt.
 
 ### Planning readiness
 
@@ -594,7 +594,7 @@ A worker is complete only after:
 5. preserved handoff and archival status;
 6. no owned dirty state in the assigned checkout, with any unrelated dirt preserved and reported;
 7. cleanup of any fully integrated legacy dedicated lane, while shared `main` remains intact; and
-8. a coordinator completion receipt.
+8. its worker-owned per-task pass receipt committed and reachable from `origin/main`.
 
 Preserve dirty, unpushed, failing, under-review, or uncertain-ancestry work. Never reset, overwrite, force-push, or force-clean it.
 

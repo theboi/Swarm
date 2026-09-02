@@ -6,7 +6,7 @@ import { ACCOUNT_IDS, type AccountId, type ManifestPass, type TaskManifest, type
 
 interface CompletionPassReceipt {
   state: "complete";
-  completedBy: AccountId | "coordinator";
+  completedBy: AccountId;
   completedAt: string;
 }
 
@@ -17,8 +17,7 @@ export interface WorkerCompletionReceipt {
 }
 
 export interface CompletionManifestSnapshot {
-  authoritative: boolean;
-  revision?: string;
+  revision: string;
   receipts: ReadonlyMap<string, WorkerCompletionReceipt>;
   completedTaskIds: ReadonlySet<string>;
 }
@@ -63,8 +62,8 @@ function parseReceipt(value: unknown, expectedTaskId: string, allowedPasses: rea
   for (const pass of ["planning", "execution"] as const) {
     const candidate = value.passes[pass];
     if (candidate === undefined) continue;
-    if (!allowedPasses.includes(pass) || !isRecord(candidate) || candidate.state !== "complete" || typeof candidate.completedBy !== "string" || (candidate.completedBy !== "coordinator" && !ACCOUNT_IDS.includes(candidate.completedBy as AccountId)) || typeof candidate.completedAt !== "string" || !Number.isFinite(Date.parse(candidate.completedAt))) throw new Error(`Invalid ${pass} completion receipt for ${expectedTaskId}`);
-    passes[pass] = { state: "complete", completedBy: candidate.completedBy as AccountId | "coordinator", completedAt: candidate.completedAt };
+    if (!allowedPasses.includes(pass) || !isRecord(candidate) || candidate.state !== "complete" || typeof candidate.completedBy !== "string" || !ACCOUNT_IDS.includes(candidate.completedBy as AccountId) || typeof candidate.completedAt !== "string" || !Number.isFinite(Date.parse(candidate.completedAt))) throw new Error(`Invalid ${pass} completion receipt for ${expectedTaskId}`);
+    passes[pass] = { state: "complete", completedBy: candidate.completedBy as AccountId, completedAt: candidate.completedAt };
   }
   return { schemaVersion: 1, taskId: expectedTaskId, passes };
 }
@@ -81,7 +80,7 @@ export async function loadCompletionManifest(manifest: TaskManifest, repositoryR
   await source.fetch(root);
   const revision = await source.resolveRevision(root);
   const markerPath = `${manifest.coordinationRoot}/completion-manifest/README.md`;
-  if (await source.readFile(root, revision, markerPath) === undefined) return { authoritative: false, revision, receipts: new Map(), completedTaskIds: new Set() };
+  if (await source.readFile(root, revision, markerPath) === undefined) throw new Error("Completion manifest is missing from origin/main");
   const receipts = new Map<string, WorkerCompletionReceipt>();
   for (const task of manifest.tasks) {
     const path = completionReceiptPath(manifest, task.id);
@@ -92,14 +91,12 @@ export async function loadCompletionManifest(manifest: TaskManifest, repositoryR
     receipts.set(task.id, parseReceipt(JSON.parse(contents), task.id, task.passes ?? ["planning"]));
   }
   const activePass = manifest.lifecycle?.activePass ?? "planning";
-  return { authoritative: true, revision, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)) };
+  return { revision, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)) };
 }
 
-/** Explicit repository receipts replace status-prose heuristics whenever present. */
-export function applyCompletionManifest(manifest: TaskManifest, fallback: readonly TaskReadiness[], completion: CompletionManifestSnapshot): TaskReadiness[] {
-  if (!completion.authoritative) return [...fallback];
+/** Projects task readiness exclusively from worker-owned origin/main receipts. */
+export function applyCompletionManifest(manifest: TaskManifest, completion: CompletionManifestSnapshot): TaskReadiness[] {
   const activePass = manifest.lifecycle?.activePass ?? "planning";
-  const fallbackById = new Map(fallback.map((task) => [task.taskId, task]));
   const completedForPass = new Set([...completion.completedTaskIds, ...completedTaskIdsForPass(completion, activePass)]);
   const planningComplete = completedTaskIdsForPass(completion, "planning");
   return manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)).map((task) => {
@@ -107,7 +104,6 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
     const dependencies = activePass === "execution" ? task.executionDependsOn ?? [] : task.dependsOn;
     const prerequisitesComplete = dependencies.every((taskId) => completedForPass.has(taskId));
     const ownPlanningComplete = activePass !== "execution" || planningComplete.has(task.id);
-    const prior = fallbackById.get(task.id);
     const phase = activePass === "execution" ? "execution" : task.kind === "ui" ? "ui" : task.kind;
     return {
       taskId: task.id,
@@ -119,7 +115,6 @@ export function applyCompletionManifest(manifest: TaskManifest, fallback: readon
         { code: "REMOTE_PREREQUISITES", satisfied: prerequisitesComplete, details: dependencies.join(", ") || "none" },
       ],
       blockingCodes: completed || (prerequisitesComplete && ownPlanningComplete) ? [] : ["TASK_NOT_READY"],
-      ...(prior?.suggestedAccount ? { suggestedAccount: prior.suggestedAccount } : {}),
     };
   });
 }

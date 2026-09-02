@@ -16,6 +16,7 @@ export interface AccountManagerOptions {
   createClient(handle: LaunchHandle): ManagedAppServerClient;
   codexBin: string;
   onRateLimitReadError?: (account: AccountId, error: unknown) => void;
+  credentialVersion?: (account: AccountId) => Promise<string | undefined>;
 }
 
 export interface ConnectAccountInput {
@@ -39,6 +40,7 @@ export class AccountManager {
   private readonly connections = new Map<AccountId, ManagedConnection>();
   private readonly snapshots = new Map<AccountId, AccountSnapshot>();
   private readonly inFlight = new Map<AccountId, Promise<AccountSnapshot>>();
+  private readonly credentialVersions = new Map<AccountId, string | undefined>();
   private readonly listeners = new Set<(snapshot: AccountSnapshot) => void>();
   private shuttingDown = false;
 
@@ -107,6 +109,15 @@ export class AccountManager {
     });
   }
 
+  /** Replaces a stale unauthenticated app-server after its account credentials change. */
+  async recoverChangedCredentials(input: ConnectAccountInput): Promise<AccountSnapshot> {
+    const snapshot = this.requireSnapshot(input.account);
+    if (snapshot.authentication !== "unauthenticated" || snapshot.activeTurns > 0) return snapshot;
+    const current = await this.readCredentialVersion(input.account);
+    if (current === undefined || current === this.credentialVersions.get(input.account)) return snapshot;
+    return this.connect(input);
+  }
+
   async disconnect(account: AccountId): Promise<void> {
     const connection = this.connections.get(account);
     this.connections.delete(account);
@@ -126,6 +137,7 @@ export class AccountManager {
   private async open(input: ConnectAccountInput): Promise<AccountSnapshot> {
     let handle: LaunchHandle | undefined;
     try {
+      this.credentialVersions.set(input.account, await this.readCredentialVersion(input.account));
       handle = await this.options.launcher.launch({ account: input.account, password: input.password, codexBin: this.options.codexBin });
       const client = this.options.createClient(handle);
       const account = await client.connect();
@@ -157,6 +169,11 @@ export class AccountManager {
 
   private manualLoginCommand(account: AccountId): string {
     return codexLoginCommand(account, this.options.codexBin);
+  }
+
+  private async readCredentialVersion(account: AccountId): Promise<string | undefined> {
+    try { return await this.options.credentialVersion?.(account); }
+    catch { return undefined; }
   }
 
   private requireSnapshot(account: AccountId): AccountSnapshot {

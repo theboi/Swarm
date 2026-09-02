@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import type { TaskManifest, TaskReadiness } from "../../shared/contracts.js";
+import type { TaskManifest } from "../../shared/contracts.js";
 import { applyCompletionManifest, completionReceiptPath, loadCompletionManifest, type CompletionManifestSource } from "./completionManifest.js";
 import { loadManifest } from "./manifestLoader.js";
 
@@ -30,8 +30,6 @@ const manifest: TaskManifest = {
   ],
 };
 
-const base: TaskReadiness[] = manifest.tasks.map((task) => ({ taskId: task.id, phase: "planning", state: "attention_required", evidence: [], blockingCodes: ["STATUS_NEEDS_ATTENTION"] }));
-
 describe("repository completion manifest", () => {
   it("loads collision-safe per-worker receipts and makes them authoritative for readiness", async () => {
     const source = remoteSource({
@@ -40,9 +38,8 @@ describe("repository completion manifest", () => {
     });
 
     const completion = await loadCompletionManifest(manifest, "/tmp/working-copy", source);
-    expect(completion.authoritative).toBe(true);
     expect([...completion.completedTaskIds]).toEqual(["C3"]);
-    expect(applyCompletionManifest(manifest, base, completion).map((task) => [task.taskId, task.state])).toEqual([["C3", "complete"], ["C4", "ready"]]);
+    expect(applyCompletionManifest(manifest, completion).map((task) => [task.taskId, task.state])).toEqual([["C3", "complete"], ["C4", "ready"]]);
   });
 
   it("rejects a receipt whose task id does not match its owned filename", async () => {
@@ -54,13 +51,25 @@ describe("repository completion manifest", () => {
     await expect(loadCompletionManifest(manifest, "/tmp/working-copy", source)).rejects.toThrow("filename");
   });
 
-  it("ignores an uncommitted local receipt that is absent from origin/main", async () => {
+  it("treats origin/main as the only completion source", async () => {
     const completion = await loadCompletionManifest(manifest, "/tmp/working-copy-with-local-c3", remoteSource({
       "docs/workers/mvp3/completion-manifest/README.md": "authoritative",
     }));
 
-    expect(completion.authoritative).toBe(true);
     expect([...completion.completedTaskIds]).toEqual([]);
+  });
+
+  it("rejects coordinator-authored worker receipts", async () => {
+    const source = remoteSource({
+      "docs/workers/mvp3/completion-manifest/README.md": "authoritative",
+      "docs/workers/mvp3/completion-manifest/c3.json": { schemaVersion: 1, taskId: "C3", passes: { planning: { state: "complete", completedBy: "coordinator", completedAt: "2026-08-31T13:00:00.000Z" } } },
+    });
+
+    await expect(loadCompletionManifest(manifest, "/tmp/working-copy", source)).rejects.toThrow("completion receipt");
+  });
+
+  it("rejects a repository without the worker completion manifest instead of falling back to status prose", async () => {
+    await expect(loadCompletionManifest(manifest, "/tmp/working-copy", remoteSource({}))).rejects.toThrow("Completion manifest is missing");
   });
 
   it("loads a remote-only receipt even when the local working copy has no file", async () => {
@@ -91,9 +100,9 @@ describe("repository completion manifest", () => {
       [`${production.coordinationRoot}/completion-manifest/README.md`]: "authoritative",
       ...files,
     }));
-    const readiness = applyCompletionManifest(production, [], completion);
+    const readiness = applyCompletionManifest(production, completion);
 
-    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "G1", "G2", "P1", "P2", "P3", "P4", "PD", "Q1", "Q2"]);
+    expect([...completion.completedTaskIds].sort()).toEqual(["A1", "A2", "A3", "A4", "AD", "C1", "C2", "C3", "C4", "CD", "E1", "E2", "F0", "G1", "G2", "GD", "P1", "P2", "P3", "P4", "PD", "Q1", "Q2", "QD"]);
     expect(readiness.find((task) => task.taskId === "C3")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "C4")?.state).toBe("complete");
     expect(readiness.find((task) => task.taskId === "E2")?.state).toBe("complete");
@@ -103,9 +112,9 @@ describe("repository completion manifest", () => {
     const repositoryRoot = resolve(process.cwd(), "../..");
     const production = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
     const execution = { ...production, lifecycle: { ...production.lifecycle!, activePass: "execution" as const } };
-    const completion = { authoritative: true, revision: "origin-main", receipts: new Map(), completedTaskIds: new Set<string>() };
+    const completion = { revision: "origin-main", receipts: new Map(), completedTaskIds: new Set<string>() };
 
-    const readiness = applyCompletionManifest(execution, [], completion);
+    const readiness = applyCompletionManifest(execution, completion);
 
     expect(readiness.map((task) => task.taskId)).not.toEqual(expect.arrayContaining(["PD", "CD", "QD", "AD", "ED", "GD"]));
     expect(readiness.find((task) => task.taskId === "F0")?.state).toBe("blocked");
@@ -116,7 +125,7 @@ describe("repository completion manifest", () => {
     const receipts = new Map([
       ["C3", { schemaVersion: 1 as const, taskId: "C3", passes: { planning: { state: "complete" as const, completedBy: "bot8" as const, completedAt: "2026-08-31T13:00:00.000Z" } } }],
     ]);
-    const readiness = applyCompletionManifest(execution, [], { authoritative: true, revision: "origin-main", receipts, completedTaskIds: new Set() });
+    const readiness = applyCompletionManifest(execution, { revision: "origin-main", receipts, completedTaskIds: new Set() });
 
     expect(readiness.map((task) => [task.taskId, task.state])).toEqual([["C3", "ready"], ["C4", "blocked"]]);
   });

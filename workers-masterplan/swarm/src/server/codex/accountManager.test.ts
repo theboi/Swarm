@@ -13,8 +13,9 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
   const launcher = { launch, openTerminal, openLoginTerminal, shutdown: vi.fn(async () => undefined) } as unknown as SuLauncher;
   const client = { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
-  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError });
-  return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient };
+  const credentialVersion = vi.fn(async () => "credential-v1");
+  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion });
+  return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
 }
 
 describe("AccountManager", () => {
@@ -140,6 +141,37 @@ describe("AccountManager", () => {
     expect(handle.stop).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledTimes(2);
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("recovers an unauthenticated account only after its credential file changes", async () => {
+    const { manager, launch, handle, client, credentialVersion } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledOnce();
+    expect(handle.stop).not.toHaveBeenCalled();
+
+    credentialVersion.mockResolvedValue("credential-v2");
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+
+    expect(client.close).toHaveBeenCalledOnce();
+    expect(handle.stop).toHaveBeenCalledOnce();
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("does not replace an active account process while a turn is still running", async () => {
+    const { manager, launch, handle, credentialVersion } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+    manager.updateSnapshot(account, { activeTurns: 1 });
+    credentialVersion.mockResolvedValue("credential-v2");
+
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+
+    expect(handle.stop).not.toHaveBeenCalled();
+    expect(launch).toHaveBeenCalledOnce();
   });
 
   it("recognizes structured 401 and token-expired metadata regardless of message wording", async () => {
