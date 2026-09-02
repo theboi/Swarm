@@ -136,15 +136,26 @@ function appendReasoningSummary(state: TranscriptState, scope: TranscriptScope, 
  */
 export function replaceTranscriptFromThreadRead(state: TranscriptState, history: TranscriptScope & { turns: RawThreadTurn[] }): TranscriptState {
   if (!isFullThreadHistory(history)) return state;
-  const scopeItems = state.items.filter((item) => item.accountId !== history.accountId || item.threadId !== history.threadId);
-  let next: TranscriptState = { ...state, items: scopeItems };
+  const items = state.items.filter((item) => item.accountId !== history.accountId || item.threadId !== history.threadId);
+  const indexes = new Map(items.map((item, index) => [itemKey(item), index]));
   const turns = [...history.turns];
   if (turns.every((turn) => turn.startedAt !== null)) turns.sort((left, right) => left.startedAt! - right.startedAt! || left.id.localeCompare(right.id));
   for (const turn of turns) {
     const createdAt = turn.startedAt === null ? null : turn.startedAt * 1_000;
-    for (const item of turn.items) next = upsert(next, normalizeItem(history, turn.id, item, createdAt));
+    for (const rawItem of turn.items) {
+      const item = normalizeItem(history, turn.id, rawItem, createdAt);
+      const key = itemKey(item);
+      const index = indexes.get(key);
+      if (index === undefined) {
+        indexes.set(key, items.length);
+        items.push(item);
+      } else {
+        items[index] = { ...item, createdAt: items[index].createdAt ?? item.createdAt };
+      }
+    }
   }
-  return withRecoveryState(next, history, "complete");
+  if (items.every((item) => item.createdAt !== null)) items.sort((left, right) => left.createdAt! - right.createdAt!);
+  return withRecoveryState({ ...state, items }, history, "complete");
 }
 
 /** Backwards-compatible name for the only authoritative transcript hydration path. */

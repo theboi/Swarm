@@ -4,6 +4,24 @@ import { extractMarkdownPaths, hydrateTranscript, initialTranscriptState, reduce
 const scope = { accountId: "bot1" as const, threadId: "thread-1" };
 
 describe("transcriptReducer", () => {
+  it("hydrates a long authoritative transcript without quadratic rescanning", () => {
+    const items = Array.from({ length: 8_000 }, (_, index) => ({
+      type: "agentMessage",
+      id: `item-${index}`,
+      text: `Message ${index}`,
+    }));
+    const startedAt = performance.now();
+
+    const state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items }],
+    });
+
+    expect(state.items).toHaveLength(8_000);
+    expect(state.items.at(-1)?.id).toBe("item-7999");
+    expect(performance.now() - startedAt).toBeLessThan(500);
+  });
+
   it("normalizes every current v2 thread item form and preserves an unknown form as an opaque record", () => {
     const variants = [
       { type: "userMessage", id: "user", content: [{ type: "text", text: "hi" }] },
