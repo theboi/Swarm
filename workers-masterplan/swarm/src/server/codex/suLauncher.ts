@@ -9,6 +9,7 @@ export interface SpawnedPty {
   pid: number;
   write(value: string): void;
   kill(signal?: string): void;
+  dispose(): void;
   onData(listener: (data: string) => void): { dispose(): void };
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
 }
@@ -108,43 +109,53 @@ export class SuLauncher {
     }
 
     let settled = false;
-    let stopped = false;
     let prompted = false;
     let terminalTail = "";
-    let timer: NodeJS.Timeout | undefined;
+    let startupTimer: NodeJS.Timeout | undefined;
+    let retryTimer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    let cleaned = false;
     let resolveLaunch: (handle: LaunchHandle) => void;
     let rejectLaunch: (error: Error) => void;
     const result = new Promise<LaunchHandle>((resolve, reject) => { resolveLaunch = resolve; rejectLaunch = reject; });
-
-    const release = async () => {
-      if (timer) clearTimeout(timer);
-      timer = undefined;
+    let handle: LaunchHandle;
+    const cleanup = async (terminate: boolean) => {
+      if (cleaned) return;
+      cleaned = true;
+      if (startupTimer) clearTimeout(startupTimer);
+      if (retryTimer) clearTimeout(retryTimer);
+      startupTimer = undefined;
+      retryTimer = undefined;
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      if (terminate && child.pid) {
+        this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
+        try { child.kill(); } catch { /* process already exited */ }
+      }
+      try { child.dispose(); } catch { /* descriptor already closed */ }
       credential = "";
       token = undefined;
+      this.active.delete(handle);
       await releaseLease();
     };
     const fail = (reason: string) => {
       if (settled) return;
       settled = true;
-      if (!stopped && child.pid) {
-        stopped = true;
-        this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
-        try { child.kill(); } catch { /* child already exited */ }
-      }
-      this.active.delete(handle);
-      void release();
+      void cleanup(true);
       this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason });
       rejectLaunch!(new Error("ACCOUNT_AUTH_REQUIRED"));
     };
     const stop = async () => {
-      if (stopped) return;
-      stopped = true;
-      this.dependencies.killProcessGroup(-child.pid, "SIGTERM");
-      try { child.kill(); } catch { /* child already exited */ }
-      await release();
-      this.active.delete(handle);
+      if (!settled) {
+        settled = true;
+        await cleanup(true);
+        rejectLaunch!(new Error("ACCOUNT_AUTH_REQUIRED"));
+        return;
+      }
+      await cleanup(true);
     };
-    const handle: LaunchHandle = {
+    handle = {
       account: options.account,
       endpoint,
       get capabilityToken() {
@@ -155,25 +166,29 @@ export class SuLauncher {
     };
     this.active.add(handle);
 
-    child.onExit(() => {
-      if (!stopped) {
-        stopped = true;
-        fail("child_exit");
+    exitSubscription = child.onExit(() => {
+      if (!settled) {
+        settled = true;
+        this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason: "child_exit" });
+        rejectLaunch!(new Error("ACCOUNT_AUTH_REQUIRED"));
       }
-      this.active.delete(handle);
+      void cleanup(false);
     });
     const waitForAppServer = (currentToken: string) => {
       void this.dependencies.waitForReady(endpoint, currentToken).then(() => {
-        if (settled || stopped) return;
+        if (settled || cleaned) return;
         settled = true;
-        if (timer) clearTimeout(timer);
-        timer = undefined;
+        if (startupTimer) clearTimeout(startupTimer);
+        startupTimer = undefined;
         this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_ready", outcome: "ok" });
         resolveLaunch!(handle);
       }).catch(() => {
-        if (settled || stopped) return;
-        const retry = setTimeout(() => waitForAppServer(currentToken), 100);
-        retry.unref();
+        if (settled || cleaned) return;
+        retryTimer = setTimeout(() => {
+          retryTimer = undefined;
+          waitForAppServer(currentToken);
+        }, 100);
+        retryTimer.unref();
       });
     };
     const receivePtyOutput = (chunk: string) => {
@@ -190,14 +205,14 @@ export class SuLauncher {
       if (!currentToken) return fail("missing_token");
       waitForAppServer(currentToken);
     };
-    timer = setTimeout(() => fail("startup_timeout"), this.dependencies.startupTimeoutMs ?? 30_000);
-    timer.unref();
+    startupTimer = setTimeout(() => fail("startup_timeout"), this.dependencies.startupTimeoutMs ?? 30_000);
+    startupTimer.unref();
     if (options.account === LOCAL_ACCOUNT_ID) {
       const currentToken = token;
       if (!currentToken) fail("missing_token");
       else waitForAppServer(currentToken);
     } else {
-      child.onData(receivePtyOutput);
+      dataSubscription = child.onData(receivePtyOutput);
     }
     return result;
   }

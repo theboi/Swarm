@@ -6,6 +6,7 @@ class FakeChild extends EventEmitter implements SpawnedPty {
   pid = 4201;
   readonly writes: string[] = [];
   readonly kill = vi.fn();
+  readonly dispose = vi.fn();
 
   write(value: string): void { this.writes.push(value); }
 
@@ -149,6 +150,7 @@ describe("SuLauncher", () => {
     await expect(failed).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
     expect(child.writes).toEqual([]);
     expect(kill).not.toHaveBeenCalled();
+    expect(child.dispose).toHaveBeenCalledOnce();
   });
 
   it("terminates the detached process group when startup readiness fails", async () => {
@@ -162,10 +164,11 @@ describe("SuLauncher", () => {
     await expect(launching).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
     expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
     expect(child.kill).toHaveBeenCalledOnce();
+    expect(child.dispose).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it("terminates the complete detached process group on handle shutdown and launcher shutdown", async () => {
+  it("terminates and disposes the complete detached process group on handle stop", async () => {
     const { launcher, child, kill } = launcherFixture();
     const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
     await vi.waitFor(() => expect(child.listenerCount("data")).toBe(1));
@@ -175,9 +178,21 @@ describe("SuLauncher", () => {
     await handle.stop();
     expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
     expect(child.kill).toHaveBeenCalledOnce();
+    expect(child.dispose).toHaveBeenCalledOnce();
     expect(child.writes).toEqual(["bot-password\n"]);
+  });
+
+  it("terminates and disposes the complete detached process group on launcher shutdown", async () => {
+    const { launcher, child, kill } = launcherFixture();
+    const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    await vi.waitFor(() => expect(child.listenerCount("data")).toBe(1));
+    child.emit("data", "Password:");
+    await launching;
+
     await launcher.shutdown();
-    expect(kill).toHaveBeenCalledTimes(1);
+    expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(child.dispose).toHaveBeenCalledOnce();
   });
 
   it("does not write a password to a PTY that was stopped during startup", async () => {
@@ -191,6 +206,35 @@ describe("SuLauncher", () => {
     await expect(launching).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
     expect(child.writes).toEqual([]);
     expect(kill).toHaveBeenCalledWith(-4201, "SIGTERM");
+    expect(child.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("disposes every native PTY exactly once across repeated launches", async () => {
+    const children: FakeChild[] = [];
+    const spawn = vi.fn(() => {
+      const child = new FakeChild();
+      children.push(child);
+      return child;
+    });
+    const launcher = new SuLauncher({
+      spawnPty: spawn,
+      allocatePort: async () => ({ port: 45123, release: async () => undefined }),
+      pathExists: async (path) => path === "/Users/claudiothe/.codex",
+      verifyCodexBinary: async (path) => path === "/opt/homebrew/bin/codex",
+      waitForReady: async () => undefined,
+      killProcessGroup: () => undefined,
+      openTerminal: async () => undefined,
+      log: () => undefined,
+      startupTimeoutMs: 250,
+    });
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const handle = await launcher.launch({ account: "claudiothe", codexBin: "/opt/homebrew/bin/codex" });
+      await handle.stop();
+    }
+
+    expect(children).toHaveLength(20);
+    expect(children.every((child) => child.dispose.mock.calls.length === 1)).toBe(true);
   });
 
   it("opens a guarded local tmux console only while its account is live", async () => {

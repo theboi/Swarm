@@ -147,7 +147,17 @@ async function createRuntime(config: SwarmConfig) {
   const activeTurnKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   let scheduleLimitResume: (account: AccountId, threadId: string, retryNotBefore?: number) => Promise<void> = async () => undefined;
   const launcher = new SuLauncher({
-    spawnPty: (file, args, options) => spawnPty(file, args, options),
+    spawnPty: (file, args, options) => {
+      const child = spawnPty(file, args, options);
+      return {
+        get pid() { return child.pid; },
+        write: (value) => child.write(value),
+        kill: (signal) => child.kill(signal),
+        dispose: () => (child as unknown as { destroy(): void }).destroy(),
+        onData: (listener) => child.onData(listener),
+        onExit: (listener) => child.onExit(listener),
+      };
+    },
     allocatePort: leasePort,
     pathExists: async (path) => access(path).then(() => true).catch(() => false),
     verifyCodexBinary: async (path) => access(path).then(() => true).catch(() => false),
