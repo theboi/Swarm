@@ -30,6 +30,19 @@ describe("LocalRolloutTranscriptReader", () => {
     ]);
   });
 
+  it("returns the exact source JSONL for account-independent chat handoff", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
+    roots.push(root);
+    const sessions = join(root, "sessions", "2026", "08", "29");
+    await mkdir(sessions, { recursive: true });
+    const threadId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcb";
+    const path = join(sessions, `rollout-2026-08-29T00-00-00-${threadId}.jsonl`);
+    const source = `${JSON.stringify({ type: "session_meta", payload: { id: threadId } })}\n${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", turn_id: "turn-1" } })}\n`;
+    await writeFile(path, source);
+
+    await expect(new LocalRolloutTranscriptReader(root).readJsonl(threadId)).resolves.toBe(source);
+  });
+
   it("rejects an invalid thread identifier before inspecting the filesystem", async () => {
     const reader = new LocalRolloutTranscriptReader("/Users/claudiothe/.codex");
     await expect(reader.readThread("../../secrets")).rejects.toThrow("Invalid local thread identifier");

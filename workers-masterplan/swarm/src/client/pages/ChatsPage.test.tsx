@@ -532,6 +532,30 @@ describe("ChatsPage", () => {
     expect(await screen.findByRole("heading", { name: "(Handoff) T0 · Graph planning" })).toBeVisible();
   });
 
+  it("keeps the JSONL handoff action beside Archive when the source account is unauthenticated and not limit-blocked", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const moveThreadToAccount = vi.fn(async () => ({ data: { id: "continuation", accountId: "bot1" as const, name: "(Handoff) T0 · Graph planning", archived: false, updatedAt: 1, capabilities: { canArchive: false, canInterrupt: true, canStartTurn: false, canSteer: true } } }));
+    const sourceUnauthenticated = {
+      ...chatSnapshot,
+      accounts: chatSnapshot.accounts.map((account) => account.id === "bot3"
+        ? { ...account, connection: "action_required" as const, authentication: "unauthenticated" as const }
+        : account.id === "bot1"
+          ? { ...account, connection: "connected" as const, authentication: "authenticated" as const }
+          : account),
+      limitResumes: [],
+    };
+    render(<ChatsPage snapshot={sourceUnauthenticated} api={{ ...api, moveThreadToAccount }} />);
+
+    const archive = screen.getByRole("button", { name: "Archive chat" });
+    const move = screen.getByRole("button", { name: "Move to another account" });
+    expect(move).toBeVisible();
+    expect(archive.nextElementSibling).toBe(move);
+
+    await user.click(move);
+    expect(screen.getByRole("dialog", { name: "Move to another account" })).toBeVisible();
+  });
+
   it("queues messages for automatic resume while the selected chat is waiting for its limit", async () => {
     setViewport(1440);
     const user = userEvent.setup();
