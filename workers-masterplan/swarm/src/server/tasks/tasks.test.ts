@@ -23,7 +23,7 @@ describe("task authority", () => {
     expect(production.blueprintId).toBe("2026-08-14-mvp3");
     expect(production.lifecycle).toEqual({
       mode: "two_pass",
-      activePass: "planning",
+      activePass: "execution",
       parallelPasses: false,
       planningGatePath: "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md",
     });

@@ -5,7 +5,7 @@
   "coordinationRoot": "docs/workers/2026-08-14-mvp3",
   "lifecycle": {
     "mode": "two_pass",
-    "activePass": "planning",
+    "activePass": "execution",
     "parallelPasses": false,
     "planningGatePath": "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md"
   },
