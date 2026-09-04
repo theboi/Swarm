@@ -273,7 +273,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const lastOpenedChatKey = useRef<string | null>(null);
   const scrollPosition = useRef(0);
   const openedMarkdownPath = useRef<string | null>(null);
-  const routedMarkdownPath = useRef<string | null | undefined>(undefined);
+  const openedMarkdownAccountId = useRef<AccountId | null>(null);
+  const routedMarkdownSource = useRef<string | undefined>(undefined);
   const markdownRequestId = useRef(0);
   const moveDialogRef = useRef<HTMLElement>(null);
   const moveCloseButton = useRef<HTMLButtonElement>(null);
@@ -488,6 +489,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       if ("error" in result && result.error) return reportError(result.error.message);
       setDocument(result.data);
       openedMarkdownPath.current = path;
+      openedMarkdownAccountId.current = accountId;
       onOpenMarkdownPathChange?.(path);
     } catch {
       reportError("Unable to open this Markdown file.");
@@ -499,20 +501,23 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     if (scrollRef.current) scrollRef.current.scrollTop = scrollPosition.current;
     setDocument(null);
     openedMarkdownPath.current = null;
+    openedMarkdownAccountId.current = null;
     onOpenMarkdownPathChange?.(null);
   };
 
   useEffect(() => {
-    if (routedMarkdownPath.current === openMarkdownPath) return;
-    routedMarkdownPath.current = openMarkdownPath;
+    const source = `${accountId ?? ""}\u0000${openMarkdownPath ?? ""}`;
+    if (routedMarkdownSource.current === source) return;
+    routedMarkdownSource.current = source;
     markdownRequestId.current += 1;
     if (!openMarkdownPath) {
       setDocument(null);
       openedMarkdownPath.current = null;
+      openedMarkdownAccountId.current = null;
       return;
     }
     if (!accountId) return;
-    if (openedMarkdownPath.current === openMarkdownPath) return;
+    if (openedMarkdownPath.current === openMarkdownPath && openedMarkdownAccountId.current === accountId) return;
     setDocument(null);
     void openMarkdown(openMarkdownPath);
   }, [accountId, openMarkdownPath, openMarkdown]);

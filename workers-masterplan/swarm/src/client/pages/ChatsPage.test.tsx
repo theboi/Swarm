@@ -530,6 +530,37 @@ describe("ChatsPage", () => {
     expect(onOpenMarkdownPathChange).not.toHaveBeenCalled();
   });
 
+  it("reopens a Markdown route through the account selected after the reader opens", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const readMarkdown = vi.fn(async (accountId: string) => ({ data: { filename: "runbook.md", content: `# ${accountId} runbook` } }));
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath="docs/runbook.md" />);
+
+    expect(await screen.findByRole("heading", { name: "bot3 runbook" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "bot1" }));
+
+    expect(await screen.findByRole("heading", { name: "bot1 runbook" })).toBeVisible();
+    expect(readMarkdown).toHaveBeenCalledWith("bot1", "docs/runbook.md");
+  });
+
+  it("ignores a prior-account Markdown read after the account changes", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    let resolveBot3!: (value: { data: { filename: string; content: string } }) => void;
+    const bot3Read = new Promise<{ data: { filename: string; content: string } }>((resolve) => { resolveBot3 = resolve; });
+    const readMarkdown = vi.fn((accountId: string) => accountId === "bot3" ? bot3Read : Promise.resolve({ data: { filename: "runbook.md", content: "# bot1 runbook" } }));
+    const onOpenMarkdownPathChange = vi.fn();
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath="docs/runbook.md" onOpenMarkdownPathChange={onOpenMarkdownPathChange} />);
+
+    await waitFor(() => expect(readMarkdown).toHaveBeenCalledWith("bot3", "docs/runbook.md"));
+    await user.click(screen.getByRole("button", { name: "bot1" }));
+    expect(await screen.findByRole("heading", { name: "bot1 runbook" })).toBeVisible();
+    await act(async () => { resolveBot3({ data: { filename: "runbook.md", content: "# bot3 runbook" } }); });
+
+    expect(screen.queryByRole("heading", { name: "bot3 runbook" })).not.toBeInTheDocument();
+    expect(onOpenMarkdownPathChange).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a local blank draft from the top of the chat list and creates the server chat only on first send", async () => {
     setViewport(1440);
     const user = userEvent.setup();
