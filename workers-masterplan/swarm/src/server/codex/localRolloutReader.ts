@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
@@ -67,11 +67,9 @@ export class LocalRolloutTranscriptReader {
   constructor(private readonly codexHome: string) {}
 
   async readThread(threadId: string): Promise<{ thread: { id: string; turns: RawThreadTurn[] } }> {
-    if (!threadIdPattern.test(threadId)) throw new Error("Invalid local thread identifier");
     let cached = this.cache.get(threadId);
     if (!cached) {
-      const path = await findRollout(join(this.codexHome, "sessions"), threadId);
-      if (!path) throw new Error("Local rollout transcript not found");
+      const path = await this.rolloutPath(threadId);
       cached = { path, offset: 0, pending: "", turns: new Map() };
       this.cache.set(threadId, cached);
     }
@@ -79,6 +77,17 @@ export class LocalRolloutTranscriptReader {
     if (size < cached.offset) { cached.offset = 0; cached.pending = ""; cached.turns.clear(); }
     if (size > cached.offset) await this.readAppended(cached);
     return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
+  }
+
+  async readJsonl(threadId: string): Promise<string> {
+    return readFile(await this.rolloutPath(threadId), "utf8");
+  }
+
+  private async rolloutPath(threadId: string): Promise<string> {
+    if (!threadIdPattern.test(threadId)) throw new Error("Invalid local thread identifier");
+    const path = await findRollout(join(this.codexHome, "sessions"), threadId);
+    if (!path) throw new Error("Local rollout transcript not found");
+    return path;
   }
 
   private async readAppended(cached: CachedRollout): Promise<void> {

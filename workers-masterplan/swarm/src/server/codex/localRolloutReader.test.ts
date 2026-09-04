@@ -47,4 +47,9 @@ describe("LocalRolloutTranscriptReader", () => {
     const reader = new LocalRolloutTranscriptReader("/Users/claudiothe/.codex");
     await expect(reader.readThread("../../secrets")).rejects.toThrow("Invalid local thread identifier");
   });
+
+  it("rejects an invalid identifier before reading handoff JSONL", async () => {
+    const reader = new LocalRolloutTranscriptReader("/Users/claudiothe/.codex");
+    await expect(reader.readJsonl("../../auth.json")).rejects.toThrow("Invalid local thread identifier");
+  });
 });
