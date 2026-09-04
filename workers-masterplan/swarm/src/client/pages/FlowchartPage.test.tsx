@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FlowchartPage, taskLayoutPositions } from "./FlowchartPage";
 import { dashboardSnapshot, setViewport } from "../test/fixtures";
@@ -36,6 +36,42 @@ HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 afterEach(cleanup);
 
 describe("FlowchartPage", () => {
+  it("confirms auto-pilot changes with the server and keeps snapshot updates authoritative", async () => {
+    const user = userEvent.setup();
+    let resolveSetAutoPilot: ((result: { data: { enabled: boolean } }) => void) | undefined;
+    const setAutoPilot = vi.fn(() => new Promise<{ data: { enabled: boolean } }>((resolve) => { resolveSetAutoPilot = resolve; }));
+    const { rerender } = render(<FlowchartPage snapshot={dashboardSnapshot} api={{ previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), setAutoPilot }} onOpenChat={() => undefined} />);
+
+    const control = screen.getByRole("switch", { name: "Auto-pilot" });
+    expect(control).not.toBeChecked();
+    expect(screen.getByText("Assign ready work to idle bot accounts")).toBeVisible();
+
+    await user.click(control);
+    expect(setAutoPilot).toHaveBeenCalledWith(true);
+    expect(control).toBeDisabled();
+    expect(control).not.toBeChecked();
+
+    resolveSetAutoPilot?.({ data: { enabled: true } });
+    expect(await screen.findByRole("switch", { name: "Auto-pilot", checked: true })).toBeEnabled();
+
+    rerender(<FlowchartPage snapshot={{ ...dashboardSnapshot, autoPilot: { enabled: false } }} api={{ previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), setAutoPilot }} onOpenChat={() => undefined} />);
+    expect(screen.getByRole("switch", { name: "Auto-pilot" })).not.toBeChecked();
+  });
+
+  it("retains the prior auto-pilot state and shows an alert when the server rejects the change", async () => {
+    const user = userEvent.setup();
+    const setAutoPilot = vi.fn(async () => ({ error: { code: "AUTO_PILOT_FAILED", message: "Unable to update auto-pilot." } }));
+    render(<FlowchartPage snapshot={{ ...dashboardSnapshot, autoPilot: { enabled: true } }} api={{ previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), setAutoPilot }} onOpenChat={() => undefined} />);
+
+    const control = screen.getByRole("switch", { name: "Auto-pilot" });
+    expect(control).toBeChecked();
+    await user.click(control);
+
+    expect(setAutoPilot).toHaveBeenCalledWith(false);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to update auto-pilot.");
+    expect(control).toBeChecked();
+  });
+
   it("shows separate planning and execution tabs without hiding unfinished planning", async () => {
     const user = userEvent.setup();
     const executionTasks = dashboardSnapshot.tasks.map((task) => ({ ...task, readiness: { ...task.readiness, phase: "execution" as const, state: task.id === "T0" ? "ready" as const : "blocked" as const } }));

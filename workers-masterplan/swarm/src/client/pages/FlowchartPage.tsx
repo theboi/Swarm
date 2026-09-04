@@ -116,7 +116,7 @@ function TaskInspector({ task, assignment, onOpenChat, onReviewLaunch, threadId,
   </div>;
 }
 
-type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<Pick<CoordinatorApi, "listModels">>;
+type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<Pick<CoordinatorApi, "listModels" | "setAutoPilot">>;
 
 export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, initialViewport = { x: 0, y: 0, zoom: 1 } }: { snapshot: CoordinatorSnapshot; api?: FlowLaunchApi; onOpenChat: (threadId: string) => void; onOpenLaunchedChat?: (target: ChatTarget) => void; initialViewport?: Viewport }) {
   const [pass, setPass] = useState<ManifestPass>("planning");
@@ -124,6 +124,8 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   const [selectedTask, setSelectedTask] = useState<TaskNode | null>(null);
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState(snapshot.autoPilot.enabled);
+  const [autoPilotPending, setAutoPilotPending] = useState(false);
   const [viewport, setViewport] = useState<Viewport>(initialViewport);
   const selectionTrigger = useRef<HTMLElement | null>(null);
   const selectTask = useCallback((task: TaskNode) => {
@@ -134,6 +136,9 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   useEffect(() => {
     if (!selectedTask) selectionTrigger.current?.focus();
   }, [selectedTask]);
+  useEffect(() => {
+    setAutoPilotEnabled(snapshot.autoPilot.enabled);
+  }, [snapshot]);
   const passTasks = snapshot.taskPasses?.[pass] ?? (pass === "planning" ? snapshot.tasks : []);
   const visibleTasks = useMemo(() => passTasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, passTasks]);
   useEffect(() => { if (filter !== "all" && passTasks.length > 0 && visibleTasks.length === 0) setFilter("all"); }, [filter, passTasks.length, visibleTasks.length]);
@@ -165,11 +170,32 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
       setError("Unable to send this work.");
     }
   };
+  const changeAutoPilot = async (enabled: boolean) => {
+    if (!api?.setAutoPilot) return;
+    setError(null);
+    setAutoPilotPending(true);
+    try {
+      const result = await api.setAutoPilot(enabled);
+      if ("error" in result && result.error) {
+        setError(result.error.message);
+        return;
+      }
+      setAutoPilotEnabled(result.data.enabled);
+    } catch {
+      setError("Unable to update auto-pilot.");
+    } finally {
+      setAutoPilotPending(false);
+    }
+  };
 
   return (
     <section className="flowchart-page" aria-labelledby="flowchart-title">
       <header><p className="eyebrow">Dependency graph</p><h1 id="flowchart-title">Flowchart</h1></header>
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
+      <label className="auto-pilot-toggle">
+        <span className="auto-pilot-toggle__copy"><strong>Auto-pilot</strong><small>Assign ready work to idle bot accounts</small></span>
+        <input type="checkbox" role="switch" aria-label="Auto-pilot" checked={autoPilotEnabled} disabled={autoPilotPending || !api?.setAutoPilot} onChange={(event) => void changeAutoPilot(event.currentTarget.checked)} />
+      </label>
       <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "planning"} onClick={() => { setPass("planning"); setFilter("all"); setSelectedTask(null); }}>Pass 1 · Planning</button><button role="tab" aria-selected={pass === "execution"} onClick={() => { setPass("execution"); setFilter("all"); setSelectedTask(null); }}>Pass 2 · Execution</button></div>
       <div className="flow-filters" aria-label="Task state filters">{(["all", "ready", "blocked", "running", "complete"] as Filter[]).map((state) => <button key={state} type="button" aria-pressed={filter === state} onClick={() => setFilter(state)}>Show {state} tasks</button>)}</div>
       <div className="flow-layout">

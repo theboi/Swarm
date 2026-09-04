@@ -106,6 +106,17 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/flowchart");
   });
 
+  it("passes auto-pilot changes from the flowchart to the coordinator API", async () => {
+    const user = userEvent.setup();
+    const setAutoPilot = vi.fn(async () => ({ data: { enabled: true } }));
+    render(<App api={{ ...api, setAutoPilot }} />);
+
+    await user.click(await screen.findByRole("link", { name: "Flowchart" }));
+    await user.click(screen.getByRole("switch", { name: "Auto-pilot" }));
+
+    expect(setAutoPilot).toHaveBeenCalledWith(true);
+  });
+
   it("uses popstate to restore a prior canonical page", async () => {
     window.history.replaceState(null, "", "/flowchart");
     render(<App api={api} />);
