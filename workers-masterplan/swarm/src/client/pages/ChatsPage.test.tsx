@@ -505,6 +505,31 @@ describe("ChatsPage", () => {
     expect(onOpenMarkdownPathChange).toHaveBeenCalledWith(null);
   });
 
+  it("closes an open Markdown reader when the browser removes its route path", async () => {
+    setViewport(1440);
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={api} openMarkdownPath="docs/runbook.md" />);
+
+    expect(await screen.findByRole("dialog", { name: "runbook.md" })).toBeVisible();
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={api} openMarkdownPath={null} />);
+
+    expect(screen.queryByRole("dialog", { name: "runbook.md" })).not.toBeInTheDocument();
+  });
+
+  it("ignores a Markdown read that finishes after the browser removes its route path", async () => {
+    setViewport(1440);
+    let resolveMarkdown!: (value: { data: { filename: string; content: string } }) => void;
+    const readMarkdown = vi.fn(() => new Promise<{ data: { filename: string; content: string } }>((resolve) => { resolveMarkdown = resolve; }));
+    const onOpenMarkdownPathChange = vi.fn();
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath="docs/runbook.md" onOpenMarkdownPathChange={onOpenMarkdownPathChange} />);
+
+    await waitFor(() => expect(readMarkdown).toHaveBeenCalledWith("bot3", "docs/runbook.md"));
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath={null} onOpenMarkdownPathChange={onOpenMarkdownPathChange} />);
+    await act(async () => { resolveMarkdown({ data: { filename: "runbook.md", content: "# Runbook" } }); });
+
+    expect(screen.queryByRole("dialog", { name: "runbook.md" })).not.toBeInTheDocument();
+    expect(onOpenMarkdownPathChange).not.toHaveBeenCalled();
+  });
+
   it("opens a local blank draft from the top of the chat list and creates the server chat only on first send", async () => {
     setViewport(1440);
     const user = userEvent.setup();

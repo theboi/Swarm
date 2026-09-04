@@ -273,6 +273,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const lastOpenedChatKey = useRef<string | null>(null);
   const scrollPosition = useRef(0);
   const openedMarkdownPath = useRef<string | null>(null);
+  const routedMarkdownPath = useRef<string | null | undefined>(undefined);
+  const markdownRequestId = useRef(0);
   const moveDialogRef = useRef<HTMLElement>(null);
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const renameCloseButton = useRef<HTMLButtonElement>(null);
@@ -478,9 +480,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const openMarkdown = useCallback(async (path: string) => {
     if (!accountId) return;
+    const requestId = ++markdownRequestId.current;
     scrollPosition.current = scrollRef.current?.scrollTop ?? 0;
     try {
       const result = await api.readMarkdown(accountId, path);
+      if (requestId !== markdownRequestId.current) return;
       if ("error" in result && result.error) return reportError(result.error.message);
       setDocument(result.data);
       openedMarkdownPath.current = path;
@@ -491,6 +495,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, [accountId, api, onOpenMarkdownPathChange, reportError]);
 
   const closeMarkdown = () => {
+    markdownRequestId.current += 1;
     if (scrollRef.current) scrollRef.current.scrollTop = scrollPosition.current;
     setDocument(null);
     openedMarkdownPath.current = null;
@@ -498,7 +503,17 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   useEffect(() => {
-    if (!accountId || !openMarkdownPath || openedMarkdownPath.current === openMarkdownPath) return;
+    if (routedMarkdownPath.current === openMarkdownPath) return;
+    routedMarkdownPath.current = openMarkdownPath;
+    markdownRequestId.current += 1;
+    if (!openMarkdownPath) {
+      setDocument(null);
+      openedMarkdownPath.current = null;
+      return;
+    }
+    if (!accountId) return;
+    if (openedMarkdownPath.current === openMarkdownPath) return;
+    setDocument(null);
     void openMarkdown(openMarkdownPath);
   }, [accountId, openMarkdownPath, openMarkdown]);
 
