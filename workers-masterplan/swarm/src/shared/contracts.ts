@@ -134,6 +134,12 @@ export type DispatchState =
   | "failed"
   | "attention_required";
 
+export interface AutoPilotState {
+  enabled: boolean;
+}
+
+export type DispatchOrigin = "operator" | "auto_pilot";
+
 export interface DispatchRecord {
   id: string;
   clientUserMessageId: string;
@@ -145,6 +151,8 @@ export interface DispatchRecord {
   createdAt: number;
   updatedAt: number;
   retryAt: number | null;
+  /** Omitted for dispatches stored before launch provenance was introduced. */
+  origin?: DispatchOrigin;
   errorCode?: string;
   /** Selected turn settings retained if a rate-limited launch must be retried. */
   settings?: ChatExecutionSettings;
@@ -277,6 +285,7 @@ export interface HealthSnapshot {
 
 export interface CoordinatorSnapshot {
   generatedAt: number;
+  autoPilot: AutoPilotState;
   accounts: AccountSnapshot[];
   localWorkspace?: LocalWorkspaceSnapshot;
   tasks: TaskNode[];

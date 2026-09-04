@@ -15,6 +15,18 @@ describe("HTTP coordinator API", () => {
     expect(fetch).toHaveBeenCalledWith("/api/v1/auth/session", expect.objectContaining({ credentials: "same-origin" }));
   });
 
+  it("sets auto-pilot through the authenticated mutation route", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: { enabled: true } }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await createHttpCoordinatorApi().setAutoPilot(true);
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/auto-pilot", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ enabled: true }),
+    }));
+  });
+
   it("returns only the displayed requested permissions for an explicit grant", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);

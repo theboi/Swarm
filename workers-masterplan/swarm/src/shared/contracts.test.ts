@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { validateTaskManifest } from "./contracts";
+import { validateTaskManifest, type AutoPilotState } from "./contracts";
+
+const autoPilot: AutoPilotState = { enabled: false };
 
 const validManifest = {
   blueprintId: "2026-08-14-mvp3",
@@ -26,6 +28,10 @@ const validManifest = {
 };
 
 describe("validateTaskManifest", () => {
+  it("defines the durable auto-pilot state", () => {
+    expect(autoPilot).toEqual({ enabled: false });
+  });
+
   it("accepts a gate with known dependencies", () => {
     expect(validateTaskManifest(validManifest)).toEqual({
       ok: true,

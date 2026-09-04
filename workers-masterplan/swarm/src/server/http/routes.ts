@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 
-import { ACCOUNT_IDS, type AccountId, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type AutoPilotState, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
@@ -13,6 +13,7 @@ export interface CoordinatorRouteServices {
   verifyTotp: ReturnType<typeof createTotpVerifier>;
   snapshot(): Promise<CoordinatorSnapshot>;
   health(): Promise<HealthSnapshot>;
+  setAutoPilot(enabled: boolean): Promise<AutoPilotState>;
   connectAccount(accountId: AccountId): Promise<unknown>;
   disconnectAccount(accountId: AccountId): Promise<void>;
   openTerminal(accountId: AccountId): Promise<void>;
@@ -148,6 +149,14 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   }));
   router.get("/snapshot", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.snapshot())));
   router.get("/health", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.health())));
+  router.post("/auto-pilot", ...securedMutation, asyncRoute(async (request, response) => {
+    const enabled = record(request.body).enabled;
+    if (typeof enabled !== "boolean") {
+      apiError(response, 400, "INVALID_REQUEST", "Auto-pilot enabled must be a boolean");
+      return;
+    }
+    sendData(response, await services.setAutoPilot(enabled));
+  }));
 
   router.post("/accounts/rate-limits/refresh", ...securedMutation, asyncRoute(async (_request, response) => sendData(response, await services.refreshAllRateLimits())));
   router.post("/accounts/:account/connect", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.connectAccount(id)); }));

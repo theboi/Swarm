@@ -1,5 +1,6 @@
 import type {
   ApiResult,
+  AutoPilotState,
   ChatExecutionSettings,
   ChatModelOption,
   CoordinatorSnapshot,
@@ -25,6 +26,7 @@ export interface MarkdownDocument { filename: string; content: string; }
 export interface CoordinatorApi {
   getSession(): Promise<SessionState>;
   getSnapshot(): Promise<CoordinatorSnapshot>;
+  setAutoPilot(enabled: boolean): Promise<ApiResult<AutoPilotState>>;
   startLogin(input: { email: string; password: string }): Promise<ApiResult<LoginChallenge>>;
   completeLogin(input: { challengeId: string; code: string }): Promise<ApiResult<SessionState>>;
   previewLaunch(taskId: string, accountId?: string, pass?: "planning" | "execution"): Promise<ApiResult<LaunchPreview>>;
@@ -87,6 +89,7 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
   return {
     getSession: () => read<SessionState>("/auth/session"),
     getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
+    setAutoPilot: (enabled) => request<AutoPilotState>("/auto-pilot", { method: "POST", body: JSON.stringify({ enabled }) }),
     startLogin: (input) => request<LoginChallenge>("/auth/challenge", { method: "POST", body: JSON.stringify(input) }),
     completeLogin: (input) => request<SessionState>("/auth/complete", { method: "POST", body: JSON.stringify(input) }),
     previewLaunch: (taskId, accountId, pass) => request<LaunchPreview>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST", body: JSON.stringify({ ...(accountId ? { accountId } : {}), ...(pass ? { pass } : {}) }) }),

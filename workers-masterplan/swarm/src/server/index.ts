@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -50,6 +50,7 @@ import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 
 type DurableState = {
   auth?: { challenges?: Record<string, unknown>; sessions?: Record<string, unknown>; loginThrottle?: Record<string, { failures: number; retryAt: number }>; usedTotp?: Record<string, true> };
+  autoPilot?: AutoPilotState;
   dispatches?: DispatchRecord[];
   workerAssignments?: WorkerAssignmentRecord[];
   limitResumes?: DurableLimitResumeRecord[];
@@ -99,6 +100,7 @@ async function createRuntime(config: SwarmConfig) {
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
   const root = state.root();
   root.auth ??= {};
+  root.autoPilot ??= { enabled: false };
   root.notifications ??= {};
   root.notifications.breakingChangeAccounts ??= [];
   const sessions = new SessionStore(config.sessionSecret, { persistence: root.auth as never, persist: () => state.persist() });
@@ -118,6 +120,7 @@ async function createRuntime(config: SwarmConfig) {
   const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
+  let requestAutoPilot = () => undefined;
   const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
   const activeTurnIds = new Map<string, string>();
   const activeTurnKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
@@ -384,7 +387,8 @@ async function createRuntime(config: SwarmConfig) {
       assignmentList.filter((record) => (record.pass ?? "planning") === pass),
       completedByPass[pass],
     )])) as Record<ManifestPass, TaskNode[]>;
-    return { generatedAt: Date.now(), accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: taskPasses[manifest?.lifecycle?.activePass ?? "planning"], taskPasses, dispatches, workerAssignments: assignmentList, limitResumes: limitResumes.publicList(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
+    const autoPilot = root.autoPilot ?? { enabled: false };
+    return { generatedAt: Date.now(), autoPilot: { ...autoPilot }, accounts: accountSnapshot(), localWorkspace: { ...localWorkspace, gitSync: { ...localWorkspace.gitSync } }, tasks: taskPasses[manifest?.lifecycle?.activePass ?? "planning"], taskPasses, dispatches, workerAssignments: assignmentList, limitResumes: limitResumes.publicList(), threads: threadSummaries, pendingApprovals: journal.pending().map((entry) => entry.pending), health: await health() };
   };
   const allowedOrigins = () => dashboardOrigins(config.port, config.host);
   const createPrompt = async (task: TaskNode, id: AccountId) => {
@@ -475,6 +479,12 @@ async function createRuntime(config: SwarmConfig) {
   const services: CoordinatorRouteServices = {
     config: { ...config, secureCookies: false }, sessions, throttle, verifyTotp,
     snapshot, health,
+    setAutoPilot: async (enabled) => {
+      await state.mutate((value) => { value.autoPilot = { enabled }; });
+      requestAutoPilot();
+      publishRuntimeEvent("auto_pilot", { enabled });
+      return { enabled };
+    },
     connectAccount: async (id) => {
       const connected = await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
       await outbox.recover({ readThread: async (record) => {
@@ -537,7 +547,7 @@ async function createRuntime(config: SwarmConfig) {
       upsertCachedThread(thread);
       await client.setThreadName(thread.id, `${preview.task.id} · ${preview.task.title}`);
       const now = Date.now();
-      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, pass, accountId: preview.accountId, threadId: thread.id, state: "queued", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
+      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, pass, accountId: preview.accountId, threadId: thread.id, state: "queued", origin: "operator", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
       await outbox.enqueue(record);
       await assignments.assign(taskId, preview.accountId, thread.id, now, pass);
       await outbox.markSubmitting(record.id);

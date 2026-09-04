@@ -2,6 +2,7 @@ import type { CoordinatorSnapshot, TranscriptItem } from "../../shared/contracts
 
 export const snapshot: CoordinatorSnapshot = {
   generatedAt: 1_725_000_000,
+  autoPilot: { enabled: false },
   accounts: [
     {
       id: "bot3",
@@ -58,8 +59,8 @@ export const dashboardSnapshot: CoordinatorSnapshot = {
     },
   ],
   dispatches: [
-    { id: "dispatch-1", clientUserMessageId: "message-1", taskId: "T0", accountId: "bot3", threadId: "thread-1", state: "accepted", createdAt: 1_725_000_000, updatedAt: 1_725_000_100, retryAt: null },
-    { id: "dispatch-2", clientUserMessageId: "message-2", taskId: "U1", accountId: "bot3", threadId: "thread-2", state: "queued", createdAt: 1_725_000_000, updatedAt: 1_725_000_100, retryAt: null },
+    { id: "dispatch-1", clientUserMessageId: "message-1", taskId: "T0", accountId: "bot3", threadId: "thread-1", state: "accepted", origin: "operator", createdAt: 1_725_000_000, updatedAt: 1_725_000_100, retryAt: null },
+    { id: "dispatch-2", clientUserMessageId: "message-2", taskId: "U1", accountId: "bot3", threadId: "thread-2", state: "queued", origin: "operator", createdAt: 1_725_000_000, updatedAt: 1_725_000_100, retryAt: null },
   ],
   pendingApprovals: [
     { id: "approval-1", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", itemId: "item-1", method: "item/commandExecution/requestApproval", summary: "rm -rf /Users/bot4", availableDecisions: ["decline"], createdAt: 1_725_000_000 },

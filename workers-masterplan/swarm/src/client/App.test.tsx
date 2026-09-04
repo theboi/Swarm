@@ -17,6 +17,7 @@ Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value:
 const api: CoordinatorApi = {
   getSession: async () => ({ authenticated: true }),
   getSnapshot: async () => snapshot,
+  setAutoPilot: async () => ({ data: { enabled: false } }),
   startLogin: async () => ({ data: { challengeId: "challenge" } }),
   completeLogin: async () => ({ data: { authenticated: true } }),
   previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }),

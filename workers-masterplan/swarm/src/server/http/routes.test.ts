@@ -11,7 +11,7 @@ import { createApiRouter, type CoordinatorRouteServices } from "./routes.js";
 const health: HealthSnapshot = {
   server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" },
 };
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, autoPilot: { enabled: false }, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health };
 
 async function fixture() {
   const passwordHash = await createPasswordHash("correct password", "route-test-salt");
@@ -25,6 +25,7 @@ async function fixture() {
     verifyTotp: createTotpVerifier("JBSWY3DPEHPK3PXP"),
     snapshot: async () => snapshot,
     health: async () => health,
+    setAutoPilot: vi.fn(async (enabled: boolean) => ({ enabled })),
     connectAccount: vi.fn(async () => ({ id: "bot1" })),
     disconnectAccount: vi.fn(async () => undefined),
     openTerminal,
@@ -74,6 +75,21 @@ describe("coordinator HTTP routes", () => {
     expect(result.body.error).toMatchObject({ code: "AUTH_INVALID" });
   });
 
+  it("sets auto-pilot only for an authenticated boolean request", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) }).expect(200);
+
+    await agent.post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: true }).expect(200, { data: { enabled: true } });
+    await agent.post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: "true" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Auto-pilot enabled must be a boolean" } });
+    await request(app).post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: true }).expect(401, { error: { code: "AUTH_INVALID", message: "Authentication required" } });
+
+    expect(services.setAutoPilot).toHaveBeenCalledOnce();
+    expect(services.setAutoPilot).toHaveBeenCalledWith(true);
+  });
+
   it("accepts a same-host Tailscale origin even when its address was not in the startup allowlist", async () => {
     const { app } = await fixture();
     const origin = "http://100.87.251.123:4310";
@@ -100,7 +116,7 @@ describe("coordinator HTTP routes", () => {
     expect(openTerminal).not.toHaveBeenCalled();
   });
 
-  it("refreshes every connected account's usage and forwards the selected account and edited prompt on launch", async () => {
+  it("refreshes every connected account's usage, forwards an edited prompt, and rejects caller-supplied dispatch origin", async () => {
     const { app, services } = await fixture();
     const agent = request.agent(app);
     const origin = "http://127.0.0.1:4310";
@@ -110,7 +126,7 @@ describe("coordinator HTTP routes", () => {
     await agent.post("/api/v1/accounts/rate-limits/refresh").set("origin", origin).send({}).expect(200);
     await agent.post("/api/v1/tasks/T1/preview").set("origin", origin).send({ accountId: "bot1" }).expect(200);
     const settings = { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" };
-    await agent.post("/api/v1/tasks/T1/launch").set("origin", origin).send({ accountId: "bot1", prompt: "Use this edited worker prompt.", settings }).expect(200);
+    await agent.post("/api/v1/tasks/T1/launch").set("origin", origin).send({ accountId: "bot1", prompt: "Use this edited worker prompt.", settings, origin: "auto_pilot" }).expect(200);
 
     expect(services.refreshAllRateLimits).toHaveBeenCalledOnce();
     expect(services.previewLaunch).toHaveBeenCalledWith("T1", "bot1");

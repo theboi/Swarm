@@ -7,7 +7,7 @@ import type { CoordinatorSnapshot } from "../../shared/contracts.js";
 import { SessionStore } from "../auth/sessionStore.js";
 import { BrowserHub } from "./browserHub.js";
 
-const snapshot: CoordinatorSnapshot = { generatedAt: 1, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" } } };
+const snapshot: CoordinatorSnapshot = { generatedAt: 1, autoPilot: { enabled: false }, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health: { server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: "ok" }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: "ok" } } };
 let close: (() => Promise<void>) | undefined;
 
 afterEach(async () => { await close?.(); close = undefined; });
