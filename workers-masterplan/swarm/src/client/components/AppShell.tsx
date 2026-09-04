@@ -2,6 +2,7 @@ import { ChartNoAxesCombined, House, MessagesSquare, UsersRound } from "lucide-r
 import { useEffect, useState, type ReactNode } from "react";
 
 import "../styles.css";
+import { pagePath } from "../navigation.js";
 
 export type AppPage = "home" | "flowchart" | "chats" | "accounts";
 
@@ -33,11 +34,15 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
       <nav className="app-nav" aria-label="Primary navigation" data-variant={variant}>
         <div className="app-nav__brand" aria-label="EdenMind Swarm">ES</div>
         {navigation.map(({ id, label, icon: Icon }) => (
-          <button className="app-nav__item" key={id} type="button" aria-current={activePage === id ? "page" : undefined} aria-label={id === "chats" && hasBreakingChangeNotification ? "Chats — breaking change notification" : undefined} onClick={() => onNavigate(id)} style={{ minWidth: 44, minHeight: 44 }}>
+          <a className="app-nav__item" key={id} href={pagePath(id)} aria-current={activePage === id ? "page" : undefined} aria-label={id === "chats" && hasBreakingChangeNotification ? "Chats — breaking change notification" : undefined} onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            onNavigate(id);
+          }} style={{ minWidth: 44, minHeight: 44, textDecoration: "none" }}>
             <Icon aria-hidden="true" size={20} strokeWidth={1.75} />
             <span className="app-nav__label">{label}</span>
             {id === "chats" && hasBreakingChangeNotification ? <span className="notification-dot" role="img" aria-label="Breaking change notification" /> : null}
-          </button>
+          </a>
         ))}
       </nav>
       <main id="main-content" className="app-main">{children}</main>

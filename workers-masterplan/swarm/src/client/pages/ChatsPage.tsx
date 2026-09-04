@@ -237,7 +237,7 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   </div>;
 }
 
-export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
+export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, openMarkdownPath = null, onOpenMarkdownPathChange, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; openMarkdownPath?: string | null; onOpenMarkdownPathChange?: (path: string | null) => void; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
   const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
@@ -272,6 +272,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const lastOpenedChatKey = useRef<string | null>(null);
   const scrollPosition = useRef(0);
+  const openedMarkdownPath = useRef<string | null>(null);
   const moveDialogRef = useRef<HTMLElement>(null);
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const renameCloseButton = useRef<HTMLButtonElement>(null);
@@ -475,22 +476,31 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     }
   };
 
-  const openMarkdown = async (path: string) => {
+  const openMarkdown = useCallback(async (path: string) => {
     if (!accountId) return;
     scrollPosition.current = scrollRef.current?.scrollTop ?? 0;
     try {
       const result = await api.readMarkdown(accountId, path);
       if ("error" in result && result.error) return reportError(result.error.message);
       setDocument(result.data);
+      openedMarkdownPath.current = path;
+      onOpenMarkdownPathChange?.(path);
     } catch {
       reportError("Unable to open this Markdown file.");
     }
-  };
+  }, [accountId, api, onOpenMarkdownPathChange, reportError]);
 
   const closeMarkdown = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollPosition.current;
     setDocument(null);
+    openedMarkdownPath.current = null;
+    onOpenMarkdownPathChange?.(null);
   };
+
+  useEffect(() => {
+    if (!accountId || !openMarkdownPath || openedMarkdownPath.current === openMarkdownPath) return;
+    void openMarkdown(openMarkdownPath);
+  }, [accountId, openMarkdownPath, openMarkdown]);
 
   const copyTerminalCommand = async () => {
     try {

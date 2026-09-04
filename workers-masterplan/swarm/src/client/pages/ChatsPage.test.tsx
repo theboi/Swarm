@@ -492,6 +492,19 @@ describe("ChatsPage", () => {
     expect(transcript.scrollTop).toBe(144);
   });
 
+  it("opens a Markdown path supplied by the browser and clears it when the reader closes", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const onOpenMarkdownPathChange = vi.fn();
+    const readMarkdown = vi.fn(async () => ({ data: { filename: "runbook.md", content: "# Runbook" } }));
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath="docs/runbook.md" onOpenMarkdownPathChange={onOpenMarkdownPathChange} />);
+
+    expect(await screen.findByRole("dialog", { name: "runbook.md" })).toBeVisible();
+    expect(readMarkdown).toHaveBeenCalledWith("bot3", "docs/runbook.md");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onOpenMarkdownPathChange).toHaveBeenCalledWith(null);
+  });
+
   it("opens a local blank draft from the top of the chat list and creates the server chat only on first send", async () => {
     setViewport(1440);
     const user = userEvent.setup();

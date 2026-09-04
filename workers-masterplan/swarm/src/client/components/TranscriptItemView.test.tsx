@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
@@ -64,6 +64,24 @@ describe("TranscriptItemView", () => {
 
     expect(screen.getByRole("link", { name: "Open docs" })).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "Open docs" })).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("uses an in-app Markdown URL and preserves modified-click browser behavior", async () => {
+    const onOpenMarkdown = vi.fn();
+    render(<TranscriptItemView item={{ id: "markdown-file", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "Read docs/runbook.md" } }} onOpenMarkdown={onOpenMarkdown} />);
+
+    const file = screen.getByRole("link", { name: "docs/runbook.md" });
+    expect(file).toHaveAttribute("href", "/chats?open=docs%2Frunbook.md");
+    let defaultPrevented: boolean | undefined;
+    const observeClick = (event: MouseEvent) => {
+      defaultPrevented = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener("click", observeClick);
+    fireEvent.click(file, { ctrlKey: true });
+    document.removeEventListener("click", observeClick);
+    expect(defaultPrevented).toBe(false);
+    expect(onOpenMarkdown).not.toHaveBeenCalled();
   });
 
   it("shows the sent time before a control that copies the raw message source", async () => {
