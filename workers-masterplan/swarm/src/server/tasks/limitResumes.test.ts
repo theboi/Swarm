@@ -1,8 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LimitResumeManifest } from "./limitResumes.js";
+import { DispatchOutbox } from "../dispatch/outbox.js";
+import { WorkerAssignmentManifest } from "./workerAssignments.js";
 
 describe("LimitResumeManifest", () => {
+  it("keeps an autonomous limit resume on its original worker and dispatch identity", async () => {
+    const outbox = new DispatchOutbox([{ id: "auto-1", clientUserMessageId: "launch-1", taskId: "T0", accountId: "bot1", threadId: "same-thread", origin: "auto_pilot", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null }]);
+    const assignments = new WorkerAssignmentManifest([]);
+    const manifest = new LimitResumeManifest([]);
+    const handoff = vi.spyOn(outbox, "transferAcceptedThread");
+    const transfer = vi.spyOn(manifest, "claimTransfer");
+    await assignments.assign("T0", "bot1", "same-thread", 0);
+    await manifest.markWaiting("bot1", "same-thread", 10);
+    await assignments.markWaitingForLimit("bot1", "same-thread", 10);
+    expect(assignments.forThread("bot1", "same-thread")?.state).toBe("waiting_for_limit");
+    expect(manifest.forThread("bot1", "same-thread")?.state).toBe("waiting_for_limit");
+    const resume = await manifest.claimResume("bot1", "same-thread", "resume-1", 20);
+    expect(resume).toMatchObject({ accountId: "bot1", threadId: "same-thread", resumeClientUserMessageId: "resume-1" });
+    expect(manifest.resumeTurnInput(resume!).text).toContain("Continue from where you stopped");
+    await manifest.completeAcceptedResume("bot1", "same-thread", "resume-1", 30);
+    await assignments.markAssigned("bot1", "same-thread", 30);
+    expect(outbox.get("auto-1")).toMatchObject({ id: "auto-1", clientUserMessageId: "launch-1", accountId: "bot1", threadId: "same-thread", origin: "auto_pilot", state: "accepted" });
+    expect(assignments.forThread("bot1", "same-thread")?.state).toBe("assigned");
+    expect(handoff).not.toHaveBeenCalled();
+    expect(transfer).not.toHaveBeenCalled();
+  });
   it("durably marks and claims an unassigned chat for one automatic resume", async () => {
     const manifest = new LimitResumeManifest([]);
 

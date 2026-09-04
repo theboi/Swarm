@@ -2,6 +2,7 @@ import {
   BOT_ACCOUNT_IDS,
   type AccountSnapshot,
   type BotAccountId,
+  type DispatchRecord,
   type TaskNode,
   type ThreadSummary,
 } from "../../shared/contracts.js";
@@ -9,6 +10,45 @@ import {
 export interface AutoPilotLaunch {
   taskId: string;
   accountId: BotAccountId;
+}
+
+export function shouldAutoArchive(record: Pick<DispatchRecord, "origin" | "state"> | undefined, provenComplete: boolean): boolean {
+  return record?.origin === "auto_pilot" && provenComplete;
+}
+
+type AutoPilotSnapshot = Parameters<typeof selectAutoPilotLaunches>[0];
+const asError = (cause: unknown): Error => cause instanceof Error ? cause : new Error(String(cause));
+
+/** Refresh once, then isolate failures and recheck each original pairing without reallocating it. */
+export async function reconcileAutoPilotLaunches(dependencies: {
+  refresh(): Promise<void>;
+  snapshot(): AutoPilotSnapshot;
+  launch(pair: AutoPilotLaunch): Promise<unknown>;
+  log(error: Error): void;
+}): Promise<void> {
+  await dependencies.refresh();
+  const launches = selectAutoPilotLaunches(dependencies.snapshot());
+  const results = await Promise.allSettled(launches.map(async (pair) => {
+    const current = dependencies.snapshot();
+    const eligible = selectAutoPilotLaunches({ ...current, tasks: current.tasks.filter((task) => task.id === pair.taskId), accounts: current.accounts.filter((account) => account.id === pair.accountId) });
+    if (eligible.length) await dependencies.launch(pair);
+  }));
+  for (const result of results) if (result.status === "rejected") dependencies.log(asError(result.reason));
+}
+
+/** Completed dispatches retain provenance across restart; live receipt evidence gates every retry. */
+export async function retryAutoPilotArchives(dependencies: {
+  records(): DispatchRecord[];
+  threads(): ThreadSummary[];
+  provenComplete(record: DispatchRecord): boolean;
+  archive(record: DispatchRecord): Promise<void>;
+  log(error: Error): void;
+}): Promise<void> {
+  const candidates = dependencies.records().filter((record) => record.state === "completed"
+    && shouldAutoArchive(record, dependencies.provenComplete(record))
+    && dependencies.threads().some((thread) => thread.accountId === record.accountId && thread.id === record.threadId && !thread.archived));
+  const results = await Promise.allSettled(candidates.map((record) => dependencies.archive(record)));
+  for (const result of results) if (result.status === "rejected") dependencies.log(asError(result.reason));
 }
 
 export function selectAutoPilotLaunches(input: {

@@ -53,6 +53,14 @@ async function fixture() {
 }
 
 describe("coordinator HTTP routes", () => {
+  it("never accepts autonomous dispatch provenance from the browser", async () => {
+    const { app, services } = await fixture();
+    const session = await services.sessions.createSession("claudio@example.test");
+    await request(app).post("/api/v1/tasks/T0/launch")
+      .set("origin", "http://127.0.0.1:4310").set("Cookie", `swarm_session=${session}`)
+      .send({ accountId: "bot1", origin: "auto_pilot" }).expect(200);
+    expect(services.launch).toHaveBeenCalledWith("T0", { accountId: "bot1", prompt: undefined });
+  });
   it("uses a generic two-step login and a strict session cookie", async () => {
     const { app } = await fixture();
     const agent = request.agent(app);

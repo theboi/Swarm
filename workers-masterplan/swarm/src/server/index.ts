@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -34,6 +34,7 @@ import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
 import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
+import { AutoPilotController, reconcileAutoPilotLaunches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./scheduler/autoPilot.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
@@ -121,6 +122,7 @@ async function createRuntime(config: SwarmConfig) {
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
   let requestAutoPilot = () => undefined;
+  let shuttingDown = false;
   const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
   const activeTurnIds = new Map<string, string>();
   const activeTurnKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
@@ -163,15 +165,22 @@ async function createRuntime(config: SwarmConfig) {
   const settleCompletedLaunchThread = async (account: AccountId, threadId: string) => {
     const assignment = assignments.forThread(account, threadId);
     const accepted = outbox.list().find((record) => record.accountId === account && record.threadId === threadId && record.state === "accepted");
+    // A completion event can beat startTurn's acknowledgement. The launch path
+    // retries settlement after persisting accepted; never settle a submission early.
+    if (!accepted) return;
     const taskId = assignment?.taskId ?? accepted?.taskId;
     if (!taskId) return;
     const pass = assignment?.pass ?? accepted?.pass ?? "planning";
     await refreshTasks(true);
-    const provenComplete = completedByPass[pass].has(taskId) || nodesByPass[pass].find((node) => node.id === taskId)?.readiness.state === "complete";
+    const provenComplete = !manifestError && completedByPass[pass].has(taskId);
     if (provenComplete) {
       await assignments.complete(account, threadId);
       await outbox.completeAcceptedForThread(account, threadId);
       completedByPass[pass].add(taskId);
+      if (shouldAutoArchive(accepted, provenComplete)) {
+        try { await services.archiveThread(account, threadId); }
+        catch (error) { logger.warn("autoPilot", { event: "archive_failed", account, threadId, error: error instanceof Error ? error.message : "failed" }); }
+      }
     } else {
       await assignments.markAttentionRequired(account, threadId);
       if (accepted) await outbox.abandon(accepted.id);
@@ -184,6 +193,7 @@ async function createRuntime(config: SwarmConfig) {
     completedLaunchThreads.delete(completedLaunchThreadKey(account, threadId));
     const snapshot = accounts.snapshot(account);
     accounts.updateSnapshot(account, { activeTurns: Math.max(0, snapshot.activeTurns - 1) });
+    requestAutoPilot();
   };
   accounts = new AccountManager({
     launcher,
@@ -279,6 +289,7 @@ async function createRuntime(config: SwarmConfig) {
     if (!force && Date.now() - tasksRefreshedAt < 15_000) return;
     if (taskRefreshPromise) return taskRefreshPromise;
     taskRefreshPromise = (async () => {
+      const priorProjection = JSON.stringify({ nodesByPass, manifestError, activePass: manifest?.lifecycle?.activePass });
       if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
       let candidatePasses: Record<ManifestPass, TaskNode[]> | undefined;
       let candidateCompleted: Record<ManifestPass, Set<string>> | undefined;
@@ -312,6 +323,9 @@ async function createRuntime(config: SwarmConfig) {
       if (!refreshed.manifestError && candidatePasses && candidateCompleted) { nodesByPass = candidatePasses; completedByPass = candidateCompleted; }
       manifestError = refreshed.manifestError;
       tasksRefreshedAt = Date.now();
+      // Only a changed refresh requests another run, so the controller's own
+      // force-refresh cannot turn its coalesced request queue into a busy loop.
+      if (JSON.stringify({ nodesByPass, manifestError, activePass: manifest?.lifecycle?.activePass }) !== priorProjection) requestAutoPilot();
     })();
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
@@ -421,6 +435,7 @@ async function createRuntime(config: SwarmConfig) {
           await outbox.markSubmitting(active.id);
           await (await liveClient(active.accountId)).startTurn({ threadId: active.threadId, clientUserMessageId: active.clientUserMessageId, text: await createPrompt(task, active.accountId), settings: active.settings });
           await outbox.markAccepted(active.id);
+          requestAutoPilot();
           accounts.updateSnapshot(active.accountId, { activeTurns: accounts.snapshot(active.accountId).activeTurns + 1, lastAssignedAt: Date.now() });
           if (completedLaunchThreads.has(completedLaunchThreadKey(active.accountId, active.threadId))) await settleCompletedLaunchThread(active.accountId, active.threadId);
         } catch { const active = outbox.get(record.id); if (active?.state === "submitting" || active?.state === "waiting_for_limit") await outbox.abandon(active.id); }
@@ -464,6 +479,7 @@ async function createRuntime(config: SwarmConfig) {
           await assignments.markAssigned(account, threadId);
           if (hasNewerMessages) await scheduleLimitResume(account, threadId, Date.now() + 60_000);
           publishRuntimeEvent("task", { taskId: assignment?.taskId ?? "" });
+          requestAutoPilot();
         } catch (error) {
           if (!accepted) {
             await limitResumes.restoreWaitingFromResume(account, threadId, clientUserMessageId);
@@ -510,6 +526,7 @@ async function createRuntime(config: SwarmConfig) {
         }
       }
       for (const waiting of limitResumes.waitingForAccount(id)) if (!limitResumeTimers.has(activeTurnKey(id, waiting.threadId))) await scheduleLimitResume(id, waiting.threadId);
+      requestAutoPilot();
       return connected;
     },
     disconnectAccount: (id) => accounts.disconnect(id),
@@ -542,12 +559,16 @@ async function createRuntime(config: SwarmConfig) {
       const preview = await services.previewLaunch(taskId, input.accountId, pass) as { task: TaskNode; accountId: AccountId; prompt: string };
       if (preview.task.readiness.state !== "ready") throw new Error(preview.task.readiness.blockingCodes[0] ?? "TASK_NOT_READY");
       const client = await liveClient(preview.accountId);
+      if (input.origin === "auto_pilot") {
+        const current = autoPilotSnapshot(pass);
+        if (!selectAutoPilotLaunches({ ...current, tasks: current.tasks.filter((task) => task.id === taskId), accounts: current.accounts.filter((account) => account.id === preview.accountId) }).length) throw new Error("TASK_NOT_READY");
+      }
       const rawThread = await client.startThread();
       const thread = asThread(preview.accountId, responseThread(rawThread), projectWorkspaceFor(preview.accountId));
       upsertCachedThread(thread);
       await client.setThreadName(thread.id, `${preview.task.id} · ${preview.task.title}`);
       const now = Date.now();
-      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, pass, accountId: preview.accountId, threadId: thread.id, state: "queued", origin: "operator", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
+      const record: DispatchRecord = { id: randomUUID(), clientUserMessageId: randomUUID(), taskId, pass, accountId: preview.accountId, threadId: thread.id, state: "queued", origin: input.origin ?? "operator", createdAt: now, updatedAt: now, retryAt: null, settings: input.settings };
       await outbox.enqueue(record);
       await assignments.assign(taskId, preview.accountId, thread.id, now, pass);
       await outbox.markSubmitting(record.id);
@@ -629,6 +650,7 @@ async function createRuntime(config: SwarmConfig) {
     archiveThread: async (id, threadId) => {
       await (await liveClient(id)).archiveThread(threadId);
       cacheThreads(id, (threadCache.get(id) ?? []).map((thread) => thread.id === threadId ? { ...thread, archived: true } : thread));
+      requestAutoPilot();
     },
     renameThread: async (id, threadId, name) => {
       await (await liveClient(id)).setThreadName(threadId, name);
@@ -655,6 +677,47 @@ async function createRuntime(config: SwarmConfig) {
     },
     allowedOrigins,
   };
+  const autoPilotSnapshot = (pass: ManifestPass) => ({
+    tasks: root.autoPilot?.enabled === true && !shuttingDown && !manifestError && pass === (manifest?.lifecycle?.activePass ?? "planning")
+      ? projectDispatchState(nodesByPass[pass], outbox.list().filter((record) => (record.pass ?? "planning") === pass), pass === "planning" ? [...threadCache.values()].flat() : [], assignments.list().filter((record) => (record.pass ?? "planning") === pass), completedByPass[pass]) : [],
+    accounts: accountSnapshot().filter((account) => !autoPilotRefreshFailed.has(account.id)),
+    threads: [...threadCache.values()].flat(),
+  });
+  const autoPilotRefreshFailed = new Set<AccountId>();
+  const reconcileAutoPilot = async () => {
+    let pass: ManifestPass = "planning";
+    await reconcileAutoPilotLaunches({
+      refresh: async () => {
+        await refreshTasks(true);
+        pass = manifest?.lifecycle?.activePass ?? "planning";
+        autoPilotRefreshFailed.clear();
+        await Promise.allSettled(accountSnapshot().filter((account) => (BOT_ACCOUNT_IDS as readonly AccountId[]).includes(account.id) && account.connection === "connected" && account.authentication === "authenticated").map(async (account) => {
+          try { await threads(account.id); }
+          catch (error) {
+            autoPilotRefreshFailed.add(account.id);
+            logger.warn("autoPilot", { event: "threads_refresh_failed", account: account.id, error: error instanceof Error ? error.message : "failed" });
+          }
+        }));
+        if (shuttingDown) return;
+        await retryAutoPilotArchives({
+          records: () => outbox.list(),
+          threads: () => [...threadCache.values()].flat(),
+          provenComplete: (record) => !manifestError && completedByPass[record.pass ?? "planning"].has(record.taskId),
+          archive: (record) => services.archiveThread(record.accountId, record.threadId),
+          log: (error) => logger.warn("autoPilot", { event: "archive_retry_failed", error: error.message }),
+        });
+      },
+      snapshot: () => autoPilotSnapshot(pass),
+      launch: (pair) => services.launch(pair.taskId, { accountId: pair.accountId, pass, origin: "auto_pilot" }),
+      log: (error) => logger.warn("autoPilot", { event: "launch_failed", error: error.message }),
+    });
+  };
+  const autoPilot = new AutoPilotController({
+    isEnabled: () => root.autoPilot?.enabled === true && !shuttingDown,
+    reconcile: reconcileAutoPilot,
+    intervalMs: 15_000,
+    log: (error) => logger.warn("autoPilot", { event: "reconcile_failed", error: error.message }),
+  });
   const accountRetryTimers = new Map<AccountId, NodeJS.Timeout>();
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
@@ -663,6 +726,7 @@ async function createRuntime(config: SwarmConfig) {
   }, 15_000);
   credentialRefreshTimer.unref();
   const connectWithRetry = async (id: AccountId): Promise<void> => {
+    if (shuttingDown) return;
     try {
       await services.connectAccount(id);
       await reconcileAssignments(await threads(id));
@@ -670,16 +734,30 @@ async function createRuntime(config: SwarmConfig) {
       if (timer) clearTimeout(timer);
       accountRetryTimers.delete(id);
     } catch {
+      if (shuttingDown) return;
       if (accountRetryTimers.has(id)) return;
       const timer = setTimeout(() => { accountRetryTimers.delete(id); void connectWithRetry(id); }, 30_000);
       timer.unref();
       accountRetryTimers.set(id, timer);
     }
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => { journal.rejectLive(); clearTimeout(gitStartTimer); clearInterval(credentialRefreshTimer); gitSynchronizer.stop(); for (const timer of accountRetryTimers.values()) clearTimeout(timer); for (const id of rateWaitTimers.keys()) clearRateWait(id); for (const timer of limitResumeTimers.values()) clearTimeout(timer); await accounts.shutdown(); } });
+  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => {
+    shuttingDown = true;
+    autoPilot.stop();
+    journal.rejectLive();
+    clearTimeout(gitStartTimer);
+    clearInterval(credentialRefreshTimer);
+    gitSynchronizer.stop();
+    for (const timer of accountRetryTimers.values()) clearTimeout(timer);
+    for (const id of rateWaitTimers.keys()) clearRateWait(id);
+    for (const timer of limitResumeTimers.values()) clearTimeout(timer);
+    await autoPilot.whenIdle();
+    await accounts.shutdown();
+  } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
   accounts.onChange((snapshot) => {
     coordinator.hub.publish("account", {} as Record<string, unknown>);
+    if (snapshot.connection === "connected" && snapshot.authentication === "authenticated") requestAutoPilot();
     if (!snapshot.rateLimits.length) return;
     const prior = root.accountRateLimits?.[snapshot.id];
     if (JSON.stringify(prior) === JSON.stringify(snapshot.rateLimits)) return;
@@ -693,6 +771,9 @@ async function createRuntime(config: SwarmConfig) {
       await Promise.all(accountIds.slice(index, index + 2).map((id) => connectWithRetry(id)));
     }
     await snapshot().catch((error) => logger.warn("assignments", { event: "startup_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
+    if (shuttingDown) return;
+    requestAutoPilot = () => { autoPilot.request(); };
+    autoPilot.start();
     gitSynchronizer.start();
   })();
   return coordinator;

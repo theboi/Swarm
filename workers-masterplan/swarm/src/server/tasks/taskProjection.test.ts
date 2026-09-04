@@ -35,6 +35,13 @@ const activeThread = (name: string): ThreadSummary => ({
 });
 
 describe("task dispatch projection", () => {
+  it("keeps an unproven autonomous completion in attention and excludes accepted work from ready tasks", () => {
+    const projected = projectDispatchState([task("T0", "ready"), task("T1", "ready")], [
+      { ...dispatch("T0", "attention_required"), origin: "auto_pilot" },
+      { ...dispatch("T1", "accepted"), origin: "auto_pilot" },
+    ], [], [{ taskId: "T0", accountId: "bot3", threadId: "T0-thread", state: "attention_required", assignedAt: 1, updatedAt: 2, transferHistory: [] }]);
+    expect(projected.map((node) => node.readiness.state)).toEqual(["attention_required", "running"]);
+  });
   it.each(["queued", "submitting", "accepted", "waiting_for_limit"] as const)("projects %s work as running so it is no longer next-ready", (state) => {
     expect(projectDispatchState([task("F0", "ready")], [dispatch("F0", state)])[0]?.readiness.state).toBe("running");
   });

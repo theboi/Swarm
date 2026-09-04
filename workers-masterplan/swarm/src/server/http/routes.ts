@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 
-import { ACCOUNT_IDS, type AccountId, type AutoPilotState, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type AutoPilotState, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type DispatchOrigin, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
@@ -21,7 +21,7 @@ export interface CoordinatorRouteServices {
   refreshAllRateLimits(): Promise<unknown>;
   listModels(accountId: AccountId): Promise<ChatModelOption[]>;
   previewLaunch(taskId: string, accountId?: AccountId, pass?: ManifestPass): Promise<unknown>;
-  launch(taskId: string, input: { accountId?: AccountId; prompt?: string; settings?: ChatExecutionSettings; pass?: ManifestPass }): Promise<unknown>;
+  launch(taskId: string, input: { accountId?: AccountId; prompt?: string; settings?: ChatExecutionSettings; pass?: ManifestPass; origin?: DispatchOrigin }): Promise<unknown>;
   listThreads(accountId: AccountId): Promise<unknown>;
   readTranscript(accountId: AccountId, threadId: string): Promise<unknown>;
   startThread(accountId: AccountId): Promise<unknown>;
