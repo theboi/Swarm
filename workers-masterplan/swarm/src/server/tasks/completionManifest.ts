@@ -20,6 +20,7 @@ export interface CompletionManifestSnapshot {
   revision: string;
   receipts: ReadonlyMap<string, WorkerCompletionReceipt>;
   completedTaskIds: ReadonlySet<string>;
+  planningGatePassed?: boolean;
 }
 
 export function completedTaskIdsForPass(completion: Pick<CompletionManifestSnapshot, "receipts">, pass: ManifestPass): Set<string> {
@@ -30,6 +31,7 @@ export interface CompletionManifestSource {
   fetch(repositoryRoot: string): Promise<void>;
   resolveRevision(repositoryRoot: string): Promise<string>;
   readFile(repositoryRoot: string, revision: string, path: string): Promise<string | undefined>;
+  isAncestor(repositoryRoot: string, ancestor: string, descendant: string): Promise<boolean>;
 }
 
 const execFileAsync = promisify(execFile);
@@ -42,6 +44,13 @@ const gitCompletionManifestSource: CompletionManifestSource = {
     catch (error) {
       const stderr = typeof (error as { stderr?: unknown }).stderr === "string" ? (error as { stderr: string }).stderr : "";
       if (/does not exist in|exists on disk, but not in|path .* not in|Path .* does not exist/.test(stderr)) return undefined;
+      throw error;
+    }
+  },
+  isAncestor: async (repositoryRoot, ancestor, descendant) => {
+    try { await execFileAsync("git", ["-C", repositoryRoot, "merge-base", "--is-ancestor", ancestor, descendant]); return true; }
+    catch (error) {
+      if (typeof (error as { code?: unknown }).code === "number" && (error as { code: number }).code === 1) return false;
       throw error;
     }
   },
@@ -68,6 +77,12 @@ function parseReceipt(value: unknown, expectedTaskId: string, allowedPasses: rea
   return { schemaVersion: 1, taskId: expectedTaskId, passes };
 }
 
+function passedPlanningGateCommit(contents: string | undefined): string | undefined {
+  if (contents === undefined || !/^\|\s*Gate state\s*\|\s*passed\s*\|\s*$/m.test(contents)
+    || !/^\|\s*Unresolved material contradictions\s*\|\s*none\s*\|\s*$/mi.test(contents)) return undefined;
+  return contents.match(/^\|\s*Authorized origin\/main commit\s*\|\s*`([0-9a-f]{40})`\s*\|\s*$/m)?.[1];
+}
+
 export function completionReceiptPath(manifest: Pick<TaskManifest, "coordinationRoot">, taskId: string): string {
   return `${manifest.coordinationRoot}/completion-manifest/${taskId.toLowerCase()}.json`;
 }
@@ -91,7 +106,13 @@ export async function loadCompletionManifest(manifest: TaskManifest, repositoryR
     receipts.set(task.id, parseReceipt(JSON.parse(contents), task.id, task.passes ?? ["planning"]));
   }
   const activePass = manifest.lifecycle?.activePass ?? "planning";
-  return { revision, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)) };
+  const gatePath = manifest.lifecycle?.planningGatePath;
+  let planningGatePassed = activePass !== "execution" || manifest.lifecycle?.parallelPasses !== false;
+  if (!planningGatePassed && gatePath) {
+    const authorizedCommit = passedPlanningGateCommit(await source.readFile(root, revision, gatePath));
+    planningGatePassed = Boolean(authorizedCommit) && await source.isAncestor(root, authorizedCommit!, revision);
+  }
+  return { revision, receipts, completedTaskIds: new Set([...receipts].filter(([, receipt]) => receipt.passes[activePass]?.state === "complete").map(([taskId]) => taskId)), planningGatePassed };
 }
 
 /** Projects task readiness exclusively from worker-owned origin/main receipts. */
@@ -99,6 +120,7 @@ export function applyCompletionManifest(manifest: TaskManifest, completion: Comp
   const activePass = manifest.lifecycle?.activePass ?? "planning";
   const completedForPass = new Set([...completion.completedTaskIds, ...completedTaskIdsForPass(completion, activePass)]);
   const planningComplete = completedTaskIdsForPass(completion, "planning");
+  const planningGatePassed = activePass !== "execution" || manifest.lifecycle?.parallelPasses !== false || completion.planningGatePassed === true;
   return manifest.tasks.filter((task) => (task.passes ?? ["planning"]).includes(activePass)).map((task) => {
     const completed = completedForPass.has(task.id);
     const dependencies = activePass === "execution" ? task.executionDependsOn ?? [] : task.dependsOn;
@@ -108,13 +130,14 @@ export function applyCompletionManifest(manifest: TaskManifest, completion: Comp
     return {
       taskId: task.id,
       phase,
-      state: completed ? "complete" : prerequisitesComplete && ownPlanningComplete ? "ready" : "blocked",
+      state: completed ? "complete" : planningGatePassed && prerequisitesComplete && ownPlanningComplete ? "ready" : "blocked",
       evidence: [
         { code: "COMPLETION_MANIFEST", satisfied: completed, path: completionReceiptPath(manifest, task.id) },
         ...(activePass === "execution" ? [{ code: "PLANNING_COMPLETE", satisfied: ownPlanningComplete, path: completionReceiptPath(manifest, task.id), commit: completion.revision }] : []),
+        ...(activePass === "execution" && manifest.lifecycle?.parallelPasses === false ? [{ code: "GLOBAL_PLANNING_GATE", satisfied: planningGatePassed, path: manifest.lifecycle.planningGatePath, commit: completion.revision }] : []),
         { code: "REMOTE_PREREQUISITES", satisfied: prerequisitesComplete, details: dependencies.join(", ") || "none" },
       ],
-      blockingCodes: completed || (prerequisitesComplete && ownPlanningComplete) ? [] : ["TASK_NOT_READY"],
+      blockingCodes: completed || (planningGatePassed && prerequisitesComplete && ownPlanningComplete) ? [] : planningGatePassed ? ["TASK_NOT_READY"] : ["PLANNING_GATE_NOT_PASSED"],
     };
   });
 }

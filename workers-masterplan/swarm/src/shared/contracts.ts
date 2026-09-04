@@ -61,7 +61,7 @@ export interface TaskManifestLifecycle {
   mode: "two_pass";
   activePass: ManifestPass;
   planningGatePath: string;
-  /** Allows individually planned workers to enter execution before all planning finishes. */
+  /** True permits pass overlap; false requires the global planning gate before execution. */
   parallelPasses?: boolean;
 }
 

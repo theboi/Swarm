@@ -24,7 +24,7 @@ describe("task authority", () => {
     expect(production.lifecycle).toEqual({
       mode: "two_pass",
       activePass: "planning",
-      parallelPasses: true,
+      parallelPasses: false,
       planningGatePath: "docs/workers/2026-08-14-mvp3/PLANNING_GATE.md",
     });
     expect(production.tasks).toHaveLength(32);
