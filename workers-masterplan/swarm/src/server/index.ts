@@ -2,7 +2,7 @@ import { access, realpath, stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
@@ -42,7 +42,7 @@ import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
-import { handoffThreadName } from "./tasks/handoff.js";
+import { moveWithJsonl } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -80,30 +80,6 @@ function asThread(account: AccountId, source: Record<string, unknown>, workspace
   return { id, accountId: account, name: typeof source.name === "string" ? source.name : null, archived: source.archived === true, isEdenMindProject: isWorkspaceThread(source.cwd, workspace), updatedAt: typeof updated === "number" ? updated : Date.now(), activity: normalizeThreadActivity(source), capabilities: normalizeThreadCapabilities(source) };
 }
 function responseThread(value: unknown): Record<string, unknown> { const response = object(value); return response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? object(response.thread) : response; }
-
-function handoffSource(threadId: string, thread: Record<string, unknown>): { jsonl: string; originalPrompt: string } {
-  const turns = Array.isArray(thread.turns) ? thread.turns.filter((turn): turn is Record<string, unknown> => Boolean(turn) && typeof turn === "object" && !Array.isArray(turn)) : [];
-  let originalPrompt: string | undefined;
-  const lines: string[] = [];
-  for (const turn of turns) {
-    const turnId = stringAt(turn, "id") ?? "unknown";
-    const items = Array.isArray(turn.items) ? turn.items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
-    for (const item of items) {
-      lines.push(JSON.stringify({ threadId, turnId, startedAt: turn.startedAt ?? null, item }));
-      if (!originalPrompt && item.type === "userMessage") {
-        const content = Array.isArray(item.content) ? item.content : [];
-        const text = content.map((part) => object(part)).filter((part): part is Record<string, unknown> => Boolean(part)).map((part) => typeof part.text === "string" ? part.text : "").join("").trim();
-        if (text) originalPrompt = text;
-      }
-    }
-  }
-  return { jsonl: `${lines.join("\n")}${lines.length ? "\n" : ""}`, originalPrompt: originalPrompt ?? "Continue the work in the attached previous session." };
-}
-
-function handoffFilename(account: AccountId, threadId: string): string {
-  const suffix = createHash("sha256").update(`${account}\u0000${threadId}`).digest("hex").slice(0, 12);
-  return `swarm-handoff-${account}-${suffix}.jsonl`;
-}
 
 async function leasePort(): Promise<PortLease> {
   const listener = createNetServer();
@@ -586,59 +562,59 @@ async function createRuntime(config: SwarmConfig) {
     moveThreadToAccount: async (sourceAccountId, threadId, targetAccountId, settings?: ChatExecutionSettings) => {
       const resumeKey = activeTurnKey(sourceAccountId, threadId);
       const sourceResume = limitResumes.forThread(sourceAccountId, threadId);
-      const priorResumeState = sourceResume ? await limitResumes.claimTransfer(sourceAccountId, threadId) : undefined;
-      if (sourceResume && !priorResumeState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
       const sourceAssignment = assignments.forThread(sourceAccountId, threadId);
-      const priorAssignmentState = sourceAssignment ? await assignments.claimTransfer(sourceAccountId, threadId) : undefined;
-      if (sourceAssignment && !priorAssignmentState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
       const resumeTimer = limitResumeTimers.get(resumeKey);
       if (resumeTimer) clearTimeout(resumeTimer);
       limitResumeTimers.delete(resumeKey);
-      let targetAccepted = false;
-      try {
-        try { await gitRunner.checkpointAndPush(sourceAccountId); }
-        catch { throw new Error(`GIT_HANDOFF_PUSH_FAILED: Push ${sourceAccountId}'s changes manually, then try moving this worker again.`); }
-        const source = await liveClient(sourceAccountId);
-        const sourceResult = await source.readThread(threadId, { includeTurns: true });
-        const sourceThread = sourceResult.thread;
-        const handoff = handoffSource(threadId, sourceThread);
-        const target = await liveClient(targetAccountId);
-        const rawThread = await target.startThread();
-        const thread = asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId));
-        const filename = handoffFilename(sourceAccountId, threadId);
-        const path = resolve(workspaceRoot(targetAccountId, workspaceFor(targetAccountId)), filename);
-        await target.writeFile(path, handoff.jsonl);
-        const threadName = handoffThreadName(sourceThread.name);
-        await target.setThreadName(thread.id, threadName);
-        upsertCachedThread({ ...thread, name: threadName });
-        const clientUserMessageId = randomUUID();
-        const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
-        const originalPrompt = handoff.originalPrompt.replace(/^Account:\s*\S+/m, `Account: ${targetAccountId}`);
-        const queuedMessages = sourceResume ? limitResumes.queuedMessagesText(sourceResume) : "";
-        await target.startTurn({ threadId: thread.id, clientUserMessageId, text: `${originalPrompt}\n\nYou are now assigned to the macOS profile ${targetAccountId}. Pull origin/main before continuing. Resume from the previous session on ${sourceAccountId}; the attached ${filename} contains that session. Continue from where it left off.${queuedMessages ? `\n\n${queuedMessages}` : ""}`, attachments: [{ name: filename, path }], settings: settings ?? dispatch?.settings });
-        targetAccepted = true;
-        await limitResumes.markTransferred(sourceAccountId, threadId);
-        if (sourceAssignment) await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
-        await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
-        publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
-        return thread;
-      } catch (error) {
-        if (sourceResume && priorResumeState) {
-          if (targetAccepted) await limitResumes.markTransferred(sourceAccountId, threadId);
-          else {
-            await limitResumes.restoreTransfer(sourceAccountId, threadId, priorResumeState);
-            if (priorResumeState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
-          }
-        }
-        if (sourceAssignment && priorAssignmentState) {
-          if (targetAccepted) await assignments.markAttentionRequired(sourceAccountId, threadId);
-          else {
-            await assignments.restoreTransfer(sourceAccountId, threadId, priorAssignmentState);
-            if (priorAssignmentState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
-          }
-        }
-        throw error;
-      }
+      let priorResumeState: NonNullable<typeof sourceResume>["state"] | undefined;
+      let priorAssignmentState: NonNullable<typeof sourceAssignment>["state"] | undefined;
+      const sourceThread = (threadCache.get(sourceAccountId) ?? []).find((thread) => thread.id === threadId);
+      const clientUserMessageId = randomUUID();
+      const dispatch = outbox.list().find((record) => record.accountId === sourceAccountId && record.threadId === threadId && record.state === "accepted");
+      return moveWithJsonl({
+        sourceAccountId,
+        sourceThreadId: threadId,
+        sourceName: sourceThread?.name ?? null,
+        targetAccountId,
+        targetWorkspace: projectWorkspaceFor(targetAccountId),
+        clientUserMessageId,
+        readJsonl: (accountId, sourceThreadId) => rolloutReaders.get(accountId)!.readJsonl(sourceThreadId),
+        target: () => liveClient(targetAccountId),
+        normalizeThread: (rawThread) => asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId)),
+        claimResume: async () => {
+          if (!sourceResume) return;
+          priorResumeState = await limitResumes.claimTransfer(sourceAccountId, threadId);
+          if (!priorResumeState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
+        },
+        claimAssignment: async () => {
+          if (!sourceAssignment) return;
+          priorAssignmentState = await assignments.claimTransfer(sourceAccountId, threadId);
+          if (!priorAssignmentState) throw new Error("WORKER_TRANSFER_BUSY: Wait for the current resume operation to settle, then try again.");
+        },
+        restoreResume: async () => {
+          if (!sourceResume || !priorResumeState) return;
+          await limitResumes.restoreTransfer(sourceAccountId, threadId, priorResumeState);
+          if (priorResumeState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
+        },
+        restoreAssignment: async () => {
+          if (!sourceAssignment || !priorAssignmentState) return;
+          await assignments.restoreTransfer(sourceAccountId, threadId, priorAssignmentState);
+          if (priorAssignmentState === "waiting_for_limit") await scheduleLimitResume(sourceAccountId, threadId, Date.now() + 60_000);
+        },
+        cache: upsertCachedThread,
+        transfer: async (thread) => {
+          await limitResumes.markTransferred(sourceAccountId, threadId);
+          if (sourceAssignment) await assignments.transfer(sourceAccountId, threadId, targetAccountId, thread.id);
+          await outbox.transferAcceptedThread(sourceAccountId, threadId, targetAccountId, thread.id, clientUserMessageId);
+          publishRuntimeEvent("task", { taskId: assignments.forThread(targetAccountId, thread.id)?.taskId ?? "" });
+        },
+        onAcceptedTransferFailure: async () => {
+          if (sourceResume && priorResumeState) await limitResumes.markTransferred(sourceAccountId, threadId);
+          if (sourceAssignment && priorAssignmentState) await assignments.markAttentionRequired(sourceAccountId, threadId);
+        },
+        settings: settings ?? dispatch?.settings,
+        queuedMessages: sourceResume ? limitResumes.queuedMessagesText(sourceResume) : "",
+      });
     },
     archiveThread: async (id, threadId) => {
       await (await liveClient(id)).archiveThread(threadId);

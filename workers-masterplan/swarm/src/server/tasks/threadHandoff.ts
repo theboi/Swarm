@@ -6,8 +6,8 @@ import { handoffThreadName } from "./handoff.js";
 
 export interface JsonlContinuationTarget {
   startThread(): Promise<Record<string, unknown>>;
-  writeFile(path: string, contents: string): Promise<void>;
-  setThreadName(threadId: string, name: string): Promise<void>;
+  writeFile(path: string, contents: string): Promise<unknown>;
+  setThreadName(threadId: string, name: string): Promise<unknown>;
   startTurn(input: {
     threadId: string;
     clientUserMessageId: string;
@@ -27,6 +27,32 @@ export interface JsonlContinuationInput {
   clientUserMessageId: string;
   target: JsonlContinuationTarget;
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
+  settings?: ChatExecutionSettings;
+  queuedMessages?: string;
+}
+
+/**
+ * Dependencies for a transfer that can continue even when the source app-server
+ * is unavailable. The source is represented only by its cached metadata and
+ * local rollout JSONL.
+ */
+export interface MoveWithJsonlInput {
+  sourceAccountId: AccountId;
+  sourceThreadId: string;
+  sourceName: string | null;
+  targetAccountId: AccountId;
+  targetWorkspace: string;
+  clientUserMessageId: string;
+  readJsonl(accountId: AccountId, threadId: string): Promise<string>;
+  target(): Promise<JsonlContinuationTarget>;
+  normalizeThread(source: Record<string, unknown>): ThreadSummary;
+  claimResume(): Promise<void>;
+  claimAssignment(): Promise<void>;
+  restoreResume(): Promise<void>;
+  restoreAssignment(): Promise<void>;
+  transfer(thread: ThreadSummary): Promise<void>;
+  cache(thread: ThreadSummary): void | Promise<void>;
+  onAcceptedTransferFailure?(): Promise<void>;
   settings?: ChatExecutionSettings;
   queuedMessages?: string;
 }
@@ -60,4 +86,38 @@ export async function createJsonlContinuation(input: JsonlContinuationInput): Pr
   });
 
   return { ...thread, name: threadName };
+}
+
+/** Creates a target-only JSONL continuation while protecting the source transfer state. */
+export async function moveWithJsonl(input: MoveWithJsonlInput): Promise<ThreadSummary> {
+  let targetAccepted = false;
+  try {
+    await input.claimResume();
+    await input.claimAssignment();
+    const jsonl = await input.readJsonl(input.sourceAccountId, input.sourceThreadId);
+    const thread = await createJsonlContinuation({
+      sourceAccountId: input.sourceAccountId,
+      sourceThreadId: input.sourceThreadId,
+      sourceName: input.sourceName,
+      targetAccountId: input.targetAccountId,
+      targetWorkspace: input.targetWorkspace,
+      jsonl,
+      clientUserMessageId: input.clientUserMessageId,
+      target: await input.target(),
+      normalizeThread: input.normalizeThread,
+      ...(input.settings ? { settings: input.settings } : {}),
+      ...(input.queuedMessages ? { queuedMessages: input.queuedMessages } : {}),
+    });
+    targetAccepted = true;
+    await input.cache(thread);
+    await input.transfer(thread);
+    return thread;
+  } catch (error) {
+    if (targetAccepted) await input.onAcceptedTransferFailure?.();
+    else {
+      await input.restoreResume();
+      await input.restoreAssignment();
+    }
+    throw error;
+  }
 }

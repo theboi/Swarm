@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
-import { createJsonlContinuation, type JsonlContinuationTarget } from "./threadHandoff.js";
+import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
 
 function summary(accountId: AccountId, id: string): ThreadSummary {
   return {
@@ -20,6 +20,28 @@ function target(startTurn: JsonlContinuationTarget["startTurn"] = vi.fn(async ()
     writeFile: vi.fn(async () => undefined),
     setThreadName: vi.fn(async () => undefined),
     startTurn,
+  };
+}
+
+function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonlInput {
+  const continuationTarget = target();
+  return {
+    sourceAccountId: "bot3",
+    sourceThreadId: "source-thread",
+    sourceName: "Build the release",
+    targetAccountId: "bot1",
+    targetWorkspace: "/Users/bot1/Dev/EdenMind",
+    clientUserMessageId: "handoff-message",
+    readJsonl: vi.fn(async () => "{\"type\":\"session_meta\"}\n"),
+    target: vi.fn(async () => continuationTarget),
+    normalizeThread: (source) => summary("bot1", String(source.id)),
+    claimResume: vi.fn(async () => undefined),
+    claimAssignment: vi.fn(async () => undefined),
+    restoreResume: vi.fn(async () => undefined),
+    restoreAssignment: vi.fn(async () => undefined),
+    transfer: vi.fn(async () => undefined),
+    cache: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -93,5 +115,34 @@ describe("createJsonlContinuation", () => {
       target: continuationTarget,
       normalizeThread: (source) => summary("bot5", String(source.id)),
     })).rejects.toBe(targetError);
+  });
+});
+
+describe("moveWithJsonl", () => {
+  it("moves from cached source metadata with the source rollout read directly from JSONL", async () => {
+    const readJsonl = vi.fn(async () => "{\"type\":\"session_meta\"}\n");
+
+    await expect(moveWithJsonl(moveFixture({
+      sourceAccountId: "bot3",
+      sourceThreadId: "01a03efb-f1b9-76c2-b04f-73c5e167bdcb",
+      readJsonl,
+    }))).resolves.toEqual(expect.objectContaining({ accountId: "bot1" }));
+
+    expect(readJsonl).toHaveBeenCalledWith("bot3", "01a03efb-f1b9-76c2-b04f-73c5e167bdcb");
+  });
+
+  it("restores both transfer claims without durably transferring when the target rejects the continuation", async () => {
+    const targetRejected = new Error("target turn rejected");
+    const continuationTarget = target(vi.fn(async () => { throw targetRejected; }));
+    const restoreResume = vi.fn(async () => undefined);
+    const restoreAssignment = vi.fn(async () => undefined);
+    const transfer = vi.fn(async () => undefined);
+    const fixture = moveFixture({ target: vi.fn(async () => continuationTarget), restoreResume, restoreAssignment, transfer });
+
+    await expect(moveWithJsonl(fixture)).rejects.toBe(targetRejected);
+
+    expect(restoreResume).toHaveBeenCalledOnce();
+    expect(restoreAssignment).toHaveBeenCalledOnce();
+    expect(transfer).not.toHaveBeenCalled();
   });
 });
