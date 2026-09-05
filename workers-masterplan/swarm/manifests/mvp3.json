@@ -1,7 +1,7 @@
 {
   "blueprintId": "2026-08-14-mvp3",
   "title": "MVP3 planning topology — six paths and four approximate layers",
-  "masterplanPath": "docs/plans/EdenMind_MVP3_Implementation_Masterplan.md",
+  "masterplanPath": "docs/superpowers/plans/2026-08-14-mvp3/EdenMind_MVP3_Implementation_Masterplan.md",
   "coordinationRoot": "docs/workers/2026-08-14-mvp3",
   "lifecycle": {
     "mode": "two_pass",
