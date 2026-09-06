@@ -42,6 +42,12 @@ const lifecycleFacts = [
   "push, and prove remote reachability",
   "Never reset, clean, stash, rebase, force-push",
 ];
+const failedUpstreamRecoveryFacts = [
+  "upstream worker ended its attempt without completing",
+  "assume that upstream role",
+  "Do not ask the user whether the original worker should retry",
+  "continue",
+];
 const uiChecklist = `**Mandatory pre-edit source-read checklist** — do not abbreviate:
 - [ ] Completely read \`claude-design/codex/AGENTS.md\`.
 - [ ] Completely read \`claude-design/codex/system-prompt.md\`.
@@ -78,9 +84,12 @@ const reviewRuntimeLifetimeRules = [
   "holder inspection and restart commands",
 ];
 const coordinatorLaunchValues = {
+  activePass: "execution",
   accountId: "bot3",
   blueprintPath: "docs/plans/edenmind_Implementation_Masterplan.md",
   chatName: "EdenMind W3 execution",
+  completionReceiptPath:
+    "docs/workers/2026-08-26-edenmind/completion-manifest/w3.json",
   coordinationRoot: "docs/workers/2026-08-26-edenmind",
   devServerCommand: "npm run dev -- --host 127.0.0.1",
   edenmindClonePath: "/Users/bot3/Dev/EdenMind",
@@ -268,6 +277,11 @@ for (const templateId of templateIds) {
   for (const fact of lifecycleFacts) {
     if (!whitespaceNormalizedPacket.includes(fact)) {
       throw new Error(`${templateId} does not retain the required lifecycle fact: ${fact}`);
+    }
+  }
+  for (const fact of failedUpstreamRecoveryFacts) {
+    if (!whitespaceNormalizedPacket.includes(fact)) {
+      throw new Error(`${templateId} does not retain failed-upstream recovery: ${fact}`);
     }
   }
   if (!whitespaceNormalizedPacket.includes(phaseStopRules[templateId])) {

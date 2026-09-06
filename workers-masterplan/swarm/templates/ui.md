@@ -48,7 +48,7 @@ command, then prove the holder, exact listeners, and protected route from a
 separate command session. Record redacted holder inspection, restart, log, and
 scoped shutdown commands in the worker status and handoff.
 
-Confirm every listed UI prerequisite is reachable from `origin/main` before editing. Treat missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`.
+Confirm every listed UI prerequisite is reachable from `origin/main` before editing. If inspected status, handoff, tests, artifacts, or `origin/main` proves an upstream worker ended its attempt without completing a required prerequisite, temporarily assume that upstream role for the bounded missing work, complete and integrate it under the upstream package's phase and acceptance boundaries, reassess UI readiness, and continue. Do not ask the user whether the original worker should retry and do not hand the failure back through Codex chat. Treat other missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`.
 
 Write `{{UI_REQUIREMENTS_PATH}}` as a separate UI requirements contract with: authority and accepted presentation reference; surface inventory; actor/capability matrix; read and command requirements; async/lifecycle states; navigation/client state; files/exports; accessibility; deterministic fixture scenarios; planned-contract traceability; Pass 2 acceptance mapping; and open product decisions. Write `{{UI_HANDOFF_PATH}}` with the accepted app-state commit, user approval, reviewed states, affected presentation files, design foundations, limitations, and mutable ownership transfer to the named Layer 3 live-wiring consumer in the task brief. Do not embed the requirements contract only inside the handoff.
 

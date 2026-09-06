@@ -9,7 +9,7 @@ description: Use when splitting a bounded delivery objective across workers, age
 
 Turn current living authorities into a frozen execution contract: establish foundations, expose independently owned trades in parallel, converge through named integration owners, and close through evidence gates.
 
-**Core principle:** Minimize drift while maximizing delivery. Workers never communicate with one another through Codex chats. They work their assigned surfaces alongside concurrent workers on `main`; parallel read-only planning is normal. A genuinely shared checkout has one exclusive main-mutation lock for filesystem edits and Git/index operations through remote-reachability proof. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; across clones, a push lock or queue covers reconciliation, focused verification, push, and remote-ancestry proof. Keep local `main` and `origin/main` current without discarding unrelated work. Write code and tests continuously, run only the relevant test segment after each independently testable substep, and run the full suite once at the end of all tasks owned by that worker.
+**Core principle:** Minimize drift while maximizing delivery. Workers never communicate with one another through Codex chats. They work their assigned surfaces alongside concurrent workers on `main`; parallel read-only planning is normal. A genuinely shared checkout has one exclusive main-mutation lock for filesystem edits and Git/index operations through remote-reachability proof. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; across clones, a push lock or queue covers reconciliation, focused verification, push, and remote-ancestry proof. Keep local `main` and `origin/main` current without discarding unrelated work. Write code and tests continuously, run only the relevant test segment after each independently testable substep, and run the full suite once at the end of all tasks owned by that worker. Worker boundaries minimize collisions; they do not justify leaving a failed prerequisite unfinished. When a downstream worker proves an upstream worker failed to complete something it requires, the downstream worker temporarily assumes that upstream role, repairs the bounded prerequisite itself, and then continues.
 
 **TWO-PASS LIFECYCLE:** First complete planning for the whole frozen blueprint; then execute it. In Pass 1, every ordinary worker authors its dated specification and implementation plan, while every required UI-design worker designs only presentation and contents against fixtures/mock state, writes a separate UI requirements contract, and integrates its accepted presentation handoff. No ordinary product execution or live wiring starts in Pass 1. The coordinator passes one global receipt only after every ordinary plan, UI requirements contract, UI handoff, authority update, and reconciliation is approved and reachable from `origin/main`. In Pass 2, ordinary workers execute only after that receipt and their hard implemented prerequisites exist. A worker's own approved plan is necessary but never sufficient to start execution.
 
@@ -199,7 +199,7 @@ A worker is planning-ready when the frozen blueprint, its brief, relevant living
 
 ### Execution readiness
 
-A worker is execution-ready only when the coordinator-owned planning-gate receipt is passed at the named `origin/main` commit and every hard implemented prerequisite and required execution evidence for that worker is reachable from `origin/main`.
+A worker is execution-ready only when the coordinator-owned planning-gate receipt is passed at the named `origin/main` commit and every hard implemented prerequisite and required execution evidence for that worker is reachable from `origin/main`. If inspected repository evidence shows that a required prerequisite is missing because its upstream worker failed to complete it, use the upstream-recovery lifecycle below before reassessing execution readiness; do not ask the user whether the upstream worker should retry.
 
 A planning-complete worker remains blocked from execution while the global planning gate is open. A passed global planning gate does not waive an unimplemented hard prerequisite.
 
@@ -526,7 +526,7 @@ A clean baseline means reconciled local `main` plus no owned dirty state. Unrela
 ## Require the worker execution lifecycle
 
 1. Inspect the current checkout/clone mode, acquire the required shared-checkout main-mutation lock before mutation or identify the cross-clone push queue to use at reconciliation, preserve and report unrelated changes, fetch `origin/main`, establish a clean baseline when no owned dirt remains, and prove the named planning-gate receipt is passed at its pinned commit.
-2. Prove every hard implemented prerequisite and required execution evidence is reachable from `origin/main`. Stop unless the execution-readiness predicate is satisfied.
+2. Prove every hard implemented prerequisite and required execution evidence is reachable from `origin/main`. When a prerequisite is absent because its upstream worker failed to complete it, perform the upstream-recovery lifecycle below and then reassess readiness. For other absent prerequisites, stop unless the execution-readiness predicate is satisfied.
 3. Enter the assigned `main` checkout, reconcile it with `origin/main`, record the authority-refresh and readiness evidence at that inspected commit, and inspect the relevant baseline before editing.
 4. Read the worker-authored approved specification and detailed plan, including the accepted UI-design handoff when the implementation consumes one.
 5. Implement only owned surfaces with TDD where applicable.
@@ -535,6 +535,21 @@ A clean baseline means reconciled local `main` plus no owned dirty state. Unrela
 8. After every independently testable substep, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected focused tests, push, and prove remote reachability before the next substep. Use the required lock or queue throughout that lifecycle.
 9. Request/address review and run fresh focused verification for the completed owned scope.
 10. After all tasks owned by the worker are finished, refresh from local and remote `main`, run the full suite once, integrate and push the final state, prove remote reachability, and produce the evidence-backed handoff. The assigned checkout has no owned dirt; unrelated dirt remains preserved and reported.
+
+## Recover failed upstream prerequisites directly
+
+The observable trigger is narrow: a downstream worker requires a concrete upstream deliverable, and inspected status, handoff, tests, artifacts, or `origin/main` state proves the assigned upstream worker ended its attempt without completing that deliverable. A worker that is merely active, queued, slow, remote-uninspected, or waiting on a genuine external decision has not failed this predicate.
+
+When the trigger is true, the downstream worker MUST:
+
+1. record the missing prerequisite and the evidence that the upstream attempt failed;
+2. temporarily assume the upstream worker's role and ownership only for the bounded work required to satisfy that prerequisite, including its necessary tests, generated artifacts, migrations, documentation, status, and handoff evidence;
+3. follow the upstream package's approved specification, acceptance criteria, safety boundaries, lock or queue, TDD/review requirements, and Git synchronization lifecycle;
+4. resolve and verify the prerequisite, integrate it into current `main`, push it, and prove it reachable from `origin/main`;
+5. update the upstream and downstream status/handoff evidence through the ownership exception created by this recovery rule; and
+6. reassess the downstream worker's execution readiness and continue its original assignment immediately when the prerequisite is satisfied.
+
+Do not stop to ask the user whether the original upstream worker should fix, retry, or finish the work. Do not hand the failure back to that worker through Codex chat. The downstream worker owns the recovery to completion. This exception does not authorize unrelated upstream scope, overwrite concurrent or uncertain work, waive a required approval, invent a product decision, weaken a safety boundary, or bypass a genuinely external permission or credential requirement. Pause only for one of those independent blockers, never merely because the failed work was assigned to a different worker.
 
 **Verification and synchronization cadence:**
 
@@ -630,6 +645,7 @@ Before freezing:
   frontend-to-backend contracts rather than availability or delivery-status
   dashboards;
 - verify living-authority changes require downstream-impact assessment and all relevant downstream document updates;
+- verify every downstream worker launch contract requires direct takeover of a proven failed upstream prerequisite, bounded to the missing dependency, with no user question or retry handoff to the original worker;
 - scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
 - obtain approval, then commit the frozen snapshot when authorized.
 
@@ -654,6 +670,7 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Workers use independent normal clones | Allow only different machines or an incompatible shared checkout; require the push queue, not a global edit lock |
 | Worker tries to message another worker in Codex | Ban the chat; publish through commits, owned artifacts, and coordinator summaries |
 | Worker says done on its feature branch or only locally | Keep execution dependants not-ready; planning may use only approved planned-contract evidence already reachable from `origin/main` |
+| Required upstream deliverable is proven incomplete after its worker's attempt ended | The downstream worker assumes the upstream role for that bounded prerequisite, fixes and integrates it, proves it on `origin/main`, then reassesses readiness and continues; never ask the user who should retry |
 | Worker completes an independently testable substep | Run the focused test, stage only owned paths, commit, merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep |
 | Worker finishes all owned tasks | Refresh, run the full suite once, push and prove `origin/main`, leave no owned dirt, preserve/report unrelated dirt, then remove only dedicated temporary lanes |
 | Living-authority change affects downstream work | Update every relevant downstream document through its owner and block stale work until `origin/main` contains the updates |
@@ -678,6 +695,7 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 | Treating separate files, provider evidence, or free slots as a wide-frontier exception | Test coherent domain/protocol/risk/runtime/release/verification bundles and cite concrete incompatibility evidence for any exception |
 | Workers coordinate through Codex chat | Use repository evidence and coordinator-owned artifacts instead |
 | Local-only checkpoint treated as a dependency handoff | Reconcile current local/remote `main`, push the coherent commit, and prove ancestry |
+| Missing failed prerequisite is handed back to its original worker or escalated as a staffing question | The dependant temporarily takes over the exact upstream scope, completes and verifies it, then resumes its own assignment |
 | Full suite run after every small substep | Run focused affected tests during implementation and the full suite once at worker completion |
 | Long task drifts from `main` | Preserve coherent progress, refresh local and remote `main`, reconcile, and push a checkpoint |
 | Dedicated finished worktree retained for convenience | Remove it after final merge and remote proof; never remove a shared lane |
@@ -688,4 +706,4 @@ Ordinary progress updates status, not the blueprint. Revise the frozen blueprint
 
 ## Stop conditions
 
-Pause with an owner, unblock criterion, and downstream impact when authorities contradict; an authority or readiness result is remote-uninspected; the objective is too broad; a material decision is unapproved; the DAG cycles; semantic ownership overlaps; a migration/generated artifact has competing writers; artifact paths mix blueprints; existing worker state cannot be integrated safely; a genuinely shared checkout lacks its required main-mutation lock and does not qualify for the normal-clone fallback; planning readiness is absent; the global planning gate is open, reopened, stale, incomplete, or lacks evidence/verifier; an execution worker lacks an implemented prerequisite; `origin/main` cannot be pulled or pushed safely after retry; a conflict requires a genuine semantic or cross-owner decision; remote ancestry cannot be proven; a dependant started from feature-only or unpushed work or a stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; or the UI-design boundary would require functional behavior. Another worker using an independent normal clone is never, by itself, a stop condition; in a shared checkout, wait only for the required mutation lock before editing.
+Pause with an owner, unblock criterion, and downstream impact when authorities contradict; an authority or readiness result is remote-uninspected; the objective is too broad; a material decision is unapproved; the DAG cycles; semantic ownership overlaps outside the bounded upstream-recovery exception; a migration/generated artifact has competing active writers; artifact paths mix blueprints; existing worker state cannot be integrated safely; a genuinely shared checkout lacks its required main-mutation lock and does not qualify for the normal-clone fallback; planning readiness is absent; the global planning gate is open, reopened, stale, incomplete, or lacks evidence/verifier; an execution worker lacks an implemented prerequisite for a reason other than a proven failed upstream attempt, or cannot complete that failed prerequisite under the recovery lifecycle; `origin/main` cannot be pulled or pushed safely after retry; a conflict requires a genuine semantic or cross-owner decision; remote ancestry cannot be proven; a dependant started from feature-only or unpushed work or a stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; or the UI-design boundary would require functional behavior. A proven failed upstream prerequisite is not itself a stop condition and never triggers a question about whether the original worker should retry. Another worker using an independent normal clone is never, by itself, a stop condition; in a shared checkout, wait only for the required mutation lock before editing.

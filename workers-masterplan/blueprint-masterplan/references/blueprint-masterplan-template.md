@@ -51,7 +51,7 @@ Every worker receives:
 6. the required shared-checkout main-mutation lock or cross-clone push queue; and
 7. the reserved artifact paths, named per-worker status contract, and coordinator `STATUS.md`.
 
-Workers never communicate with one another through Codex chats. They coordinate through `origin/main`, owned status/handoff artifacts, and coordinator-owned summaries. No worker depends on private conversation history, off-main work, or an unpushed local commit. Ordinary execution workers become planning-ready from approved authorities, briefs, and planned contracts; they do not wait for predecessor implementation. They become execution-ready only after the whole-blueprint planning gate passes and their hard implemented prerequisites are integrated. A shared checkout permits parallel read-only planning but requires its exclusive main-mutation lock for filesystem edits and Git/index operations through remote proof. If that lock cannot exist, normal clones are allowed only for different machines or an incompatible checkout; their push queue does not impose a global edit lock. Feature branches and linked Git worktrees are prohibited.
+Workers never communicate with one another through Codex chats. They coordinate through `origin/main`, owned status/handoff artifacts, and coordinator-owned summaries. No worker depends on private conversation history, off-main work, or an unpushed local commit. Ordinary execution workers become planning-ready from approved authorities, briefs, and planned contracts; they do not wait for predecessor implementation. They become execution-ready only after the whole-blueprint planning gate passes and their hard implemented prerequisites are integrated. If an upstream worker ended its attempt without completing a concrete deliverable required downstream, the downstream worker assumes the upstream role for that bounded prerequisite, completes and integrates it, then continues without asking the user whether the original worker should retry. A shared checkout permits parallel read-only planning but requires its exclusive main-mutation lock for filesystem edits and Git/index operations through remote proof. If that lock cannot exist, normal clones are allowed only for different machines or an incompatible checkout; their push queue does not impose a global edit lock. Feature branches and linked Git worktrees are prohibited.
 
 ## 2. Outcome and delivery gates
 
@@ -251,13 +251,17 @@ exists and contains its complete row.
 3. Before editing, verify the receipt is passed, current, contains the worker's
    complete row, and is pinned to the named commit. Stop if it is open,
    reopened, stale, missing the worker row, or pinned to a different commit.
-4. Implement only owned surfaces with TDD where applicable.
-5. After each independently testable substep—a coherent plan task or subtask
+4. Prove hard implemented prerequisites on `origin/main`. If inspected evidence
+   proves an upstream worker ended its attempt without completing a required
+   deliverable, execute section 8.8, reassess readiness, and continue. Do not
+   ask the user whether the upstream worker should retry.
+5. Implement only owned surfaces with TDD where applicable.
+6. After each independently testable substep—a coherent plan task or subtask
    with its own focused verification—run the relevant focused test segment,
    stage only owned paths, commit directly to `main`, fetch and merge newer
    `origin/main`, rerun affected checks, push, and prove remote reachability
    before beginning the next substep; address review before handoff.
-6. After every owned task is finished, refresh again, run the full suite once,
+7. After every owned task is finished, refresh again, run the full suite once,
    integrate/push final evidence, leave no owned dirt, and preserve/report any
    unrelated dirt in the assigned checkout.
 
@@ -292,6 +296,28 @@ Whenever a worker changes a living business, product/specification, architecture
 
 If frozen blueprint scope, ownership, dependencies, gates, or completion semantics change, require an approved blueprint revision before affected work continues.
 
+### 8.8 Failed-upstream prerequisite recovery
+
+Trigger this recovery only when a downstream worker requires a concrete upstream
+deliverable and inspected status, handoff, tests, artifacts, or `origin/main`
+state proves the assigned upstream worker ended its attempt without completing
+it. Active, queued, slow, remote-uninspected, or externally blocked work does not
+satisfy the trigger.
+
+The downstream worker temporarily assumes the upstream worker's role and
+ownership for the exact missing prerequisite and its necessary tests, generated
+artifacts, migrations, documentation, status, and handoff evidence. It follows
+the upstream package's approved contract and normal TDD, review, lock/queue, Git,
+verification, and remote-proof lifecycle; integrates the repair into `main`;
+updates both sides' evidence under this ownership exception; reassesses its own
+readiness; and continues immediately.
+
+Never stop to ask whether the original upstream worker should fix or retry the
+work, and never hand the failure back through worker-to-worker Codex chat. Pause
+only if recovery independently requires an unresolved approval or product
+decision, unavailable permission or credential, unsafe overwrite, or work beyond
+the bounded prerequisite.
+
 ## 9. Worker packages
 
 ### Worker <ID> — <task and outcome>
@@ -311,6 +337,8 @@ If frozen blueprint scope, ownership, dependencies, gates, or completion semanti
 **Planning prerequisites:** <approved authorities, briefs, and planned contracts>.
 
 **Hard execution prerequisites:** <implemented worker/gate IDs and evidence, plus planning gate>.
+
+**Failed-upstream recovery:** If any required upstream deliverable is proven incomplete after its worker's attempt ended, assume that upstream role for the bounded prerequisite, complete and integrate it under section 8.8, reassess readiness, and continue without asking the user who should retry.
 
 **Owns:** <paths, contracts, records, migrations, generated artifacts, tests, status>.
 
@@ -411,6 +439,7 @@ Pass 1 live-design prompt from `references/ui-design-worker-prompt-template.md`.
 - Coordinate migration ordering through `origin/main`.
 - Resolve mechanical owned conflicts and reverify.
 - Stop on semantic or cross-owner conflicts.
+- Treat a proven failed upstream prerequisite as the bounded ownership exception in section 8.8: the dependant completes it directly and continues, with no staffing question to the user.
 - In a genuinely shared checkout, require the exclusive main-mutation lock for filesystem edits and Git/index work through remote proof; read-only planning may be parallel. If that lock cannot exist, allow normal clones only for different machines or an incompatible checkout, and require their push lock/queue for reconcile → affected verification → push → ancestry proof. Never impose a global edit lock across independent clones.
 - Ban worker-to-worker Codex chat. Propagate living-authority changes through owned repository evidence and coordinator/document-owner updates.
 - Never rebase or force-push published `main`.

@@ -7,6 +7,13 @@ async function readTemplate(name: string): Promise<string> {
 }
 
 describe("canonical worker prompts", () => {
+  const expectedFailedUpstreamRecovery = [
+    "upstream worker ended its attempt without completing",
+    "assume that upstream role",
+    "Do not ask the user whether the original worker should retry",
+    "continue",
+  ];
+
   it("includes the user's authority and planning-only instructions in planning launches", async () => {
     const prompt = await readTemplate("planning.md");
     expect(prompt).toContain("Read these repository authorities from the account's EdenMind clone before acting:");
@@ -18,6 +25,7 @@ describe("canonical worker prompts", () => {
     expect(prompt).toContain("{{UI_REQUIREMENTS_PATH}}");
     expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
     expect(prompt).toContain("All planning happens in Pass 1");
+    for (const expected of expectedFailedUpstreamRecovery) expect(prompt).toContain(expected);
     expect(prompt).not.toContain("ask me questions");
   });
 
@@ -30,6 +38,7 @@ describe("canonical worker prompts", () => {
     expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
     expect(prompt).toContain("live wiring");
     expect(prompt).toContain("Ask the user focused questions");
+    for (const expected of expectedFailedUpstreamRecovery) expect(prompt).toContain(expected);
     expect(prompt).not.toContain("ask me questions");
   });
 
@@ -48,5 +57,6 @@ describe("canonical worker prompts", () => {
     expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
     expect(prompt).toContain("fixture/mock-backed state");
     expect(prompt).toContain("Do not add or change live wiring");
+    for (const expected of expectedFailedUpstreamRecovery) expect(prompt).toContain(expected);
   });
 });
