@@ -52,12 +52,14 @@ describe("GitCommandRunner", () => {
   it("uses a PTY and waits for the su password prompt before running bot Git commands", async () => {
     let dataListener: ((data: string) => void) | undefined;
     let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
-    const process: BotPtyProcess = {
+    const dispose = vi.fn();
+    const process = {
       onData: vi.fn((listener) => { dataListener = listener; return { dispose: vi.fn() }; }),
       onExit: vi.fn((listener) => { exitListener = listener; return { dispose: vi.fn() }; }),
       write: vi.fn(),
       kill: vi.fn(),
-    };
+      dispose,
+    } as BotPtyProcess & { dispose: typeof dispose };
     const spawnBotPty = vi.fn(() => process);
     const runner = new GitCommandRunner("/workspace", { bot6: "correct horse" }, spawnBotPty);
 
@@ -69,6 +71,7 @@ describe("GitCommandRunner", () => {
 
     await expect(pull).resolves.toBeUndefined();
     expect(spawnBotPty).toHaveBeenCalledWith("/usr/bin/su", expect.arrayContaining(["bot6"]), expect.any(Object));
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it("commits local changes, rebases a newer origin/main, and pushes the checkpoint", async () => {

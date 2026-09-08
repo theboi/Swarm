@@ -29,16 +29,28 @@ export interface BotPtyProcess {
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
   write(data: string): void;
   kill(signal?: string): void;
+  dispose(): void;
 }
 
 export type SpawnBotPty = (file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }) => BotPtyProcess;
+
+const spawnManagedBotPty: SpawnBotPty = (file, args, options) => {
+  const child = spawnPty(file, args, options);
+  return {
+    onData: (listener) => child.onData(listener),
+    onExit: (listener) => child.onExit(listener),
+    write: (data) => child.write(data),
+    kill: (signal) => child.kill(signal),
+    dispose: () => (child as unknown as { destroy(): void }).destroy(),
+  };
+};
 
 /** Executes only fixed Git transport commands; it intentionally never captures or exposes command output. */
 export class GitCommandRunner {
   constructor(
     private readonly workspaceRoot: string,
     private readonly passwords: Readonly<Partial<Record<BotAccountId, string | undefined>>>,
-    private readonly spawnBotPty: SpawnBotPty = spawnPty,
+    private readonly spawnBotPty: SpawnBotPty = spawnManagedBotPty,
   ) {}
 
   private runAsBotExitCode(account: BotAccountId, password: string, command: string): Promise<number> {
@@ -46,6 +58,7 @@ export class GitCommandRunner {
       let tail = "";
       let passwordSent = false;
       let settled = false;
+      let cleaned = false;
       const child = this.spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
         name: "xterm-256color",
         cols: 80,
@@ -53,14 +66,25 @@ export class GitCommandRunner {
         cwd: "/tmp",
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
       });
-      const timer = setTimeout(() => {
+      let timer: NodeJS.Timeout | undefined;
+      let dataSubscription: { dispose(): void } | undefined;
+      let exitSubscription: { dispose(): void } | undefined;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        if (timer) clearTimeout(timer);
+        dataSubscription?.dispose();
+        exitSubscription?.dispose();
+        try { child.dispose(); } catch { /* descriptor already closed */ }
+      };
+      timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        child.kill("SIGTERM");
+        try { child.kill("SIGTERM"); } finally { cleanup(); }
         reject(new Error("Git synchronization timed out"));
       }, 120_000);
       timer.unref();
-      const dataSubscription = child.onData((data) => {
+      dataSubscription = child.onData((data) => {
         if (passwordSent) return;
         tail = `${tail}${data}`.slice(-256);
         if (!/Password:/i.test(tail)) return;
@@ -68,11 +92,10 @@ export class GitCommandRunner {
         tail = "";
         child.write(`${password}\r`);
       });
-      child.onExit(({ exitCode }) => {
+      exitSubscription = child.onExit(({ exitCode }) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
-        dataSubscription.dispose();
+        cleanup();
         resolve(exitCode);
       });
     });
