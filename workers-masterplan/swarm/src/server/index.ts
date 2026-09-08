@@ -34,7 +34,7 @@ import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
 import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
-import { AutoPilotController, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./scheduler/autoPilot.js";
+import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive } from "./scheduler/autoPilot.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
@@ -152,7 +152,7 @@ async function createRuntime(config: SwarmConfig) {
   const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(`/Users/${account}/.codex`)]));
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
-  const autoPilotRecoveryReads = new Set<string>();
+  const autoPilotRecoveryGuard = new AutoPilotRecoveryGuard();
   let accounts: AccountManager;
   const breakingChangeAccounts = new Set<AccountId>(root.notifications.breakingChangeAccounts);
   const recordBreakingChange = (account: AccountId) => {
@@ -163,7 +163,7 @@ async function createRuntime(config: SwarmConfig) {
       if (!value.notifications.breakingChangeAccounts.includes(account)) value.notifications.breakingChangeAccounts.push(account);
     }).catch((error) => logger.warn("notifications", { event: "breaking_change_persist_failed", account, error: error instanceof Error ? error.message : "failed" }));
   };
-  const settleCompletedLaunchThread = async (account: AccountId, threadId: string) => {
+  const settleCompletedLaunchThread = async (account: AccountId, threadId: string, mode: "live" | "recovery" = "live") => {
     const assignment = assignments.forThread(account, threadId);
     const accepted = outbox.list().find((record) => record.accountId === account && record.threadId === threadId && record.state === "accepted");
     // A completion event can beat startTurn's acknowledgement. The launch path
@@ -172,20 +172,24 @@ async function createRuntime(config: SwarmConfig) {
     const taskId = assignment?.taskId ?? accepted?.taskId;
     if (!taskId) return;
     const pass = assignment?.pass ?? accepted?.pass ?? "planning";
-    await refreshTasks(true);
-    const provenComplete = !manifestError && completedByPass[pass].has(taskId);
-    if (provenComplete) {
-      await assignments.complete(account, threadId);
-      await outbox.completeAcceptedForThread(account, threadId);
-      completedByPass[pass].add(taskId);
-      if (shouldAutoArchive(accepted, provenComplete)) {
-        try { await services.archiveThread(account, threadId); }
-        catch (error) { logger.warn("autoPilot", { event: "archive_failed", account, threadId, error: error instanceof Error ? error.message : "failed" }); }
-      }
-    } else {
-      await assignments.markAttentionRequired(account, threadId);
-      if (accepted) await outbox.abandon(accepted.id);
-    }
+    const result = await settleLaunchCompletion({
+      refresh: () => refreshTasks(true),
+      provenComplete: () => !manifestError && completedByPass[pass].has(taskId),
+      complete: async () => {
+        await assignments.complete(account, threadId);
+        await outbox.completeAcceptedForThread(account, threadId);
+        completedByPass[pass].add(taskId);
+        if (shouldAutoArchive(accepted, true)) {
+          try { await services.archiveThread(account, threadId); }
+          catch (error) { logger.warn("autoPilot", { event: "archive_failed", account, threadId, error: error instanceof Error ? error.message : "failed" }); }
+        }
+      },
+      markAttentionRequired: async () => {
+        await assignments.markAttentionRequired(account, threadId);
+        await outbox.abandon(accepted.id);
+      },
+    }, mode);
+    if (result === "unproven" && mode === "recovery") return;
     if (pass === (manifest?.lifecycle?.activePass ?? "planning")) {
       completedTaskIds.clear();
       for (const completedId of completedByPass[pass]) completedTaskIds.add(completedId);
@@ -236,7 +240,7 @@ async function createRuntime(config: SwarmConfig) {
             publishRuntimeEvent("task", { taskId: assignments.forThread(event.accountId, exhaustedThreadId)?.taskId ?? "" });
           })().catch((error) => logger.warn("assignments", { event: "limit_wait_failed", error: error instanceof Error ? error.message : "failed" }));
         }
-        if (event.type === "turn" && event.state === "completed" && event.threadId && !(event.historical === true && autoPilotRecoveryReads.has(completedLaunchThreadKey(event.accountId, event.threadId)))) {
+        if (event.type === "turn" && event.state === "completed" && event.threadId && !autoPilotRecoveryGuard.isRecovering(event.accountId, event.threadId)) {
           activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
           const key = completedLaunchThreadKey(event.accountId, event.threadId);
           if (outbox.list().some((record) => record.accountId === event.accountId && record.threadId === event.threadId && (record.state === "submitting" || record.state === "accepted"))) {
@@ -708,14 +712,10 @@ async function createRuntime(config: SwarmConfig) {
             return !["waiting_for_limit", "resuming", "transferring"].includes(resumeState ?? "")
               && !["waiting_for_limit", "resuming", "transferring"].includes(assignmentState ?? "");
           }),
-          readCompleted: async (record) => {
-            const key = completedLaunchThreadKey(record.accountId, record.threadId);
-            autoPilotRecoveryReads.add(key);
-            try { return latestThreadTurnCompleted(await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true })); }
-            finally { autoPilotRecoveryReads.delete(key); }
-          },
+          withRecovery: (record, operation) => autoPilotRecoveryGuard.run(record.accountId, record.threadId, operation),
+          readCompleted: async (record) => latestThreadTurnCompleted(await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true })),
           provenComplete: (record) => !manifestError && completedByPass[record.pass ?? "planning"].has(record.taskId),
-          settle: (record) => settleCompletedLaunchThread(record.accountId, record.threadId),
+          settle: (record) => settleCompletedLaunchThread(record.accountId, record.threadId, "recovery"),
           log: (error) => logger.warn("autoPilot", { event: "accepted_recovery_failed", error: error.message }),
         });
         await retryAutoPilotArchives({

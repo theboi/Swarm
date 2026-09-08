@@ -10,7 +10,8 @@ import type {
   ThreadSummary,
 } from "../../shared/contracts.js";
 import { DispatchOutbox } from "../dispatch/outbox.js";
-import { AutoPilotController, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./autoPilot.js";
+import { WorkerAssignmentManifest } from "../tasks/workerAssignments.js";
+import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive } from "./autoPilot.js";
 
 const task = (id: string, state: TaskNode["readiness"]["state"]): TaskNode => ({
   id,
@@ -289,6 +290,66 @@ describe("autonomous completion and reconciliation", () => {
     expect(outbox.list().map((record) => record.state)).toEqual(["completed", "accepted", "accepted", "accepted"]);
     expect(finished.archived).toBe(true);
     expect(selectAutoPilotLaunches({ tasks: [task("next", "ready")], accounts: [account("bot1")], threads: [finished] })).toEqual([{ taskId: "next", accountId: "bot1" }]);
+  });
+
+  it.each(["throws", "loses receipt proof"] as const)("keeps a recovered autonomous launch accepted when settlement's second refresh %s", async (refreshOutcome) => {
+    const auto: DispatchRecord = { id: "auto", taskId: "T0", accountId: "bot1", threadId: "finished", origin: "auto_pilot", state: "accepted", clientUserMessageId: "m1", createdAt: 0, updatedAt: 0, retryAt: null };
+    const outbox = new DispatchOutbox([auto]);
+    const assignments = new WorkerAssignmentManifest();
+    await assignments.assign("T0", "bot1", "finished", 1);
+    const recoveryGuard = new AutoPilotRecoveryGuard();
+    let receiptProven = true;
+    let refreshes = 0;
+    let overlappingLiveSettlements = 0;
+    const errors: Error[] = [];
+    const settle = (mode: "live" | "recovery") => settleLaunchCompletion({
+      refresh: async () => {
+        refreshes += 1;
+        if (refreshOutcome === "throws") throw new Error("manifest refresh failed");
+        receiptProven = false;
+      },
+      provenComplete: () => receiptProven,
+      complete: async () => { await assignments.complete("bot1", "finished"); await outbox.complete("auto"); },
+      markAttentionRequired: async () => { await assignments.markAttentionRequired("bot1", "finished"); await outbox.abandon("auto"); },
+    }, mode);
+
+    await recoverAcceptedAutoPilotDispatches({
+      records: () => outbox.list(),
+      withRecovery: (record, operation) => recoveryGuard.run(record.accountId, record.threadId, operation),
+      readCompleted: async (record) => {
+        // AppServerClient synchronously emits the historical completion while hydrating readThread.
+        if (!recoveryGuard.isRecovering(record.accountId, record.threadId)) {
+          overlappingLiveSettlements += 1;
+          await settle("live");
+        }
+        return true;
+      },
+      provenComplete: () => receiptProven,
+      settle: async () => { await settle("recovery"); },
+      log: (error) => { errors.push(error); },
+    });
+
+    expect(refreshes).toBe(1);
+    expect(overlappingLiveSettlements).toBe(0);
+    expect(outbox.get("auto")?.state).toBe("accepted");
+    expect(assignments.forTask("T0")?.state).toBe("assigned");
+    expect(errors.map((error) => error.message)).toEqual(refreshOutcome === "throws" ? ["manifest refresh failed"] : []);
+  });
+
+  it("retains the attention-required fallback for an unproven live completion", async () => {
+    const outbox = new DispatchOutbox([{ id: "live", taskId: "T0", accountId: "bot1", threadId: "finished", origin: "operator", state: "accepted", clientUserMessageId: "m1", createdAt: 0, updatedAt: 0, retryAt: null }]);
+    const assignments = new WorkerAssignmentManifest();
+    await assignments.assign("T0", "bot1", "finished", 1);
+
+    await settleLaunchCompletion({
+      refresh: async () => undefined,
+      provenComplete: () => false,
+      complete: async () => { await assignments.complete("bot1", "finished"); await outbox.complete("live"); },
+      markAttentionRequired: async () => { await assignments.markAttentionRequired("bot1", "finished"); await outbox.abandon("live"); },
+    }, "live");
+
+    expect(outbox.get("live")?.state).toBe("attention_required");
+    expect(assignments.forTask("T0")?.state).toBe("attention_required");
   });
 
   it("recognizes only a completed latest thread turn and excludes limit exhaustion", () => {

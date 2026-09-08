@@ -18,6 +18,43 @@ export function shouldAutoArchive(record: Pick<DispatchRecord, "origin" | "state
 
 type AutoPilotSnapshot = Parameters<typeof selectAutoPilotLaunches>[0];
 const asError = (cause: unknown): Error => cause instanceof Error ? cause : new Error(String(cause));
+const recoveryKey = (accountId: DispatchRecord["accountId"], threadId: string): string => `${accountId}\u0000${threadId}`;
+
+/** Keeps readThread's historical completion event from racing the recovery settlement it triggered. */
+export class AutoPilotRecoveryGuard {
+  private readonly inFlight = new Map<string, Promise<void>>();
+
+  isRecovering(accountId: DispatchRecord["accountId"], threadId: string): boolean {
+    return this.inFlight.has(recoveryKey(accountId, threadId));
+  }
+
+  run(accountId: DispatchRecord["accountId"], threadId: string, operation: () => Promise<void>): Promise<void> {
+    const key = recoveryKey(accountId, threadId);
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+    const running = Promise.resolve().then(operation).finally(() => {
+      if (this.inFlight.get(key) === running) this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, running);
+    return running;
+  }
+}
+
+/** Applies the live or restart-recovery settlement policy after refreshing receipt evidence. */
+export async function settleLaunchCompletion(dependencies: {
+  refresh(): Promise<void>;
+  provenComplete(): boolean;
+  complete(): Promise<void>;
+  markAttentionRequired(): Promise<void>;
+}, mode: "live" | "recovery"): Promise<"completed" | "unproven"> {
+  await dependencies.refresh();
+  if (dependencies.provenComplete()) {
+    await dependencies.complete();
+    return "completed";
+  }
+  if (mode === "live") await dependencies.markAttentionRequired();
+  return "unproven";
+}
 
 /** Refresh once, then isolate failures and recheck each original pairing without reallocating it. */
 export async function reconcileAutoPilotLaunches(dependencies: {
@@ -43,16 +80,17 @@ export async function reconcileAutoPilotLaunches(dependencies: {
 /** Reads autonomous accepted work after restart and settles only a finished, receipt-proven launch. */
 export async function recoverAcceptedAutoPilotDispatches(dependencies: {
   records(): DispatchRecord[];
+  withRecovery?(record: DispatchRecord, operation: () => Promise<void>): Promise<void>;
   readCompleted(record: DispatchRecord): Promise<boolean>;
   provenComplete(record: DispatchRecord): boolean;
   settle(record: DispatchRecord): Promise<void>;
   log(error: Error): void;
 }): Promise<void> {
   const candidates = dependencies.records().filter((record) => record.origin === "auto_pilot" && record.state === "accepted");
-  const results = await Promise.allSettled(candidates.map(async (record) => {
+  const results = await Promise.allSettled(candidates.map((record) => (dependencies.withRecovery ?? ((_record, operation) => operation()))(record, async () => {
     const threadCompleted = await dependencies.readCompleted(record);
     if (threadCompleted && dependencies.provenComplete(record)) await dependencies.settle(record);
-  }));
+  })));
   for (const result of results) if (result.status === "rejected") dependencies.log(asError(result.reason));
 }
 
