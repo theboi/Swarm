@@ -4,11 +4,13 @@ import type {
   AccountSnapshot,
   AccountAuthenticationState,
   AccountConnectionState,
+  BotAccountId,
   DispatchRecord,
   TaskNode,
   ThreadSummary,
 } from "../../shared/contracts.js";
-import { AutoPilotController, reconcileAutoPilotLaunches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./autoPilot.js";
+import { DispatchOutbox } from "../dispatch/outbox.js";
+import { AutoPilotController, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./autoPilot.js";
 
 const task = (id: string, state: TaskNode["readiness"]["state"]): TaskNode => ({
   id,
@@ -194,7 +196,7 @@ describe("autonomous completion and reconciliation", () => {
     const starts: string[] = [];
     const errors: Error[] = [];
     await reconcileAutoPilotLaunches({
-      refresh: async () => { refreshed = true; },
+      refresh: async () => { refreshed = true; return new Set(["bot1", "bot2"] as const); },
       snapshot: () => ({ tasks: refreshed ? [task("T0", "ready"), task("T1", "ready")] : [], accounts: [account("bot1"), account("bot2")], threads: [] }),
       launch: async (pair) => { starts.push(`${pair.taskId}:${pair.accountId}`); if (pair.accountId === "bot1") throw new Error("offline"); },
       log: (error) => { errors.push(error); },
@@ -208,7 +210,7 @@ describe("autonomous completion and reconciliation", () => {
     const currentThreads: ThreadSummary[] = [];
     const starts: string[] = [];
     await reconcileAutoPilotLaunches({
-      refresh: async () => undefined,
+      refresh: async () => new Set(["bot1", "bot2", "bot3"] as const),
       snapshot: () => ({ tasks: currentTasks, accounts: [account("bot1"), account("bot2"), account("bot3")], threads: currentThreads }),
       launch: async (pair) => {
         starts.push(pair.taskId);
@@ -241,5 +243,58 @@ describe("autonomous completion and reconciliation", () => {
     expect(errors.map((error) => error.message)).toEqual(["archive offline"]);
     await retryAutoPilotArchives(dependencies);
     expect(attempts).toBe(2);
+  });
+
+  it("does not launch a bot that connects after this run captured its refresh candidates", async () => {
+    const accounts = [account("bot1", "action_required", "unauthenticated")];
+    const starts: string[] = [];
+    const dependencies = {
+      refresh: async () => {
+        const candidates = new Set<BotAccountId>(accounts.filter((candidate) => candidate.connection === "connected" && candidate.authentication === "authenticated").map((candidate) => candidate.id as BotAccountId));
+        accounts[0] = account("bot1");
+        return candidates;
+      },
+      snapshot: () => ({ tasks: [task("T0", "ready")], accounts, threads: [] }),
+      launch: async (pair: { taskId: string; accountId: string }) => { starts.push(`${pair.taskId}:${pair.accountId}`); },
+      log: () => undefined,
+    };
+
+    await reconcileAutoPilotLaunches(dependencies);
+    expect(starts).toEqual([]);
+    await reconcileAutoPilotLaunches(dependencies);
+    expect(starts).toEqual(["T0:bot1"]);
+  });
+
+  it("recovers a missed autonomous completion only after thread completion and receipt proof", async () => {
+    const finished = thread("bot1", "finished", false);
+    const auto = { id: "auto", taskId: "T0", accountId: "bot1" as const, threadId: "finished", origin: "auto_pilot" as const, state: "accepted" as const, clientUserMessageId: "m1", createdAt: 0, updatedAt: 0, retryAt: null };
+    const unproven = { ...auto, id: "unproven", clientUserMessageId: "m2", taskId: "T1", accountId: "bot2" as const, threadId: "unproven" };
+    const limited = { ...auto, id: "limited", clientUserMessageId: "m3", taskId: "T2", accountId: "bot3" as const, threadId: "limited" };
+    const manual = { ...auto, id: "manual", clientUserMessageId: "m4", taskId: "T3", accountId: "bot4" as const, threadId: "manual", origin: "operator" as const };
+    const records: DispatchRecord[] = [auto, unproven, limited, manual];
+    const outbox = new DispatchOutbox(records);
+    const reads: string[] = [];
+    const settled: string[] = [];
+
+    await recoverAcceptedAutoPilotDispatches({
+      records: () => outbox.list(),
+      readCompleted: async (record) => { reads.push(record.id); return record.id !== "limited"; },
+      provenComplete: (record) => record.id === "auto" || record.id === "limited",
+      settle: async (record) => { await outbox.complete(record.id); settled.push(record.id); if (record.id === "auto") finished.archived = true; },
+      log: () => undefined,
+    });
+
+    expect(reads).toEqual(["auto", "unproven", "limited"]);
+    expect(settled).toEqual(["auto"]);
+    expect(outbox.list().map((record) => record.state)).toEqual(["completed", "accepted", "accepted", "accepted"]);
+    expect(finished.archived).toBe(true);
+    expect(selectAutoPilotLaunches({ tasks: [task("next", "ready")], accounts: [account("bot1")], threads: [finished] })).toEqual([{ taskId: "next", accountId: "bot1" }]);
+  });
+
+  it("recognizes only a completed latest thread turn and excludes limit exhaustion", () => {
+    expect(latestThreadTurnCompleted({ thread: { turns: [{ status: "completed", startedAt: 1 }, { status: { type: "active" }, startedAt: 2 }] } })).toBe(false);
+    expect(latestThreadTurnCompleted({ thread: { turns: [{ status: "active", startedAt: 1 }, { status: { type: "completed" }, startedAt: 2 }] } })).toBe(true);
+    expect(latestThreadTurnCompleted({ thread: { turns: [{ status: "completed", error: { codexErrorInfo: "usageLimitExceeded" }, startedAt: 2 }] } })).toBe(false);
+    expect(latestThreadTurnCompleted({ thread: { turns: [{ status: "completed", error: { codexErrorInfo: "sessionBudgetExceeded" }, startedAt: 2 }] } })).toBe(false);
   });
 });

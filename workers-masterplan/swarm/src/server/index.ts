@@ -34,7 +34,7 @@ import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
 import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
-import { AutoPilotController, reconcileAutoPilotLaunches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./scheduler/autoPilot.js";
+import { AutoPilotController, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, shouldAutoArchive } from "./scheduler/autoPilot.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
@@ -152,6 +152,7 @@ async function createRuntime(config: SwarmConfig) {
   const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(`/Users/${account}/.codex`)]));
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
+  const autoPilotRecoveryReads = new Set<string>();
   let accounts: AccountManager;
   const breakingChangeAccounts = new Set<AccountId>(root.notifications.breakingChangeAccounts);
   const recordBreakingChange = (account: AccountId) => {
@@ -235,7 +236,7 @@ async function createRuntime(config: SwarmConfig) {
             publishRuntimeEvent("task", { taskId: assignments.forThread(event.accountId, exhaustedThreadId)?.taskId ?? "" });
           })().catch((error) => logger.warn("assignments", { event: "limit_wait_failed", error: error instanceof Error ? error.message : "failed" }));
         }
-        if (event.type === "turn" && event.state === "completed" && event.threadId) {
+        if (event.type === "turn" && event.state === "completed" && event.threadId && !(event.historical === true && autoPilotRecoveryReads.has(completedLaunchThreadKey(event.accountId, event.threadId)))) {
           activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
           const key = completedLaunchThreadKey(event.accountId, event.threadId);
           if (outbox.list().some((record) => record.accountId === event.accountId && record.threadId === event.threadId && (record.state === "submitting" || record.state === "accepted"))) {
@@ -680,25 +681,43 @@ async function createRuntime(config: SwarmConfig) {
   const autoPilotSnapshot = (pass: ManifestPass) => ({
     tasks: root.autoPilot?.enabled === true && !shuttingDown && !manifestError && pass === (manifest?.lifecycle?.activePass ?? "planning")
       ? projectDispatchState(nodesByPass[pass], outbox.list().filter((record) => (record.pass ?? "planning") === pass), pass === "planning" ? [...threadCache.values()].flat() : [], assignments.list().filter((record) => (record.pass ?? "planning") === pass), completedByPass[pass]) : [],
-    accounts: accountSnapshot().filter((account) => !autoPilotRefreshFailed.has(account.id)),
+    accounts: accountSnapshot(),
     threads: [...threadCache.values()].flat(),
   });
-  const autoPilotRefreshFailed = new Set<AccountId>();
   const reconcileAutoPilot = async () => {
     let pass: ManifestPass = "planning";
     await reconcileAutoPilotLaunches({
       refresh: async () => {
         await refreshTasks(true);
         pass = manifest?.lifecycle?.activePass ?? "planning";
-        autoPilotRefreshFailed.clear();
-        await Promise.allSettled(accountSnapshot().filter((account) => (BOT_ACCOUNT_IDS as readonly AccountId[]).includes(account.id) && account.connection === "connected" && account.authentication === "authenticated").map(async (account) => {
+        const refreshedAccounts = new Set<(typeof BOT_ACCOUNT_IDS)[number]>();
+        const refreshCandidates = accountSnapshot().filter((account) => (BOT_ACCOUNT_IDS as readonly AccountId[]).includes(account.id) && account.connection === "connected" && account.authentication === "authenticated");
+        await Promise.allSettled(refreshCandidates.map(async (account) => {
           try { await threads(account.id); }
           catch (error) {
-            autoPilotRefreshFailed.add(account.id);
             logger.warn("autoPilot", { event: "threads_refresh_failed", account: account.id, error: error instanceof Error ? error.message : "failed" });
+            return;
           }
+          refreshedAccounts.add(account.id as (typeof BOT_ACCOUNT_IDS)[number]);
         }));
-        if (shuttingDown) return;
+        if (shuttingDown) return refreshedAccounts;
+        await recoverAcceptedAutoPilotDispatches({
+          records: () => outbox.list().filter((record) => {
+            const resumeState = limitResumes.forThread(record.accountId, record.threadId)?.state;
+            const assignmentState = assignments.forThread(record.accountId, record.threadId)?.state;
+            return !["waiting_for_limit", "resuming", "transferring"].includes(resumeState ?? "")
+              && !["waiting_for_limit", "resuming", "transferring"].includes(assignmentState ?? "");
+          }),
+          readCompleted: async (record) => {
+            const key = completedLaunchThreadKey(record.accountId, record.threadId);
+            autoPilotRecoveryReads.add(key);
+            try { return latestThreadTurnCompleted(await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true })); }
+            finally { autoPilotRecoveryReads.delete(key); }
+          },
+          provenComplete: (record) => !manifestError && completedByPass[record.pass ?? "planning"].has(record.taskId),
+          settle: (record) => settleCompletedLaunchThread(record.accountId, record.threadId),
+          log: (error) => logger.warn("autoPilot", { event: "accepted_recovery_failed", error: error.message }),
+        });
         await retryAutoPilotArchives({
           records: () => outbox.list(),
           threads: () => [...threadCache.values()].flat(),
@@ -706,6 +725,7 @@ async function createRuntime(config: SwarmConfig) {
           archive: (record) => services.archiveThread(record.accountId, record.threadId),
           log: (error) => logger.warn("autoPilot", { event: "archive_retry_failed", error: error.message }),
         });
+        return refreshedAccounts;
       },
       snapshot: () => autoPilotSnapshot(pass),
       launch: (pair) => services.launch(pair.taskId, { accountId: pair.accountId, pass, origin: "auto_pilot" }),

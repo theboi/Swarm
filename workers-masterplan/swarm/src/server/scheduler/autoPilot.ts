@@ -21,19 +21,57 @@ const asError = (cause: unknown): Error => cause instanceof Error ? cause : new 
 
 /** Refresh once, then isolate failures and recheck each original pairing without reallocating it. */
 export async function reconcileAutoPilotLaunches(dependencies: {
-  refresh(): Promise<void>;
+  refresh(): Promise<ReadonlySet<BotAccountId>>;
   snapshot(): AutoPilotSnapshot;
   launch(pair: AutoPilotLaunch): Promise<unknown>;
   log(error: Error): void;
 }): Promise<void> {
-  await dependencies.refresh();
-  const launches = selectAutoPilotLaunches(dependencies.snapshot());
-  const results = await Promise.allSettled(launches.map(async (pair) => {
+  const refreshedAccounts = await dependencies.refresh();
+  const eligibleSnapshot = (): AutoPilotSnapshot => {
     const current = dependencies.snapshot();
+    return { ...current, accounts: current.accounts.filter((account) => refreshedAccounts.has(account.id as BotAccountId)) };
+  };
+  const launches = selectAutoPilotLaunches(eligibleSnapshot());
+  const results = await Promise.allSettled(launches.map(async (pair) => {
+    const current = eligibleSnapshot();
     const eligible = selectAutoPilotLaunches({ ...current, tasks: current.tasks.filter((task) => task.id === pair.taskId), accounts: current.accounts.filter((account) => account.id === pair.accountId) });
     if (eligible.length) await dependencies.launch(pair);
   }));
   for (const result of results) if (result.status === "rejected") dependencies.log(asError(result.reason));
+}
+
+/** Reads autonomous accepted work after restart and settles only a finished, receipt-proven launch. */
+export async function recoverAcceptedAutoPilotDispatches(dependencies: {
+  records(): DispatchRecord[];
+  readCompleted(record: DispatchRecord): Promise<boolean>;
+  provenComplete(record: DispatchRecord): boolean;
+  settle(record: DispatchRecord): Promise<void>;
+  log(error: Error): void;
+}): Promise<void> {
+  const candidates = dependencies.records().filter((record) => record.origin === "auto_pilot" && record.state === "accepted");
+  const results = await Promise.allSettled(candidates.map(async (record) => {
+    const threadCompleted = await dependencies.readCompleted(record);
+    if (threadCompleted && dependencies.provenComplete(record)) await dependencies.settle(record);
+  }));
+  for (const result of results) if (result.status === "rejected") dependencies.log(asError(result.reason));
+}
+
+/** Matches app-server's latest-turn completion semantics without treating exhausted turns as complete. */
+export function latestThreadTurnCompleted(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  const thread = response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? response.thread as Record<string, unknown> : response;
+  if (!Array.isArray(thread.turns)) return false;
+  const latest = thread.turns.filter((turn): turn is Record<string, unknown> => Boolean(turn) && typeof turn === "object" && !Array.isArray(turn))
+    .sort((left, right) => (typeof left.startedAt === "number" ? left.startedAt : -1) - (typeof right.startedAt === "number" ? right.startedAt : -1)).at(-1);
+  if (!latest) return false;
+  const rawStatus = latest.status;
+  const status = typeof rawStatus === "string" ? rawStatus : rawStatus && typeof rawStatus === "object" && !Array.isArray(rawStatus) ? (rawStatus as Record<string, unknown>).type : undefined;
+  if (typeof status !== "string" || !["complete", "completed"].includes(status.replace(/[ _-]/g, "").toLowerCase())) return false;
+  const error = latest.error && typeof latest.error === "object" && !Array.isArray(latest.error) ? latest.error as Record<string, unknown> : undefined;
+  if (error?.codexErrorInfo === "sessionBudgetExceeded" || error?.codexErrorInfo === "usageLimitExceeded") return false;
+  const serializedError = error ? JSON.stringify(error) : "";
+  return !/(?:session|usage|rate).{0,24}limit|limit.{0,24}(?:exceed|reset)/i.test(serializedError);
 }
 
 /** Completed dispatches retain provenance across restart; live receipt evidence gates every retry. */
