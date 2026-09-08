@@ -40,6 +40,15 @@ export class AutoPilotRecoveryGuard {
   }
 }
 
+/** Suppresses only the synthetic completion replayed by readThread during recovery. */
+export function shouldHandleCompletedLaunchEvent(
+  event: { accountId: DispatchRecord["accountId"]; threadId?: string; historical?: boolean },
+  recoveryGuard: Pick<AutoPilotRecoveryGuard, "isRecovering">,
+): boolean {
+  if (!event.threadId) return false;
+  return !(event.historical === true && recoveryGuard.isRecovering(event.accountId, event.threadId));
+}
+
 /** Applies the live or restart-recovery settlement policy after refreshing receipt evidence. */
 export async function settleLaunchCompletion(dependencies: {
   refresh(): Promise<void>;

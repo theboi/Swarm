@@ -34,7 +34,7 @@ import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
 import { rankLaunchAccounts } from "./scheduler/launchAccounts.js";
-import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive } from "./scheduler/autoPilot.js";
+import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive, shouldHandleCompletedLaunchEvent } from "./scheduler/autoPilot.js";
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
@@ -240,7 +240,7 @@ async function createRuntime(config: SwarmConfig) {
             publishRuntimeEvent("task", { taskId: assignments.forThread(event.accountId, exhaustedThreadId)?.taskId ?? "" });
           })().catch((error) => logger.warn("assignments", { event: "limit_wait_failed", error: error instanceof Error ? error.message : "failed" }));
         }
-        if (event.type === "turn" && event.state === "completed" && event.threadId && !autoPilotRecoveryGuard.isRecovering(event.accountId, event.threadId)) {
+        if (event.type === "turn" && event.state === "completed" && event.threadId && shouldHandleCompletedLaunchEvent(event, autoPilotRecoveryGuard)) {
           activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
           const key = completedLaunchThreadKey(event.accountId, event.threadId);
           if (outbox.list().some((record) => record.accountId === event.accountId && record.threadId === event.threadId && (record.state === "submitting" || record.state === "accepted"))) {

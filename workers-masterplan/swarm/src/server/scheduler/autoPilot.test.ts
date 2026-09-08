@@ -11,7 +11,7 @@ import type {
 } from "../../shared/contracts.js";
 import { DispatchOutbox } from "../dispatch/outbox.js";
 import { WorkerAssignmentManifest } from "../tasks/workerAssignments.js";
-import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive } from "./autoPilot.js";
+import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted, reconcileAutoPilotLaunches, recoverAcceptedAutoPilotDispatches, retryAutoPilotArchives, selectAutoPilotLaunches, settleLaunchCompletion, shouldAutoArchive, shouldHandleCompletedLaunchEvent } from "./autoPilot.js";
 
 const task = (id: string, state: TaskNode["readiness"]["state"]): TaskNode => ({
   id,
@@ -318,7 +318,7 @@ describe("autonomous completion and reconciliation", () => {
       withRecovery: (record, operation) => recoveryGuard.run(record.accountId, record.threadId, operation),
       readCompleted: async (record) => {
         // AppServerClient synchronously emits the historical completion while hydrating readThread.
-        if (!recoveryGuard.isRecovering(record.accountId, record.threadId)) {
+        if (shouldHandleCompletedLaunchEvent({ accountId: record.accountId, threadId: record.threadId, historical: true }, recoveryGuard)) {
           overlappingLiveSettlements += 1;
           await settle("live");
         }
@@ -334,6 +334,47 @@ describe("autonomous completion and reconciliation", () => {
     expect(outbox.get("auto")?.state).toBe("accepted");
     expect(assignments.forTask("T0")?.state).toBe("assigned");
     expect(errors.map((error) => error.message)).toEqual(refreshOutcome === "throws" ? ["manifest refresh failed"] : []);
+  });
+
+  it("handles a live completed event during recovery while still guarding the historical read event", async () => {
+    const auto: DispatchRecord = { id: "auto", taskId: "T0", accountId: "bot1", threadId: "finished", origin: "auto_pilot", state: "accepted", clientUserMessageId: "m1", createdAt: 0, updatedAt: 0, retryAt: null };
+    const outbox = new DispatchOutbox([auto]);
+    const assignments = new WorkerAssignmentManifest();
+    await assignments.assign("T0", "bot1", "finished", 1);
+    const recoveryGuard = new AutoPilotRecoveryGuard();
+    let receiptProven = true;
+    let historicalSettlements = 0;
+    let liveSettlements = 0;
+    const settleLive = () => settleLaunchCompletion({
+      refresh: async () => { receiptProven = false; },
+      provenComplete: () => receiptProven,
+      complete: async () => { await assignments.complete("bot1", "finished"); await outbox.complete("auto"); },
+      markAttentionRequired: async () => { await assignments.markAttentionRequired("bot1", "finished"); await outbox.abandon("auto"); },
+    }, "live");
+    const handleCompletion = async (record: DispatchRecord, historical: boolean) => {
+      if (!shouldHandleCompletedLaunchEvent({ accountId: record.accountId, threadId: record.threadId, historical }, recoveryGuard)) return;
+      if (historical) historicalSettlements += 1;
+      else liveSettlements += 1;
+      await settleLive();
+    };
+
+    await recoverAcceptedAutoPilotDispatches({
+      records: () => outbox.list(),
+      withRecovery: (record, operation) => recoveryGuard.run(record.accountId, record.threadId, operation),
+      readCompleted: async (record) => {
+        await handleCompletion(record, true);
+        await handleCompletion(record, false);
+        return true;
+      },
+      provenComplete: () => receiptProven,
+      settle: async () => { throw new Error("recovery settlement must not replace the live policy"); },
+      log: () => undefined,
+    });
+
+    expect(historicalSettlements).toBe(0);
+    expect(liveSettlements).toBe(1);
+    expect(outbox.get("auto")?.state).toBe("attention_required");
+    expect(assignments.forTask("T0")?.state).toBe("attention_required");
   });
 
   it("retains the attention-required fallback for an unproven live completion", async () => {
