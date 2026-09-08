@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawn as spawnChildProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
+import { fileURLToPath } from "node:url";
 
 import { LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId } from "../../shared/contracts.js";
 import { GitMergeConflictError } from "./sync.js";
@@ -13,14 +14,14 @@ export function absorbStdinPipeErrors(stream: { on(event: "error", listener: (er
   stream?.on("error", () => undefined);
 }
 
-function waitForExitCode(child: ReturnType<typeof spawn>): Promise<number> {
+function waitForExitCode(child: ReturnType<typeof spawnChildProcess>): Promise<number> {
   return new Promise((resolve, reject) => {
     child.once("error", () => reject(new Error("Git synchronization could not start")));
     child.once("exit", (code) => typeof code === "number" ? resolve(code) : reject(new Error("Git synchronization was interrupted")));
   });
 }
 
-async function waitForExit(child: ReturnType<typeof spawn>): Promise<void> {
+async function waitForExit(child: ReturnType<typeof spawnChildProcess>): Promise<void> {
   if (await waitForExitCode(child) !== 0) throw new Error("Git synchronization failed");
 }
 
@@ -33,6 +34,7 @@ export interface BotPtyProcess {
 }
 
 export type SpawnBotPty = (file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }) => BotPtyProcess;
+export type RunBotCommand = (account: BotAccountId, password: string, command: string) => Promise<number>;
 
 const spawnManagedBotPty: SpawnBotPty = (file, args, options) => {
   const child = spawnPty(file, args, options);
@@ -45,60 +47,89 @@ const spawnManagedBotPty: SpawnBotPty = (file, args, options) => {
   };
 };
 
+/** Runs the password-prompt exchange inside a process that can be discarded with its native PTY descriptor. */
+export function runBotPtyCommand(account: BotAccountId, password: string, command: string, spawnBotPty: SpawnBotPty = spawnManagedBotPty): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let tail = "";
+    let passwordSent = false;
+    let settled = false;
+    let cleaned = false;
+    const child = spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: "/tmp",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    });
+    let timer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (timer) clearTimeout(timer);
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      try { child.dispose(); } catch { /* descriptor already closed */ }
+    };
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill("SIGTERM"); } finally { cleanup(); }
+      reject(new Error("Git synchronization timed out"));
+    }, 120_000);
+    timer.unref();
+    dataSubscription = child.onData((data) => {
+      if (passwordSent) return;
+      tail = `${tail}${data}`.slice(-256);
+      if (!/Password:/i.test(tail)) return;
+      passwordSent = true;
+      tail = "";
+      child.write(`${password}\r`);
+    });
+    exitSubscription = child.onExit(({ exitCode }) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(exitCode);
+    });
+  });
+}
+
+const runBotCommandInIsolatedProcess: RunBotCommand = (account, password, command) => new Promise((resolve, reject) => {
+  const worker = spawnChildProcess(process.execPath, [fileURLToPath(new URL("./botGitWorker.js", import.meta.url))], { stdio: ["pipe", "ignore", "ignore"] });
+  let settled = false;
+  const finish = (result: number | Error) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    if (result instanceof Error) reject(result);
+    else resolve(result);
+  };
+  const timeout = setTimeout(() => {
+    worker.kill("SIGTERM");
+    finish(new Error("Git synchronization timed out"));
+  }, 120_000);
+  timeout.unref();
+  worker.once("error", () => finish(new Error("Git synchronization could not start")));
+  worker.once("exit", (code) => finish(typeof code === "number" ? code : new Error("Git synchronization was interrupted")));
+  worker.stdin?.once("error", () => {
+    worker.kill("SIGTERM");
+    finish(new Error("Git synchronization could not start"));
+  });
+  worker.stdin?.end(JSON.stringify({ account, password, command }));
+});
+
 /** Executes only fixed Git transport commands; it intentionally never captures or exposes command output. */
 export class GitCommandRunner {
   constructor(
     private readonly workspaceRoot: string,
     private readonly passwords: Readonly<Partial<Record<BotAccountId, string | undefined>>>,
-    private readonly spawnBotPty: SpawnBotPty = spawnManagedBotPty,
+    private readonly runBotCommand: RunBotCommand = runBotCommandInIsolatedProcess,
   ) {}
 
   private runAsBotExitCode(account: BotAccountId, password: string, command: string): Promise<number> {
-    return new Promise((resolve, reject) => {
-      let tail = "";
-      let passwordSent = false;
-      let settled = false;
-      let cleaned = false;
-      const child = this.spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
-        name: "xterm-256color",
-        cols: 80,
-        rows: 24,
-        cwd: "/tmp",
-        env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-      });
-      let timer: NodeJS.Timeout | undefined;
-      let dataSubscription: { dispose(): void } | undefined;
-      let exitSubscription: { dispose(): void } | undefined;
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
-        if (timer) clearTimeout(timer);
-        dataSubscription?.dispose();
-        exitSubscription?.dispose();
-        try { child.dispose(); } catch { /* descriptor already closed */ }
-      };
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        try { child.kill("SIGTERM"); } finally { cleanup(); }
-        reject(new Error("Git synchronization timed out"));
-      }, 120_000);
-      timer.unref();
-      dataSubscription = child.onData((data) => {
-        if (passwordSent) return;
-        tail = `${tail}${data}`.slice(-256);
-        if (!/Password:/i.test(tail)) return;
-        passwordSent = true;
-        tail = "";
-        child.write(`${password}\r`);
-      });
-      exitSubscription = child.onExit(({ exitCode }) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(exitCode);
-      });
-    });
+    return this.runBotCommand(account, password, command);
   }
 
   private async runAsBot(account: BotAccountId, password: string, command: string): Promise<void> {
@@ -106,9 +137,9 @@ export class GitCommandRunner {
   }
 
   async pullLocal(): Promise<void> {
-    const pullCode = await waitForExitCode(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "pull", "--no-rebase", "--no-edit", "origin", "main"], { stdio: "ignore" }));
+    const pullCode = await waitForExitCode(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "pull", "--no-rebase", "--no-edit", "origin", "main"], { stdio: "ignore" }));
     if (pullCode === 0) return;
-    const conflictCode = await waitForExitCode(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "diff", "--quiet", "--diff-filter=U"], { stdio: "ignore" }));
+    const conflictCode = await waitForExitCode(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "diff", "--quiet", "--diff-filter=U"], { stdio: "ignore" }));
     if (conflictCode === 1) throw new GitMergeConflictError();
     throw new Error("Git synchronization failed");
   }
@@ -129,20 +160,20 @@ export class GitCommandRunner {
   async checkpointAndPush(account: AccountId): Promise<void | "skipped"> {
     const message = "chore: checkpoint swarm handoff";
     if (account === LOCAL_ACCOUNT_ID) {
-      await waitForExit(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "add", "-A"], { stdio: "ignore" }));
-      const diff = spawn("/usr/bin/git", ["-C", this.workspaceRoot, "diff", "--cached", "--quiet"], { stdio: "ignore" });
+      await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "add", "-A"], { stdio: "ignore" }));
+      const diff = spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "diff", "--cached", "--quiet"], { stdio: "ignore" });
       const changed = await new Promise<boolean>((resolve, reject) => {
         diff.once("error", () => reject(new Error("Git synchronization could not start")));
         diff.once("exit", (code) => code === 0 ? resolve(false) : code === 1 ? resolve(true) : reject(new Error("Git synchronization failed")));
       });
-      if (changed) await waitForExit(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "commit", "-m", message], { stdio: "ignore" }));
-      await waitForExit(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "fetch", "origin", "main"], { stdio: "ignore" }));
-      const rebaseCode = await waitForExitCode(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "rebase", "origin/main"], { stdio: "ignore" }));
+      if (changed) await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "commit", "-m", message], { stdio: "ignore" }));
+      await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "fetch", "origin", "main"], { stdio: "ignore" }));
+      const rebaseCode = await waitForExitCode(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "rebase", "origin/main"], { stdio: "ignore" }));
       if (rebaseCode !== 0) {
-        await waitForExitCode(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "rebase", "--abort"], { stdio: "ignore" })).catch(() => undefined);
+        await waitForExitCode(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "rebase", "--abort"], { stdio: "ignore" })).catch(() => undefined);
         throw new Error("Git checkpoint rebase failed");
       }
-      await waitForExit(spawn("/usr/bin/git", ["-C", this.workspaceRoot, "push", "origin", "HEAD:main"], { stdio: "ignore" }));
+      await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "push", "origin", "HEAD:main"], { stdio: "ignore" }));
       return;
     }
     const password = this.passwords[account];

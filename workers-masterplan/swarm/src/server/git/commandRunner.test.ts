@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
-import { GitCommandRunner, absorbStdinPipeErrors, type BotPtyProcess } from "./commandRunner.js";
+import { GitCommandRunner, absorbStdinPipeErrors, runBotPtyCommand, type BotPtyProcess } from "./commandRunner.js";
 
 const run = promisify(execFile);
 
@@ -61,7 +61,7 @@ describe("GitCommandRunner", () => {
       dispose,
     } as BotPtyProcess & { dispose: typeof dispose };
     const spawnBotPty = vi.fn(() => process);
-    const runner = new GitCommandRunner("/workspace", { bot6: "correct horse" }, spawnBotPty);
+    const runner = new GitCommandRunner("/workspace", { bot6: "correct horse" }, (account, password, command) => runBotPtyCommand(account, password, command, spawnBotPty));
 
     const pull = runner.pullAccount("bot6");
     expect(process.write).not.toHaveBeenCalled();
@@ -72,6 +72,19 @@ describe("GitCommandRunner", () => {
     await expect(pull).resolves.toBeUndefined();
     expect(spawnBotPty).toHaveBeenCalledWith("/usr/bin/su", expect.arrayContaining(["bot6"]), expect.any(Object));
     expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("delegates bot Git pulls to the isolated runner", async () => {
+    const runBotCommand = vi.fn(async () => 0);
+    const runner = new GitCommandRunner("/workspace", { bot6: "correct horse" }, runBotCommand as never);
+
+    await expect(runner.pullAccount("bot6")).resolves.toBeUndefined();
+
+    expect(runBotCommand).toHaveBeenCalledWith(
+      "bot6",
+      "correct horse",
+      expect.stringContaining("git"),
+    );
   });
 
   it("commits local changes, rebases a newer origin/main, and pushes the checkpoint", async () => {
