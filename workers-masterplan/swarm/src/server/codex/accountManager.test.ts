@@ -92,7 +92,7 @@ describe("AccountManager", () => {
     expect(report).toHaveBeenCalledWith(account, expect.objectContaining({ message: "usage unavailable" }));
   });
 
-  it("marks an expired Codex token unauthenticated while preserving the live app-server and prior usage", async () => {
+  it("quarantines an app-server after its Codex token expires while preserving the process and prior usage", async () => {
     const { manager, handle, client } = fixture();
     manager.updateSnapshot(account, { rateLimits: [{ id: "codex:primary", label: "Codex five-hour", usedPercent: 25, resetsAt: 1_800, updatedAt: 1_000 }] });
     client.connect.mockResolvedValueOnce({ account: { type: "chatgpt" }, requiresOpenaiAuth: false });
@@ -106,7 +106,7 @@ describe("AccountManager", () => {
     });
 
     expect(handle.stop).not.toHaveBeenCalled();
-    expect(manager.client(account)).toBe(client);
+    expect(manager.client(account)).toBeUndefined();
   });
 
   it("keeps chat connected when account/read succeeds but the read-only usage probe fails", async () => {

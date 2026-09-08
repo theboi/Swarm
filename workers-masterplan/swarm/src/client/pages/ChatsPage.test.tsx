@@ -163,6 +163,20 @@ describe("ChatsPage", () => {
     expect(screen.getByText("Thinking", { selector: ".thread-picker__copy small" })).toBeVisible();
   });
 
+  it("does not steer a historical turn when the active turn ID is unavailable", async () => {
+    setViewport(1440);
+    const steerTurn = vi.fn(async () => ({ data: {} }));
+    const historicalTranscript: TranscriptItem[] = [
+      { id: "completed-reply", accountId: "bot3", threadId: "thread-1", turnId: "completed-turn", type: "agentMessage", status: "completed", createdAt: 1_725_000_099, payload: { text: "This turn is already complete." } },
+    ];
+    const activeSnapshot = { ...chatSnapshot, threads: chatSnapshot.threads.map((thread) => thread.id === "thread-1" ? { ...thread, activity: "active" as const } : thread) };
+    render(<ChatsPage snapshot={activeSnapshot} api={{ ...api, readTranscript: async () => ({ data: historicalTranscript }), steerTurn }} />);
+
+    await screen.findByText("This turn is already complete.");
+    expect(screen.getByRole("button", { name: "Steer" })).toBeDisabled();
+    expect(steerTurn).not.toHaveBeenCalled();
+  });
+
   it("shows an in-transcript working status while a selected turn is active", async () => {
     setViewport(1440);
     render(<ChatsPage snapshot={chatSnapshot} api={api} activeTurnKeys={new Set(["bot3\u0000thread-1"])} />);
@@ -189,9 +203,6 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "Steer" }));
     expect(steerTurn).toHaveBeenCalledWith("bot3", "thread-2", "turn-live", "Use the new requirements.");
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
-    expect(screen.getByRole("status", { name: "Pending steer" })).toHaveTextContent("Use the new requirements.");
-    await user.click(screen.getByRole("button", { name: "Edit pending steer" }));
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Use the new requirements.");
     expect(screen.queryByRole("status", { name: "Pending steer" })).not.toBeInTheDocument();
   });
 
@@ -625,6 +636,23 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("dialog", { name: "Move to another account" })).toBeVisible();
   });
 
+  it("blocks messages to an account that requires sign-in and explains how to recover", async () => {
+    setViewport(1440);
+    const startTurn = vi.fn(async () => ({ data: {} }));
+    const sourceUnauthenticated = {
+      ...chatSnapshot,
+      accounts: chatSnapshot.accounts.map((account) => account.id === "bot3"
+        ? { ...account, connection: "action_required" as const, authentication: "unauthenticated" as const }
+        : account),
+    };
+
+    render(<ChatsPage snapshot={sourceUnauthenticated} api={{ ...api, startTurn }} />);
+
+    expect(screen.getByRole("status", { name: "Account sign-in required" })).toHaveTextContent("Sign in to bot3 to send messages.");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(startTurn).not.toHaveBeenCalled();
+  });
+
   it("queues messages for automatic resume while the selected chat is waiting for its limit", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -819,7 +847,7 @@ describe("ChatsPage", () => {
   it("enables thread controls only for reported capabilities", async () => {
     setViewport(390);
     const user = userEvent.setup();
-    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    render(<ChatsPage snapshot={chatSnapshot} api={api} activeTurnIds={new Map([["bot3\u0000thread-1", "turn-1"]])} />);
 
     await screen.findByRole("article", { name: "userMessage" });
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();

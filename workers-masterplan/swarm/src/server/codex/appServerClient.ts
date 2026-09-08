@@ -286,8 +286,13 @@ export class AppServerClient {
   async readRateLimitWindows(updatedAt = Date.now()): Promise<RateLimitWindow[]> {
     const response = await this.readRateLimits();
     const multiBucket = response.rateLimitsByLimitId;
-    const buckets: Array<[string, unknown]> = multiBucket && typeof multiBucket === "object" && !Array.isArray(multiBucket)
-      ? Object.entries(multiBucket as Record<string, unknown>)
+    const hasMultiBucket = multiBucket && typeof multiBucket === "object" && !Array.isArray(multiBucket);
+    const buckets: Array<[string, unknown]> = hasMultiBucket
+      ? Object.entries(multiBucket as Record<string, unknown>).filter(([fallbackId, rawBucket]) => {
+        const bucket = rawBucket && typeof rawBucket === "object" && !Array.isArray(rawBucket) ? rawBucket as Record<string, unknown> : undefined;
+        const limitId = typeof bucket?.limitId === "string" ? bucket.limitId : "";
+        return [fallbackId, limitId].some((value) => value.trim().toLowerCase() === "codex");
+      })
       : [["default", response.rateLimits]];
     const windows: RateLimitWindow[] = [];
     for (const [fallbackId, rawBucket] of buckets.sort(([left], [right]) => left.localeCompare(right))) {

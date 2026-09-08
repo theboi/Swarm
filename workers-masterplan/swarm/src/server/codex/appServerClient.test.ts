@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }> } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -69,7 +69,7 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
     }
     if (message.method === "thread/read" && options.threadReadError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadReadError } }));
     else if (message.method === "thread/read") reply({ thread: { id: "thread-1", turns: threadHistory } });
-    if (message.method === "account/rateLimits/read") reply({
+    if (message.method === "account/rateLimits/read") reply(options.rateLimitResponse ?? {
       rateLimits: { limitId: "codex", primary: { usedPercent: 20, resetsAt: 1_800 }, secondary: { usedPercent: 73, resetsAt: null } },
       rateLimitsByLimitId: {
         codex: { limitId: "codex", limitName: "Codex", primary: { usedPercent: 20, resetsAt: 1_800 }, secondary: { usedPercent: 73, resetsAt: null } },
@@ -131,7 +131,7 @@ describe("AppServerClient", () => {
     const client = await readyClient({ requiresOpenaiAuth: true });
 
     expect(client.accountInfo).toEqual({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: true });
-    await expect(client.readRateLimitWindows()).resolves.toHaveLength(3);
+    await expect(client.readRateLimitWindows()).resolves.toHaveLength(2);
     await client.close();
   });
 
@@ -387,13 +387,29 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
-  it("normalizes every v2 rate-limit bucket without converting Unix reset seconds", async () => {
+  it("normalizes only the v2 Codex bucket without converting Unix reset seconds", async () => {
     const client = await readyClient();
 
     await expect(client.readRateLimitWindows(1_000)).resolves.toEqual([
       { id: "codex:primary", label: "Codex primary", usedPercent: 20, resetsAt: 1_800, updatedAt: 1_000 },
       { id: "codex:secondary", label: "Codex secondary", usedPercent: 73, resetsAt: null, updatedAt: 1_000 },
-      { id: "weekly:primary", label: "Weekly primary", usedPercent: 7, resetsAt: 9_000, updatedAt: 1_000 },
+    ]);
+    await client.close();
+  });
+
+  it("keeps only the authoritative Codex bucket when reserve buckets sort first", async () => {
+    const client = await readyClient({ rateLimitResponse: {
+      rateLimits: { limitId: "codex", limitName: "Codex", primary: { usedPercent: 100, resetsAt: 1_800 }, secondary: { usedPercent: 47, resetsAt: 9_000 } },
+      rateLimitsByLimitId: {
+        base_model_inference: { limitId: "base_model_inference", limitName: "GPT Reserve", primary: { usedPercent: 0, resetsAt: 7_200 }, secondary: null },
+        luna_reserve: { limitId: "luna_reserve", limitName: "Luna Reserve", primary: { usedPercent: 0, resetsAt: 7_200 }, secondary: null },
+        codex: { limitId: "codex", limitName: "Codex", primary: { usedPercent: 100, resetsAt: 1_800 }, secondary: { usedPercent: 47, resetsAt: 9_000 } },
+      },
+    } });
+
+    await expect(client.readRateLimitWindows(1_000)).resolves.toEqual([
+      { id: "codex:primary", label: "Codex primary", usedPercent: 100, resetsAt: 1_800, updatedAt: 1_000 },
+      { id: "codex:secondary", label: "Codex secondary", usedPercent: 47, resetsAt: 9_000, updatedAt: 1_000 },
     ]);
     await client.close();
   });

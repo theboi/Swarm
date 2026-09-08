@@ -19,14 +19,17 @@ export class AccountRateLimitRefresher {
     const operation = (prior ? prior.catch(() => undefined) : Promise.resolve()).then(async () => {
       let expectedToken: unknown;
       try {
-        if (this.options.prepare) await this.options.prepare(accountId);
+        if (this.options.prepare) {
+          await this.options.prepare(accountId);
+          if (this.options.current(accountId).authentication === "unauthenticated") throw new Error("ACCOUNT_AUTH_REQUIRED");
+        }
         expectedToken = this.options.token(accountId);
         if (!expectedToken || this.options.token(accountId) !== expectedToken) throw new Error("RATE_LIMIT_REFRESH_CANCELLED");
         const incoming = await this.options.read(accountId);
         if (this.options.token(accountId) !== expectedToken) throw new Error("RATE_LIMIT_REFRESH_CANCELLED");
         return this.options.success(accountId, this.options.merge(this.options.current(accountId).rateLimits, incoming));
       } catch (error) {
-        if (this.options.token(accountId) !== expectedToken || (error instanceof Error && error.message === "RATE_LIMIT_REFRESH_CANCELLED")) throw error;
+        if (this.options.token(accountId) !== expectedToken || (error instanceof Error && (error.message === "RATE_LIMIT_REFRESH_CANCELLED" || error.message === "ACCOUNT_AUTH_REQUIRED"))) throw error;
         this.options.failure(accountId, error);
         throw error;
       }

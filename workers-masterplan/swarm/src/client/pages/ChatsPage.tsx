@@ -573,18 +573,19 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const steerMessage = async () => {
     const text = draft.trim();
-    if (!accountId || !selectedThread || !latestTurnId || !text || !canSteer) return;
+    if (!accountId || !selectedThread || !activeTurnId || !text || !canSteer) return;
     const pending = { accountId, threadId: selectedThread.id, text };
     setDraft("");
     setPendingSteer(pending);
     try {
-      const result = await api.steerTurn(accountId, selectedThread.id, latestTurnId, text);
+      const result = await api.steerTurn(accountId, selectedThread.id, activeTurnId, text);
       if ("error" in result && result.error) {
         setPendingSteer(null);
         setDraft(text);
         reportError(result.error.message);
         return;
       }
+      setPendingSteer(null);
       await onRefresh();
       setTranscriptRevision((revision) => revision + 1);
       report("Turn steered.");
@@ -596,10 +597,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   const activeTurnKey = accountId && threadId ? `${accountId}\u0000${threadId}` : "";
-  const latestTurnId = (activeTurnKey ? activeTurnIds.get(activeTurnKey) : undefined) ?? [...items].reverse().find((item) => item.turnId)?.turnId;
+  const activeTurnId = activeTurnKey ? activeTurnIds.get(activeTurnKey) : undefined;
+  const latestTurnId = activeTurnId ?? [...items].reverse().find((item) => item.turnId)?.turnId;
   const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active"));
   const isWorking = isThinking;
-  const canSteer = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canSteer));
+  const canSteer = Boolean(selectedThread && accountId && activeTurnId && (isThinking || selectedThread.capabilities.canSteer));
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
   const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);

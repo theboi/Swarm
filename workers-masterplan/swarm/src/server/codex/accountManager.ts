@@ -71,6 +71,7 @@ export class AccountManager {
 
   /** Returns a live app-server client only after account authentication completed. */
   client(account: AccountId): ManagedAppServerClient | undefined {
+    if (this.snapshots.get(account)?.authentication !== "authenticated") return undefined;
     return this.connections.get(account)?.client;
   }
 

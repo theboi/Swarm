@@ -51,6 +51,30 @@ test.describe("Chats", () => {
     expect((optionsBox?.y ?? 0) + (optionsBox?.height ?? 0)).toBeLessThanOrEqual(844);
   });
 
+  test("keeps a 44px Send target clear of the mobile navigation at 320 by 568", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await signIn(page);
+    const bot3 = page.getByRole("button", { name: "bot3" });
+    if (await bot3.getAttribute("aria-pressed") !== "true") await bot3.click();
+    await bot3.click();
+    await expect(page.getByRole("button", { name: "T0 · Graph planning" })).toHaveAttribute("aria-pressed", "true");
+
+    const send = page.getByRole("button", { name: "Send" });
+    const nav = page.locator(".app-nav");
+    await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
+    await expect(send).toBeEnabled();
+
+    const [sendBox, navBox] = await Promise.all([send.boundingBox(), nav.boundingBox()]);
+    expect(sendBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    expect(sendBox!.width).toBeGreaterThanOrEqual(44);
+    expect(sendBox!.height).toBeGreaterThanOrEqual(44);
+    expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
+
+    await send.click();
+    await expect(page.locator(".app-toast[role='status']")).toHaveText("Message sent.");
+  });
+
   test("shows normalized transcript details, approved controls, and capability gating", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);

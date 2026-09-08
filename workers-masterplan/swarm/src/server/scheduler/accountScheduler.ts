@@ -1,9 +1,7 @@
 import type { AccountSnapshot, RateLimitWindow } from "../../shared/contracts.js";
 
-export function mergeRateLimits(current: RateLimitWindow[], update: RateLimitWindow[]): RateLimitWindow[] {
-  const merged = new Map(current.map((window) => [window.id, window]));
-  for (const window of update) merged.set(window.id, window);
-  return [...merged.values()];
+export function mergeRateLimits(_current: RateLimitWindow[], update: RateLimitWindow[]): RateLimitWindow[] {
+  return update.map((window) => ({ ...window }));
 }
 
 function remaining(window: RateLimitWindow, now?: number): number | undefined {

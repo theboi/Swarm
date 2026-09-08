@@ -5,6 +5,7 @@
   --color-usage-warning: #e7bc62;
   --color-usage-critical: #f07f75;
   --color-usage-unknown: #718078;
+  --mobile-nav-block-size: 76px;
   font-family: Avenir, "Avenir Next", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
@@ -225,8 +226,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-move-dialog__accounts label { display: flex; min-block-size: 40px; align-items: center; gap: 8px; border: 1px solid #485457; border-radius: 9px; background: #202628; padding: 7px 10px; color: #effff0; font-size: .85rem; }
 .chat-compose__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chat-compose__turn-actions { display: flex; flex-wrap: wrap; gap: 5px; }
-.chat-compose button { min-inline-size: 36px; min-block-size: 36px; border-radius: 8px; padding: 5px; }
-.chat-compose__send { min-inline-size: 36px !important; min-block-size: 36px; border-color: #5dbb69 !important; background: #3daa4b !important; color: #08240c !important; margin: 0; }
+.chat-compose button { min-inline-size: 44px; min-block-size: 44px; border-radius: 8px; padding: 5px; }
+.chat-compose__send { min-inline-size: 44px !important; min-block-size: 44px; border-color: #5dbb69 !important; background: #3daa4b !important; color: #08240c !important; margin: 0; }
 .subagent-dialog { position: relative; display: grid; width: min(960px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 32px)); min-block-size: 0; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid #485457; border-radius: 18px; background: #191e20; box-shadow: 0 20px 50px rgb(0 0 0 / .4); }
 .subagent-dialog__header { display: flex; min-block-size: 66px; align-items: center; gap: 12px; border-block-end: 1px solid #313a3d; background: #1c2224; padding: 10px 68px 10px 16px; }
 .subagent-dialog__header > div { display: grid; min-inline-size: 0; gap: 2px; margin-inline-end: auto; }
@@ -275,14 +276,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 @media (max-width: 767px) {
-  .app-shell { padding-block-end: calc(72px + env(safe-area-inset-bottom)); }
-  .app-nav { position: fixed; z-index: 5; inset-inline: 0; inset-block-end: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-block-start: 1px solid #313a3d; }
+  .app-shell { padding-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); }
+  .app-nav { position: fixed; z-index: 5; inset-inline: 0; inset-block-end: 0; display: grid; block-size: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-block-start: 1px solid #313a3d; }
   .app-nav__brand { display: none; }
   .app-nav__item { justify-content: center; flex-direction: column; gap: 2px; font-size: .72rem; }
   .app-main { padding: 20px 16px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.ready-task { align-items: stretch; flex-direction: column; }.ready-task button { width: 100%; }
-  .flow-layout { display: block; min-block-size: 0; }.flowchart-surface { min-block-size: 0; }.flowchart-page { block-size: calc(100dvh - 72px - env(safe-area-inset-bottom)); padding: 10px; }
-  .chats-page { min-height: 0; block-size: calc(100dvh - 72px - env(safe-area-inset-bottom)); }.chats-workspace { position: relative; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }.chat-account-picker--pills { flex-direction: row; align-items: center; overflow-x: auto; flex-wrap: nowrap; gap: 4px; padding: 8px; border-block-end: 1px solid #313a3d; border-inline-end: 0; }.chat-account-picker--pills .chat-account-picker__heading { display: none; }.chat-account-picker--pills button { flex: 0 0 auto; min-block-size: 40px; padding: 7px 9px; }.thread-picker { position: absolute; z-index: 4; inset: 57px 0 0; margin: 0; border-inline-end: 0; background: #1c2224; box-shadow: 0 18px 40px rgb(0 0 0 / .28); }.chat-panel { grid-row: 2; }.chat-panel__header { align-items: stretch; flex-direction: column; }.transcript-scroll { max-height: none; }.chat-compose__settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.chat-compose__options[open] .chat-compose__settings { inline-size: min(420px, calc(100vw - 32px)); max-block-size: min(332px, calc(100dvh - 176px)); }
+  .flow-layout { display: block; min-block-size: 0; }.flowchart-surface { min-block-size: 0; }.flowchart-page { block-size: calc(100dvh - var(--mobile-nav-block-size) - env(safe-area-inset-bottom)); padding: 10px; }
+  .chats-page { min-height: 0; block-size: calc(100dvh - var(--mobile-nav-block-size) - env(safe-area-inset-bottom)); }.chats-workspace { position: relative; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }.chat-account-picker--pills { flex-direction: row; align-items: center; overflow-x: auto; flex-wrap: nowrap; gap: 4px; padding: 8px; border-block-end: 1px solid #313a3d; border-inline-end: 0; }.chat-account-picker--pills .chat-account-picker__heading { display: none; }.chat-account-picker--pills button { flex: 0 0 auto; min-block-size: 40px; padding: 7px 9px; }.thread-picker { position: absolute; z-index: 4; inset: 57px 0 0; margin: 0; border-inline-end: 0; background: #1c2224; box-shadow: 0 18px 40px rgb(0 0 0 / .28); }.chat-panel { grid-row: 2; }.chat-panel__header { align-items: stretch; flex-direction: column; }.transcript-scroll { max-height: none; }.chat-compose__settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.chat-compose__options[open] .chat-compose__settings { inline-size: min(420px, calc(100vw - 32px)); max-block-size: min(332px, calc(100dvh - 176px)); }
   .chat-limit-notice { align-items: stretch; flex-direction: column; }
   .subagent-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); border-radius: 14px; }.subagent-dialog__header { min-block-size: 58px; }.subagent-pills { padding-inline: 10px; }
 }

@@ -81,4 +81,26 @@ describe("AccountRateLimitRefresher", () => {
     expect(prepare).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledOnce();
   });
+
+  it("does not probe a connected process that remains unauthenticated after preparation", async () => {
+    const connection = {};
+    const prepare = vi.fn(async () => undefined);
+    const read = vi.fn(async () => [{ id: "codex:primary", label: "Codex five-hour", usedPercent: 0, resetsAt: 2_000, updatedAt: 1_000 }]);
+    const snapshot = { id: "bot6", connection: "action_required", authentication: "unauthenticated", activeTurns: 0, lastAssignedAt: null, rateLimits: [] } as AccountSnapshot;
+    const failure = vi.fn(() => snapshot);
+    const refresher = new AccountRateLimitRefresher({
+      prepare,
+      read,
+      current: () => snapshot,
+      merge: (_current, incoming) => incoming,
+      success: (_accountId, windows) => ({ ...snapshot, rateLimits: windows }),
+      failure,
+      token: () => connection,
+    });
+
+    await expect(refresher.refresh("bot6")).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(failure).not.toHaveBeenCalled();
+  });
 });
