@@ -40,11 +40,11 @@ test.describe("Home dashboard", () => {
       await expect(review.getByLabel("Worker prompt")).toBeEditable();
       await page.keyboard.press("Escape");
 
-      await page.getByRole("button", { name: "Flowchart" }).click();
+      await page.getByRole("link", { name: "Flowchart" }).click();
       await expect(page.getByRole("heading", { name: "Flowchart" })).toBeVisible();
-      await page.getByRole("button", { name: "Chats" }).click();
+      await page.getByRole("link", { name: "Chats" }).click();
       await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
-      await page.getByRole("button", { name: "Home" }).click();
+      await page.getByRole("link", { name: "Home" }).click();
       await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
     });
   }
@@ -56,8 +56,8 @@ test.describe("Home dashboard", () => {
     await expect(page.locator(".account-summary-row")).toHaveCount(9);
     await expect(page.locator(".account-summary-row").first()).toContainText("claudiothe");
     await expect(page.getByLabel("bot2: five-hour remaining 80%; weekly remaining 20%")).toBeVisible();
-    await expect(page.locator(".account-summary-row").filter({ hasText: "bot2" }).locator(".account-summary__weekly")).toHaveAttribute("style", "width: 20%;");
-    await expect(page.locator(".account-summary-row").filter({ hasText: "bot2" }).locator(".account-summary__five-hour")).toHaveAttribute("style", "width: 80%;");
+    await expect(page.locator(".account-summary-row").filter({ hasText: "bot2" }).locator(".account-summary__weekly")).toHaveAttribute("style", /width: 20%;/);
+    await expect(page.locator(".account-summary-row").filter({ hasText: "bot2" }).locator(".account-summary__five-hour")).toHaveAttribute("style", /width: 80%;/);
 
     await page.getByRole("button", { name: "View more accounts" }).click();
     await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();

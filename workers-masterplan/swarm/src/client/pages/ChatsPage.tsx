@@ -305,12 +305,12 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, [initialTarget?.accountId, initialTarget?.threadId]);
 
   useEffect(() => {
-    if (initialTarget || !initialAccountId) return;
+    if (initialTarget || !initialAccountId || openMarkdownPath) return;
     setPendingTarget(null);
     setAccountId(initialAccountId);
     setThreadId(null);
     setIsDraftChat(false);
-  }, [initialAccountId, initialTarget?.accountId, initialTarget?.threadId]);
+  }, [initialAccountId, initialTarget?.accountId, initialTarget?.threadId, openMarkdownPath]);
 
   useEffect(() => {
     if (isDraftChat) return;

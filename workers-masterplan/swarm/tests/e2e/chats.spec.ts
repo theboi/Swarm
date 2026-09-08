@@ -9,7 +9,7 @@ async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("link", { name: "Chats", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
 }
 

@@ -70,6 +70,7 @@ export function createFixtureState(options: { manifest?: FixtureManifest } = {})
   const manifest = options.manifest ?? "blocked";
   const snapshot: CoordinatorSnapshot = {
     generatedAt: timestamp,
+    autoPilot: { enabled: false },
     accounts: fixtureAccounts(),
     tasks: manifest === "ready" ? readyTasks() : [],
     dispatches: manifest === "ready" ? [{ id: "dispatch-1", clientUserMessageId: "fixture-message-1", taskId: "T0", accountId: "bot3", threadId: "thread-1", state: "accepted", createdAt: timestamp, updatedAt: timestamp + 10, retryAt: null }] : [],

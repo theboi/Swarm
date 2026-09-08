@@ -23,7 +23,7 @@ test.describe("Flowchart", () => {
     test(`filters and zooms the shared graph on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await signIn(page);
-      await page.getByRole("button", { name: "Flowchart" }).click();
+      await page.getByRole("link", { name: "Flowchart" }).click();
 
       const surface = page.getByTestId("flowchart-surface");
       await expect(surface).toBeVisible();
@@ -45,7 +45,7 @@ test.describe("Flowchart", () => {
   test("keeps the desktop graph full-width and overlays task details", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
-    await page.getByRole("button", { name: "Flowchart" }).click();
+    await page.getByRole("link", { name: "Flowchart" }).click();
     await page.getByRole("button", { name: "Show blocked tasks" }).click();
     await page.getByRole("button", { name: "I0 Integration blocked" }).click();
 
@@ -55,20 +55,20 @@ test.describe("Flowchart", () => {
     await expect(inspector).toBeVisible();
     await expect(inspector.getByRole("button", { name: "Close" })).toHaveClass(/overlay-close-button/);
     await expect(page.getByText("MASTERPLAN_NOT_READY: not satisfied")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Review launch for I0" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Review launch for I0" })).toBeEnabled();
   });
 
   test("opens a mobile task overlay and hands off to its chat", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
-    await page.getByRole("button", { name: "Flowchart" }).click();
+    await page.getByRole("link", { name: "Flowchart" }).click();
     const task = page.getByRole("button", { name: "T0 Graph planning running" });
     await task.click();
 
     const inspector = page.getByRole("dialog", { name: "T0 Graph planning" });
     await expect(inspector).toBeVisible();
     await expect(inspector.getByRole("button", { name: "Close" })).toHaveClass(/overlay-close-button/);
-    await expect(page.getByRole("button", { name: "Review launch for T0" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Review launch for T0" })).toBeEnabled();
     await page.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();

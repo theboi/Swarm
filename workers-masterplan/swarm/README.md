@@ -136,6 +136,34 @@ dependency message rather than substituting a test-only web application.
 There is no global active-turn limit. Every macOS account can own and run
 multiple chats subject only to that account's own Codex usage limits.
 
+### Dashboard routes
+
+- `/home` is the launch and readiness dashboard.
+- `/accounts` shows connection, authentication, Git, and usage state.
+- `/flowchart` shows the active task graph and its auto-pilot switch.
+- `/chats` is the multi-account chat workspace.
+- `/chats?open=docs/path/file.md` opens a repository Markdown file in the
+  Chats reader; the file path is URL encoded in links.
+
+Browser Back, Forward, and refresh preserve the selected screen. The Markdown
+reader is closed when a route no longer contains `open`.
+
+### Auto-pilot and account moves
+
+Auto-pilot dispatches only to connected, authenticated bot accounts with zero
+unarchived chats. It refreshes task receipts and account thread lists before
+each run, rechecks every candidate immediately before launch, and resumes a
+rate-limited turn on its original account. Only completion receipts on
+`origin/main` prove task completion. A receipt-proven auto-pilot chat is
+archived after completion; an approval problem, a completion problem, or an
+uncertain receipt leaves the chat unarchived for review.
+
+**Move to another account** creates a new target chat with the exact source
+rollout JSONL attached. It does not require the source account to be connected,
+authenticated, under its usage limit, or able to push Git changes. The original
+chat remains on its source account; its cached metadata and local rollout file
+are sufficient for the continuation.
+
 Each account runs one loopback-only Codex app-server. `claudiothe` starts the
 CLI directly with its existing local Codex profile; each bot starts through
 `su`, receives its password through Swarm's pseudo-terminal, and keeps its
@@ -146,9 +174,9 @@ The first Accounts card is the full `claudiothe` Codex account. The local
 workspace Git status remains a separate information card. Every minute Swarm
 deterministically pulls `origin/main` in the local checkout and every configured
 bot checkout. A merge conflict raises one warning and steers the affected bot
-once to resolve it. Before a usage-limit stop or account transfer, Swarm stages
-and commits all work, fetches and rebases onto `origin/main`, aborts a failed
-rebase for manual resolution, then pushes the checkpoint.
+once to resolve it. Before a usage-limit stop, Swarm attempts a Git checkpoint;
+a failed checkpoint is surfaced for manual resolution but does not block a
+JSONL-based account move.
 
 If an account needs Codex authentication, sign in manually from the coordinator
 account using the displayed account-specific command. For example, when the
@@ -165,6 +193,25 @@ desktop fallback to the coordinator.
 **Open Terminal** is available to a signed-in dashboard opened through
 localhost or one of this Mac's local/Tailscale addresses. Its separate control
 port accepts only those explicit origins.
+
+### PTY diagnostic runbook
+
+Use this after reconnects or a failed account launch to confirm that PTYs are
+not accumulating:
+
+```sh
+SWARM_PID=$(lsof -nP -iTCP:4310 -sTCP:LISTEN -t | head -1)
+lsof -nP -p "$SWARM_PID" | awk '$9 == "/dev/ptmx" { count++ } END { print count + 0 }'
+```
+
+The count should stay near the number of connected accounts and must not grow
+across failed reconnects. Rebuild and restart only the Swarm LaunchAgent before
+rechecking if the deployed bundle predates the current source:
+
+```sh
+npm run build
+launchctl kickstart -k "gui/$UID/com.edenmind.swarm"
+```
 
 On an open dashboard, Swarm refreshes authenticated account usage once a
 minute. The Accounts sidebar also offers **Refresh usage** for an immediate
