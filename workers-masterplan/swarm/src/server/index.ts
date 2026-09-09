@@ -23,6 +23,7 @@ import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
 import { openMacOsTerminal } from "./codex/terminalConsole.js";
 import { workspaceRoot } from "./codex/protocol.js";
 import { normalizeThreadActivity, normalizeThreadCapabilities } from "./codex/threadCapabilities.js";
+import { recoverThreadActivity } from "./codex/threadActivityRecovery.js";
 import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
@@ -366,7 +367,11 @@ async function createRuntime(config: SwarmConfig) {
     const current = threadCache.get(thread.accountId) ?? [];
     cacheThreads(thread.accountId, [thread, ...current.filter((candidate) => candidate.id !== thread.id)]);
   };
-  const threads = async (id: AccountId): Promise<ThreadSummary[]> => cacheThreads(id, (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id))));
+  const threads = async (id: AccountId): Promise<ThreadSummary[]> => {
+    const listed = (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id)));
+    const recovered = await Promise.all(listed.map((thread) => recoverThreadActivity(thread, rolloutReaders.get(id)!)));
+    return cacheThreads(id, recovered);
+  };
   const refreshAllRateLimits = async () => {
     await Promise.allSettled(accountSnapshot().filter((account) =>
       (account.connection === "connected" && account.authentication === "authenticated")

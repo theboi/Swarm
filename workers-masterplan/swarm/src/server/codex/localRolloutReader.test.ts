@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile, appendFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, appendFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -59,6 +59,40 @@ describe("LocalRolloutTranscriptReader", () => {
     const result = await new LocalRolloutTranscriptReader(root).readThread(threadId);
 
     expect(result.thread.turns[0]).toMatchObject({ status: "failed", error: { codex_error_info: "usage_limit_exceeded" } });
+  });
+
+  it("recovers recent unmatched rollout activity after the owning app-server is replaced", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
+    roots.push(root);
+    const sessions = join(root, "sessions", "2026", "09", "09");
+    await mkdir(sessions, { recursive: true });
+    const threadId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcb";
+    const path = join(sessions, `rollout-2026-09-09T00-00-00-${threadId}.jsonl`);
+    await writeFile(path, `${JSON.stringify({ timestamp: "2026-09-09T08:04:53.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "turn-live" } })}\n`);
+    const now = Date.parse("2026-09-09T08:05:00.000Z");
+    await utimes(path, now / 1_000, now / 1_000);
+
+    await expect(new LocalRolloutTranscriptReader(root).readRecentActivity(threadId, now)).resolves.toBe("active");
+  });
+
+  it("does not recover aborted or stale rollout activity", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
+    roots.push(root);
+    const sessions = join(root, "sessions", "2026", "09", "09");
+    await mkdir(sessions, { recursive: true });
+    const abortedId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcb";
+    const abortedPath = join(sessions, `rollout-2026-09-09T00-00-00-${abortedId}.jsonl`);
+    await writeFile(abortedPath, `${JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: "turn-aborted" } })}\n${JSON.stringify({ type: "event_msg", payload: { type: "turn_aborted", turn_id: "turn-aborted", reason: "interrupted" } })}\n`);
+    const staleId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcc";
+    const stalePath = join(sessions, `rollout-2026-09-09T00-00-00-${staleId}.jsonl`);
+    await writeFile(stalePath, `${JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: "turn-stale" } })}\n`);
+    const now = Date.parse("2026-09-09T08:10:00.000Z");
+    await utimes(abortedPath, now / 1_000, now / 1_000);
+    await utimes(stalePath, (now - 10 * 60_000) / 1_000, (now - 10 * 60_000) / 1_000);
+    const reader = new LocalRolloutTranscriptReader(root);
+
+    await expect(reader.readRecentActivity(abortedId, now)).resolves.toBe("idle");
+    await expect(reader.readRecentActivity(staleId, now)).resolves.toBe("idle");
   });
 
   it("rejects an invalid thread identifier before inspecting the filesystem", async () => {

@@ -67,12 +67,27 @@ test.describe("Chats", () => {
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await expect(send).toBeEnabled();
 
-    const [sendBox, navBox] = await Promise.all([send.boundingBox(), nav.boundingBox()]);
+    await page.locator(".transcript-item__links").first().evaluate((links) => {
+      const anchor = document.createElement("a");
+      anchor.href = "/chats?open=long";
+      anchor.textContent = `docs/${"mobileoverflowsegment".repeat(24)}runbook.md`;
+      links.append(anchor);
+    });
+
+    const viewportOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(viewportOverflow).toBe(0);
+
+    const longLink = page.locator(".transcript-item__links a", { hasText: "mobileoverflowsegment" });
+    await expect(longLink).toBeVisible();
+    const [sendBox, navBox, longLinkBox] = await Promise.all([send.boundingBox(), nav.boundingBox(), longLink.boundingBox()]);
     expect(sendBox).not.toBeNull();
     expect(navBox).not.toBeNull();
+    expect(longLinkBox).not.toBeNull();
     expect(sendBox!.width).toBeGreaterThanOrEqual(44);
     expect(sendBox!.height).toBeGreaterThanOrEqual(44);
+    expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(320);
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
+    expect(longLinkBox!.x + longLinkBox!.width).toBeLessThanOrEqual(320);
 
     await send.click();
     await expect(page.locator(".app-toast[role='status']")).toHaveText("Message sent.");

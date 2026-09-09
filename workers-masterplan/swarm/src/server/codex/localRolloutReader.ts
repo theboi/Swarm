@@ -8,6 +8,8 @@ import type { RawThreadTurn } from "./transcriptReducer.js";
 type CachedTurn = Omit<RawThreadTurn, "items"> & { items: Map<string, Record<string, unknown>> };
 type CachedRollout = { path: string; offset: number; pending: string; turns: Map<string, CachedTurn> };
 
+const RECENT_ACTIVITY_WINDOW_MS = 5 * 60_000;
+
 const threadIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const itemTypes: Record<string, string> = {
   UserMessage: "userMessage", AgentMessage: "agentMessage", Reasoning: "reasoning", CommandExecution: "commandExecution",
@@ -83,6 +85,17 @@ export class LocalRolloutTranscriptReader {
     return readFile(await this.rolloutPath(threadId), "utf8");
   }
 
+  async readRecentActivity(threadId: string, now = Date.now()): Promise<"active" | "idle" | undefined> {
+    const result = await this.readThread(threadId);
+    const latest = result.thread.turns.at(-1);
+    if (!latest) return undefined;
+    if (latest.status !== "inProgress") return "idle";
+    const cached = this.cache.get(threadId);
+    if (!cached) return undefined;
+    const modifiedAt = (await stat(cached.path)).mtimeMs;
+    return now - modifiedAt <= RECENT_ACTIVITY_WINDOW_MS ? "active" : "idle";
+  }
+
   private async rolloutPath(threadId: string): Promise<string> {
     if (!threadIdPattern.test(threadId)) throw new Error("Invalid local thread identifier");
     const path = await findRollout(join(this.codexHome, "sessions"), threadId);
@@ -114,14 +127,14 @@ export class LocalRolloutTranscriptReader {
       : typeof envelope.timestamp === "string" && Number.isFinite(Date.parse(envelope.timestamp))
         ? Date.parse(envelope.timestamp)
         : null;
-    if (payload.type === "task_started" || payload.type === "task_complete") {
+    if (payload.type === "task_started" || payload.type === "task_complete" || payload.type === "turn_aborted") {
       let turn = cached.turns.get(payload.turn_id);
       if (!turn) {
         turn = { id: payload.turn_id, startedAt: timestampMs === null ? null : timestampMs / 1_000, itemsView: "full", items: new Map() };
         cached.turns.set(payload.turn_id, turn);
       }
       const completionError = payload.type === "task_complete" ? record(payload.error) : undefined;
-      turn.status = payload.type === "task_started" ? "inProgress" : completionError ? "failed" : "completed";
+      turn.status = payload.type === "task_started" ? "inProgress" : payload.type === "turn_aborted" || completionError ? "failed" : "completed";
       turn.error = completionError;
       return;
     }
