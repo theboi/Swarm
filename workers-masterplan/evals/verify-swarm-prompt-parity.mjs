@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -21,7 +21,16 @@ const uiDesignPromptTemplatePath = resolve(
   workspaceRoot,
   "blueprint-masterplan/references/ui-design-worker-prompt-template.md",
 );
+const blueprintTemplatePath = resolve(
+  workspaceRoot,
+  "blueprint-masterplan/references/blueprint-masterplan-template.md",
+);
 const coordinatorTemplateDirectory = resolve(workspaceRoot, "swarm/templates");
+const approvedDraftsPath = resolve(coordinatorTemplateDirectory, "approved-drafts.md");
+const phase1bMasterplanPath = resolve(
+  repositoryRoot,
+  "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Phase1b_Implementation_Masterplan.md",
+);
 const coordinatorRendererPath = resolve(
   workspaceRoot,
   "swarm/src/server/tasks/promptTemplates.ts",
@@ -48,11 +57,16 @@ const failedUpstreamRecoveryFacts = [
   "Do not ask the user whether the original worker should retry",
   "continue",
 ];
-const uiChecklist = `**Mandatory pre-edit source-read checklist** — do not abbreviate:
-- [ ] Completely read \`claude-design/codex/AGENTS.md\`.
-- [ ] Completely read \`claude-design/codex/system-prompt.md\`.
-- [ ] Completely read every relevant procedure under \`claude-design/codex/skills/\`.
-- [ ] Completely read \`.agents/skills/better-ui/SKILL.md\`.`;
+const recommendedDecisionRecovery = "Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.";
+const legacyDocumentLock = "Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.";
+const hardLockOverride = "This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction";
+const onDemandAuthorityLookup = "Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document.";
+const preProductionCodeMethod = [
+  "This repository is pre-production and has no live users.",
+  "Do not add adapters for legacy code",
+  "Remove obsolete compatibility and fallback paths",
+  "keep the result lightweight and DRY",
+];
 const uiRequirementsContractRules = [
   "fields, grouping, ordering, filters,",
   "search, pagination or cursor behavior",
@@ -128,6 +142,23 @@ function normalize(text) {
   return `${text.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").trimEnd()}\n`;
 }
 
+function fencedTemplate(source, heading) {
+  const headingIndex = source.indexOf(heading);
+  const fenceIndex = source.indexOf("```markdown\n", headingIndex);
+  const endIndex = source.indexOf("\n```", fenceIndex + 12);
+  if (headingIndex < 0 || fenceIndex < 0 || endIndex < 0) {
+    throw new Error(`Cannot locate fenced template for ${heading}`);
+  }
+  return source.slice(fenceIndex + 12, endIndex);
+}
+
+function headingSection(source, heading) {
+  const headingIndex = source.indexOf(heading);
+  const nextHeadingIndex = source.indexOf("\n## ", headingIndex + heading.length);
+  if (headingIndex < 0) throw new Error(`Cannot locate section ${heading}`);
+  return source.slice(headingIndex, nextHeadingIndex < 0 ? source.length : nextHeadingIndex);
+}
+
 function renderBlueprintMasterplanPacket(source, sourceName) {
   return source.replace(/{{([A-Z_]+)}}/g, (match, field) => {
     const value = blueprintLaunchValues[field];
@@ -159,12 +190,18 @@ const [
   uiRequirementsTemplate,
   runtimeIsolation,
   uiDesignPromptTemplate,
+  blueprintTemplate,
+  approvedDrafts,
+  phase1bMasterplan,
 ] = await Promise.all([
   readFile(skillPath, "utf8"),
   readFile(referencePath, "utf8"),
   readFile(uiRequirementsTemplatePath, "utf8"),
   readFile(runtimeIsolationPath, "utf8"),
   readFile(uiDesignPromptTemplatePath, "utf8"),
+  readFile(blueprintTemplatePath, "utf8"),
+  readFile(approvedDraftsPath, "utf8"),
+  readFile(phase1bMasterplanPath, "utf8"),
 ]);
 
 if (!skill.includes("EdenMind swarm coordinator launch packets")) {
@@ -221,6 +258,74 @@ for (const placeholder of ["<UI_REQUIREMENTS_PATH>", "<DESIGN_HANDOFF_PATH>"]) {
   const references = reference.split(placeholder).length - 1;
   if (references < 3) {
     throw new Error(`Ordinary worker templates do not name ${placeholder} for live-wiring planning and execution`);
+  }
+}
+
+for (const [sourceName, source] of [
+  ["Ordinary planning prompt template", fencedTemplate(reference, "## Planning-only worker prompt")],
+  ["Ordinary execution prompt template", fencedTemplate(reference, "## Execution worker prompt")],
+  ["UI-design worker prompt template", fencedTemplate(uiDesignPromptTemplate, "## UI-design worker prompt")],
+]) {
+  const normalizedSource = source.replace(/\s+/g, " ");
+  if (!source.includes(recommendedDecisionRecovery)) {
+    throw new Error(`${sourceName} omits the exact recommended-decision recovery instruction`);
+  }
+  if (!source.includes(legacyDocumentLock)) {
+    throw new Error(`${sourceName} omits the exact MVP2-and-earlier document lock`);
+  }
+  if (!source.includes(hardLockOverride)) {
+    throw new Error(`${sourceName} lets another instruction override the historical-document lock`);
+  }
+  for (const rule of [onDemandAuthorityLookup, ...preProductionCodeMethod]) {
+    if (!normalizedSource.includes(rule.replace(/\s+/g, " "))) {
+      throw new Error(`${sourceName} omits worker methodology rule: ${rule}`);
+    }
+  }
+}
+
+for (const [sourceName, source] of [
+  ["Approved planning draft", headingSection(approvedDrafts, "## PLANNING")],
+  ["Approved execution draft", headingSection(approvedDrafts, "## EXECUTION")],
+  ["Approved UI draft", headingSection(approvedDrafts, "## UI")],
+]) {
+  for (const fact of [recommendedDecisionRecovery, legacyDocumentLock, hardLockOverride, "authority map:", "rather than reading"] ) {
+    if (!source.includes(fact)) throw new Error(`${sourceName} omits worker methodology: ${fact}`);
+  }
+  if (!source.includes("<") || !source.includes("_PATH>")) {
+    throw new Error(`${sourceName} does not provide path slots for its authority map`);
+  }
+}
+
+for (const [sourceName, source] of [
+  ["Blueprint worker-package template", blueprintTemplate],
+  ["Active Phase 1b blueprint", phase1bMasterplan],
+]) {
+  for (const fact of [recommendedDecisionRecovery, legacyDocumentLock, "authority map"] ) {
+    if (!source.includes(fact)) throw new Error(`${sourceName} omits worker methodology: ${fact}`);
+  }
+  if (!source.replace(/\s+/g, " ").includes(hardLockOverride)) {
+    throw new Error(`${sourceName} lets another instruction override the historical-document lock`);
+  }
+  if (/Mandatory pre-edit source-read checklist|Completely read `claude-design/.test(source)) {
+    throw new Error(`${sourceName} still front-loads complete UI document reads`);
+  }
+}
+
+for (const mappedPath of [
+  "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Phase1b_Implementation_Masterplan.md",
+  "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Business_Masterplan.md",
+  "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Features.md",
+  "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Phase1a_Implementation_Masterplan.md",
+  "docs/workers/2026-09-09-tuition-phase1b",
+  "claude-design/codex/AGENTS.md",
+  "claude-design/codex/system-prompt.md",
+  "claude-design/codex/skills",
+  ".agents/skills/better-ui/SKILL.md",
+]) {
+  try {
+    await access(resolve(repositoryRoot, mappedPath));
+  } catch {
+    throw new Error(`Active Phase 1b authority map points to a missing path: ${mappedPath}`);
   }
 }
 
@@ -284,18 +389,31 @@ for (const templateId of templateIds) {
       throw new Error(`${templateId} does not retain failed-upstream recovery: ${fact}`);
     }
   }
+  if (!renderedPacket.includes(recommendedDecisionRecovery)) {
+    throw new Error(`${templateId} does not retain the exact recommended-decision recovery instruction`);
+  }
+  if (!renderedPacket.includes(legacyDocumentLock)) {
+    throw new Error(`${templateId} does not retain the exact MVP2-and-earlier document lock`);
+  }
+  if (!renderedPacket.includes(hardLockOverride)) {
+    throw new Error(`${templateId} lets another instruction override the historical-document lock`);
+  }
+  for (const fact of [onDemandAuthorityLookup, ...preProductionCodeMethod]) {
+    if (!whitespaceNormalizedPacket.includes(fact.replace(/\s+/g, " "))) {
+      throw new Error(`${templateId} does not retain worker methodology: ${fact}`);
+    }
+  }
   if (!whitespaceNormalizedPacket.includes(phaseStopRules[templateId])) {
     throw new Error(`${templateId} does not retain its phase-specific stopping rule`);
   }
   if (!whitespaceNormalizedPacket.includes("In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock") || !whitespaceNormalizedPacket.includes("In `independent_main_clone` mode, do not impose a global edit lock")) {
     throw new Error(`${templateId} does not distinguish serialized same-Mac clones from independent clones`);
   }
-  const checklistCount = renderedPacket.split(uiChecklist).length - 1;
-  if (templateId === "ui" && checklistCount !== 1) {
-    throw new Error("ui must render exactly one mandatory pre-edit source-read checklist");
+  if (renderedPacket.includes("Completely read")) {
+    throw new Error(`${templateId} front-loads complete document reading`);
   }
-  if (templateId !== "ui" && checklistCount !== 0) {
-    throw new Error(`${templateId} must not render the UI-design source-read checklist`);
+  if (templateId === "ui" && !renderedPacket.includes("Design-method reference map:")) {
+    throw new Error("ui must render its design-method reference map");
   }
   if (templateId === "ui") {
     for (const expected of [

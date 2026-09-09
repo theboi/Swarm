@@ -48,7 +48,7 @@ position. When true, require one phase heading and each of the four canonical
 rows before every graph, worker table, readiness decision, assignment, or launch
 instruction, with no more than one outcome sentence before the block. Otherwise
 require zero phase headings and rows. Count **Shared-main lifecycle** and
-UI-design checklist blocks independently; do not return until these checks pass.
+UI-design reference-map blocks independently; do not return until these checks pass.
 
 Use `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
 
@@ -58,7 +58,7 @@ Use `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-maste
 - **REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before freezing or materially revising an unsettled blueprint.
 - **REQUIRED SUB-SKILL:** Use `grilling` when scope, decomposition, ownership, gates, or acceptance remains materially unsettled.
 - **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion` before declaring the blueprint valid.
-- **REQUIRED WORKER SUB-SKILLS:** Ordinary execution-worker briefs or prompts require applicable Superpowers planning, TDD, review, and verification skills. A UI-design worker instead follows the separate live-design lifecycle and mandatory design-source reads below; it has no implementation plan.
+- **REQUIRED WORKER SUB-SKILLS:** Ordinary execution-worker briefs or prompts require applicable Superpowers planning, TDD, review, and verification skills. A UI-design worker instead follows the separate live-design lifecycle and consults the mapped design sources when the current decision needs them; it has no implementation plan.
 - **COEXISTENCE OVERRIDE:** Workers operate directly on `main`. A shared checkout permits concurrent read-only planning, but every filesystem edit and Git/index operation uses its exclusive main-mutation lock. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; their required push lock or queue serializes reconciliation, affected focused verification, push, and remote-ancestry proof. Generic sub-skills must not create feature lanes, impose a global edit lock across independent normal clones, or require worker-to-worker Codex chat. Workers preserve and report unrelated changes, stage only owned paths, and use repository state plus coordinator-owned artifacts as the coordination surface.
 - **VERIFICATION OVERRIDE:** During implementation, run focused tests only at meaningful code checkpoints. Do not run the full suite after each substep; run it once after the worker finishes all owned tasks.
 
@@ -177,7 +177,7 @@ Each masterplan brief contains:
 - stable worker/task ID and bounded outcome;
 - planning prerequisites, hard execution prerequisites, and the immediate planning-start rule;
 - owned and excluded surfaces;
-- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, mandatory complete reads of `claude-design/codex/AGENTS.md`, `claude-design/codex/system-prompt.md`, every relevant procedure under `claude-design/codex/skills/`, and `.agents/skills/better-ui/SKILL.md`, and the canonical pre-edit source-read checklist below before editing instructions;
+- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, and the canonical design-method reference map below;
 - coordination relationships that are not hard dependencies;
 - work outcomes, not step-by-step implementation instructions;
 - exact acceptance evidence;
@@ -192,6 +192,30 @@ readiness from execution readiness, with evidence and blockers for each. Do not
 label a remote-uninspected row ready: it is `unverified`.
 
 The coordinator reserves artifact paths but does not pre-author the ordinary worker's detailed specification or implementation plan. Each worker exclusively owns its lower-case `docs/workers/<blueprint-id>/completion-manifest/<task-id>.json` pass receipt and must commit and push it before its final response. The coordinator alone owns `docs/workers/<blueprint-id>/PLANNING_GATE.md`; workers never edit that whole-blueprint receipt.
+
+Every worker prompt includes this instruction exactly:
+
+> Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+Every worker prompt also includes this document lock exactly:
+
+> Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance,
+or recovery instruction. Locked documents may be consulted as historical
+evidence, but workers never propose or make changes to them without a new,
+explicit user instruction naming the exception.
+
+Present the blueprint, relevant authorities, brief, handoffs, specifications,
+plans, and receipts as an authority map. Tell the worker to start the bounded
+task immediately and consult a document when it needs specific information from
+that source; never require a front-loaded complete read of every document.
+
+Every planning and execution prompt also fixes the coding method for this
+pre-production repository with no live users: update old code and every caller,
+test, fixture, and contract directly; do not create legacy adapters,
+compatibility shims, dual old/new paths, or unnecessary fallbacks; remove
+obsolete code; eliminate duplication; and keep the result lightweight.
 
 ### Planning readiness
 
@@ -287,32 +311,20 @@ requires separate explicit authorization.
 UI design exists when work introduces or changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy. Create a separate UI-design worker for each coherent affected surface. Pure implementation of an already accepted design is ordinary implementation and does not create another design worker.
 
 Whenever an output instantiates a UI-design worker—a brief, worker package,
-lifecycle, or launch prompt—it MUST include exactly one verbatim copy of the
-following canonical Markdown checklist per design worker, before any editing
-instructions. An ordinary worker output contains no copy of this checklist:
+lifecycle, or launch prompt—it includes this reference map:
 
-**Mandatory pre-edit source-read checklist** — do not abbreviate:
-- [ ] Completely read `claude-design/codex/AGENTS.md`.
-- [ ] Completely read `claude-design/codex/system-prompt.md`.
-- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
-- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
+**Design-method reference map:**
 
-The instantiating output is incomplete if it has fewer or more than one such
-block per UI-design worker, if an ordinary worker output contains the block, or
-if any checklist row or literal is absent. Emit this block only when the
-observable UI-design trigger applies; never emit it for ordinary implementation
-of an accepted design or unrelated UI discussion. Generic shorthand for the
-mandatory source reads is allowed only after the block.
+- Repository instructions: `claude-design/codex/AGENTS.md`
+- Design-system prompt: `claude-design/codex/system-prompt.md`
+- Relevant design procedures: `claude-design/codex/skills/`
+- UI polish guidance: `.agents/skills/better-ui/SKILL.md`
 
-Before returning an output that instantiates UI-design workers, mechanically
-check every worker: its output must contain exactly one verbatim canonical
-four-row checklist block, with four distinct rows and the four literal source
-requirements above. Mechanically confirm that ordinary worker outputs contain
-zero such blocks. Do not return the output until those per-worker cardinality
-checks pass.
+Tell the worker to consult the relevant source and linked supporting reference
+when the current design or implementation decision needs it. Do not require the
+worker to read every source end-to-end before its first useful task action.
 
-The UI-design worker MUST complete the canonical checklist before editing and
-read linked supporting references required by those sources. It has no
+The UI-design worker has no
 implementation plan. In Pass 1 it may produce only a fixture/mock-backed,
 presentation-and-contents design; it must write both an accepted presentation
 handoff and a separate UI requirements contract using
@@ -445,10 +457,8 @@ ordinary-worker block solely because the observable UI-design trigger applies.
 
 Only when the observable UI-design trigger is true, read [the UI-design worker
 prompt template](references/ui-design-worker-prompt-template.md) completely and
-generate that separate prompt. It is incomplete without the canonical pre-edit
-source-read checklist exactly once per UI-design worker before editing
-instructions; only after that block may it use generic source-read shorthand.
-It must also require the presentation-only real-app boundary, live-server
+generate that separate prompt. It must include the design-method reference map,
+the just-in-time source lookup method, the presentation-only real-app boundary, live-server
 feedback loop, approval evidence, no-plan handoff, and sequential ownership
 transfer.
 
@@ -627,7 +637,7 @@ Before freezing:
 - test planning-blocked, planning-ready, planning-complete/execution-blocked, execution-ready, review, and completion readiness;
 - verify the coordinator-owned `PLANNING_GATE.md` has every required ordinary-worker and UI-design row, a pinned `origin/main` commit, complete reconciliation evidence, and no unresolved material contradiction before ordinary execution;
 - verify an ordinary execution worker cannot begin because only its own planning handoff is approved;
-- verify a UI-design worker is created only for the observable trigger, follows the mandatory source reads and presentation-only live-app boundary, and transfers UI ownership sequentially after its accepted handoff;
+- verify a UI-design worker is created only for the observable trigger, receives the design-method reference map, uses just-in-time source lookup, follows the presentation-only live-app boundary, and transfers UI ownership sequentially after its accepted handoff;
 - verify every worker that needs local client/API/Supabase/Docker/Colima uses the validated UID-derived allocation, complete namespacing and port inventory, ignored generated config, cookie isolation, fail-before-mutation preflight, and real identity canary; verify it cannot stop or reset an existing runtime;
 - verify a material change reopens the receipt, pauses affected execution safely, and requires a new passed remote-evidenced receipt;
 - verify worker-to-worker Codex chat is prohibited and repository/coordinator artifacts carry coordination;
@@ -646,6 +656,10 @@ Before freezing:
   dashboards;
 - verify living-authority changes require downstream-impact assessment and all relevant downstream document updates;
 - verify every downstream worker launch contract requires direct takeover of a proven failed upstream prerequisite, bounded to the missing dependency, with no user question or retry handoff to the original worker;
+- verify every worker prompt contains the exact recommended-decision and blocking-worker recovery instruction;
+- verify every worker prompt contains the exact hard lock against modifying, or suggesting modifications to, old MVP2-and-earlier documents without explicit user authorization;
+- verify every worker prompt supplies an authority map with just-in-time lookup instead of front-loaded complete document reads;
+- verify every planning/execution prompt requires direct pre-production replacement without legacy adapters, unnecessary compatibility/fallback paths, or duplicated old/new implementations;
 - scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
 - obtain approval, then commit the frozen snapshot when authorized.
 

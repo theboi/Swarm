@@ -63,7 +63,7 @@ docs/workers/<blueprint-id>/prompts/<worker-id>-execution.md
 Before handing off a prompt:
 
 1. Replace every angle-bracket field with an exact value or remove the irrelevant line.
-2. Name the frozen blueprint, blueprint ID, and only the living authorities relevant to the task.
+2. Name the frozen blueprint, blueprint ID, and only the living authorities relevant to the task as an authority map; direct workers to consult each document when its information is needed instead of front-loading complete reads.
 3. Name the worker/task ID, bounded outcome, named worker-status contract, coordinator `STATUS.md`, `origin/main`, assigned normal checkout or clone, explicit checkout/clone mode, and the required shared-checkout main-mutation lock or cross-clone push queue.
 4. Require prerequisite commits/evidence on `origin/main`.
 5. Include owned and excluded mutable surfaces plus exact downstream unblocks.
@@ -80,6 +80,9 @@ Before handing off a prompt:
 16. For every operative Git/integration lifecycle or actual ordinary-worker launch prompt, render the canonical **Shared-main lifecycle** block below exactly once, with every angle-bracket field replaced by its exact value. Do not render it for factual explanations, status reports, or direct answers that assign no work.
 17. When `account_runtime_required` is true, read `account-local-runtime-isolation.md` completely and render its **Account-local runtime isolation** block exactly once before any runtime command. A free-port lease or another account's stack is not a valid substitution.
 18. Require every downstream worker to recover a concrete prerequisite that an upstream worker demonstrably failed to complete: temporarily assume the upstream role for that bounded scope, finish and integrate it under the upstream contract, reassess readiness, and continue without asking the user whether the original worker should retry.
+19. Include the exact recommended-decision and blocking-worker recovery instruction in every prompt.
+20. State the pre-production coding method: update old code and all callers directly, remove obsolete compatibility/fallback paths, add no legacy adapters, eliminate duplication, and keep the result lightweight.
+21. Include the exact hard lock prohibiting modification of, or suggestions to modify, old MVP2-and-earlier documents unless the user explicitly authorizes it.
 
 ### Shared-main lifecycle
 
@@ -93,12 +96,16 @@ Before handing off a prompt:
 ## Planning-only worker prompt
 
 ```markdown
-Read `<BLUEPRINT_PATH>` together with these relevant living masterplans:
+Repository authority map:
 
-- `<LIVING_MASTERPLAN_PATH>`
-- `<LIVING_MASTERPLAN_PATH>`
+- Frozen blueprint: `<BLUEPRINT_PATH>`
+- Relevant living masterplans:
 
-Read the brief and prerequisite handoffs for `<WORKER_ID>` / `<TASK_ID>`. Do not rely on private conversation history.
+  - `<LIVING_MASTERPLAN_PATH>`
+  - `<LIVING_MASTERPLAN_PATH>`
+- Worker brief and prerequisite handoffs: `<WORKER_BRIEF_AND_HANDOFF_PATHS>`
+
+Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document. Do not rely on private conversation history.
 
 You are `<WORKER_ID>`, responsible for planning `<BOUNDED_OUTCOME>` and authoring this worker's detailed task artifacts:
 
@@ -121,6 +128,14 @@ Work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>` using checkout/clone 
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
 
+Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction below.
+
+This repository is pre-production and has no live users. Plan code changes to update all old code and callers directly. Do not add adapters for legacy code or preserve compatibility merely for backward compatibility. Remove obsolete compatibility and fallback paths, avoid parallel old/new implementations, and keep the result lightweight and DRY.
+
 <ACCOUNT_RUNTIME_ISOLATION_BLOCK_OR_NOT_APPLICABLE>
 
 Continue until you have authored, obtained approval for, committed, and integrated this task's specification and implementation plan into `origin/main`. Do not begin product implementation in this phase.
@@ -131,7 +146,7 @@ During planning:
 2. Use `grilling` for material unanswered decisions and `superpowers:brainstorming` for approval.
 3. Ask the authorized decision owner only when evidence cannot settle a material boundary.
 4. Write `<SPEC_PATH>` with the task-local architecture, behavior, error handling, tests, and acceptance decisions.
-5. Immediately identify every affected product specification masterplan. In the
+5. Immediately identify every affected, non-locked product specification masterplan. In the
    same planning substep, consolidate all and only approved changes from
    `<SPEC_PATH>` into its unified high-level product contract: applicable user
    journeys, frontend surfaces and client data, APIs and authorization, records
@@ -143,7 +158,7 @@ During planning:
 6. Use `superpowers:writing-plans` to write `<PLAN_PATH>` with exact files, interfaces, tests, commands, ownership, dependencies, and review gates.
 7. Split plan tasks only when execution state and mutable surfaces are independent; sequence shared contracts, migrations, generated artifacts, and central composition.
 8. Add review and focused-verification checkpoints at meaningful planning boundaries.
-9. Update relevant non-product living masterplans with stable approved decisions before implementation relies on them. For every authority inspected or changed, record in `<STATUS_PATH>` its path, inspected `origin/main` commit, and `current` / `updated` / `blocked` result; a remote-uninspected finding is `unverified`. The coordinator reflects those records in `<COORDINATOR_STATUS_PATH>`; do not edit that coordinator-owned file. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient progress in `<STATUS_PATH>`.
+9. Update relevant non-locked, non-product living masterplans with stable approved decisions before implementation relies on them. For every authority inspected or changed, record in `<STATUS_PATH>` its path, inspected `origin/main` commit, and `current` / `updated` / `blocked` result; a remote-uninspected finding is `unverified`. The coordinator reflects those records in `<COORDINATOR_STATUS_PATH>`; do not edit that coordinator-owned file. For every living-authority change, identify direct and transitive downstream workers and gates. If dependencies, blockers, contracts, ownership, acceptance, tests, launch instructions, or implementation assumptions change, ensure the relevant non-locked downstream briefs, specs, plans, prompts, and statuses are updated and approved by their owners before those workers continue. Keep transient progress in `<STATUS_PATH>`.
 
 Prioritize authoring the specification and plan. Treat an independently testable substep as a coherent plan task or subtask with its own focused verification, not every edit. After each such substep, run that focused verification, update only owned documents and `<STATUS_PATH>`, review and stage the exact owned diff, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before beginning the next substep. In a shared checkout, `<MAIN_MUTATION_LOCK>` is required across that entire mutation lifecycle. Across independent normal clones, `<MAIN_PUSH_LOCK_OR_QUEUE>` is required for reconciliation, affected verification, push, and ancestry proof. If a push is rejected, preserve all work, use the required lock or queue, fetch and merge the new `origin/main`, rerun only affected checks, and retry. Never rebase or force-push published `main`.
 
@@ -161,18 +176,35 @@ implementation.
 ## Execution worker prompt
 
 ```markdown
-Read `<BLUEPRINT_PATH>` and these relevant living masterplans:
+Repository authority map:
 
-- `<LIVING_MASTERPLAN_PATH>`
-- `<LIVING_MASTERPLAN_PATH>`
+- Frozen blueprint: `<BLUEPRINT_PATH>`
+- Relevant living masterplans:
 
-Read the `<WORKER_ID>` / `<TASK_ID>` brief, prerequisite handoffs, worker-authored approved specification `<SPEC_PATH>`, worker-authored approved implementation plan `<PLAN_PATH>`, passed planning-gate receipt `<PLANNING_GATE_PATH>`, and pinned receipt commit `<PLANNING_GATE_COMMIT>`. When this is named live wiring, also read UI Requirements Contract `<UI_REQUIREMENTS_PATH>` and accepted presentation handoff `<DESIGN_HANDOFF_PATH>`; implement their required live functionality only after the gate and hard implemented prerequisites pass. Do not rely on private conversation history.
+  - `<LIVING_MASTERPLAN_PATH>`
+  - `<LIVING_MASTERPLAN_PATH>`
+- Worker brief and prerequisite handoffs: `<WORKER_BRIEF_AND_HANDOFF_PATHS>`
+- Worker-authored specification: `<SPEC_PATH>`
+- Worker-authored implementation plan: `<PLAN_PATH>`
+- Passed planning-gate receipt: `<PLANNING_GATE_PATH>` at `<PLANNING_GATE_COMMIT>`
+- UI requirements contract for named live wiring: `<UI_REQUIREMENTS_PATH>`
+- Accepted presentation handoff for named live wiring: `<DESIGN_HANDOFF_PATH>`
+
+Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document. When this is named live wiring, consult the UI Requirements Contract and accepted presentation handoff while implementing their required live functionality, only after the gate and hard implemented prerequisites pass. Do not rely on private conversation history.
 
 You are `<WORKER_ID>`, responsible for executing `<BOUNDED_OUTCOME>` to its defined acceptance evidence.
 
 Before editing, verify that `<PLANNING_GATE_PATH>` is passed, contains a complete row for `<WORKER_ID>`, and is pinned to reachable `origin/main` commit `<PLANNING_GATE_COMMIT>`. Stop if the receipt is open, reopened, stale, missing the worker row, or pinned to a different commit. Then work directly on `main` in `<MAIN_CHECKOUT_OR_CLONE_PATH>` using checkout/clone mode `<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are prohibited. Never communicate with another worker through Codex chat; use repository evidence and coordinator-owned artifacts. In a genuinely shared checkout, read-only planning may proceed in parallel, but acquire `<MAIN_MUTATION_LOCK>` before every filesystem edit or Git/index operation and hold it through reconciliation, focused verification, staging, commit, push, and remote-reachability proof. If that lock cannot exist, this prompt is valid only for a normal clone on a different machine or because the shared checkout is documented incompatible; use `<MAIN_PUSH_LOCK_OR_QUEUE>` for reconciliation, affected focused verification, push, and remote-ancestry proof without imposing a global edit lock across clones. Inspect live state, preserve and report unrelated changes, pull `origin/main` when safe, and prove `<PREREQUISITE_IDS>` and their evidence are integrated there. If inspected status, handoff, tests, artifacts, or `origin/main` proves an upstream worker ended its attempt without completing one of those prerequisites, temporarily assume that upstream role and ownership for the bounded missing work, complete it under the upstream specification and acceptance criteria, run its required tests and review, integrate it into `main`, push and prove it on `origin/main`, update the upstream and downstream evidence, reassess readiness, and continue this assignment. Do not ask the user whether the original worker should retry and do not hand the failure back through Codex chat. Record in `<STATUS_PATH>` each authority's path, inspected `origin/main` commit, and `current` / `updated` / `blocked` result (remote-uninspected is `unverified`) for the coordinator to reflect in `<COORDINATOR_STATUS_PATH>`, and inspect only the relevant baseline without running the full suite. A clean baseline means reconciled local `main` and no owned dirty state; unrelated dirt remains preserved and reported.
 
 Your owned surfaces are `<OWNED_SURFACES>`. You do not own `<EXCLUDED_SURFACES>`. Stage only owned paths. Resolve routine concurrent edits within ownership and report only a genuine semantic, ownership, contract, migration-order, or generated-artifact decision through the coordinator.
+
+Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction below.
+
+This repository is pre-production and has no live users. Update all old code, callers, tests, fixtures, and contracts directly. Do not add adapters for legacy code or preserve compatibility merely for backward compatibility. Remove obsolete compatibility and fallback paths, avoid parallel old/new implementations, eliminate duplication, and keep the result lightweight and DRY.
 
 <ACCOUNT_RUNTIME_ISOLATION_BLOCK_OR_NOT_APPLICABLE>
 
