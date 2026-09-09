@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LimitResumeManifest } from "./limitResumes.js";
+import { LimitResumeManifest, shouldRetireLimitResume } from "./limitResumes.js";
 import { DispatchOutbox } from "../dispatch/outbox.js";
 import { WorkerAssignmentManifest } from "./workerAssignments.js";
 
 describe("LimitResumeManifest", () => {
+  it.each([
+    "thread thread-1 already has an active writer",
+    "session thread-1 is archived. Run codex unarchive first.",
+    "direct app-server input is not allowed for multi-agent v2 sub-agents",
+    "cannot resume an unloaded multi-agent v2 sub-agent through its parent",
+  ])("retires a resume that cannot safely be retried: %s", (message) => {
+    expect(shouldRetireLimitResume(new Error(message))).toBe(true);
+  });
+
+  it("keeps retryable transport failures queued", () => {
+    expect(shouldRetireLimitResume(new Error("connection closed"))).toBe(false);
+  });
+
   it("keeps an autonomous limit resume on its original worker and dispatch identity", async () => {
     const outbox = new DispatchOutbox([{ id: "auto-1", clientUserMessageId: "launch-1", taskId: "T0", accountId: "bot1", threadId: "same-thread", origin: "auto_pilot", state: "accepted", createdAt: 0, updatedAt: 0, retryAt: null }]);
     const assignments = new WorkerAssignmentManifest([]);

@@ -76,6 +76,10 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "bot3" }));
     expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "bot3" }));
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Rename chat" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "bot1" })).toBeVisible();
   });
 
@@ -790,6 +794,7 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Sign in to bot3 before this chat can resume.");
     expect(screen.getByRole("status", { name: "Session limit reached" })).not.toHaveTextContent("under 1m");
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
   });
 
   it("shows automatic retry instead of an invented under-one-minute reset when reset data is unavailable", () => {
@@ -813,6 +818,7 @@ describe("ChatsPage", () => {
 
     expect(screen.getByRole("status", { name: "Session limit reached" })).toHaveTextContent("Waiting for usage availability before resuming. Retrying automatically.");
     expect(screen.getByRole("button", { name: "Move to another account" })).toBeVisible();
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
   });
 
   it("does not show a stale resume notice after the durable assignment moved away", () => {

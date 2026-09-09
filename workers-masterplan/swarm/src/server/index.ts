@@ -42,7 +42,7 @@ import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskPr
 import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
-import { LimitResumeManifest, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
+import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { moveWithJsonl } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
@@ -259,7 +259,7 @@ async function createRuntime(config: SwarmConfig) {
   });
   for (const id of accountIds) {
     const rateLimits = root.accountRateLimits?.[id];
-    if (rateLimits?.length) accounts.updateSnapshot(id, { rateLimits });
+    if (rateLimits?.length) accounts.updateSnapshot(id, { rateLimits: mergeRateLimits([], rateLimits) });
   }
   for (const id of breakingChangeAccounts) accounts.updateSnapshot(id, { hasBreakingChange: true });
   const gitSynchronizer = new GitSynchronizer({
@@ -488,7 +488,8 @@ async function createRuntime(config: SwarmConfig) {
         } catch (error) {
           if (!accepted) {
             await limitResumes.restoreWaitingFromResume(account, threadId, clientUserMessageId);
-            if (limitResumes.forThread(account, threadId)?.state === "waiting_for_limit") await scheduleLimitResume(account, threadId, Date.now() + 60_000);
+            if (shouldRetireLimitResume(error)) await limitResumes.clear(account, threadId);
+            else if (limitResumes.forThread(account, threadId)?.state === "waiting_for_limit") await scheduleLimitResume(account, threadId, Date.now() + 60_000);
           }
           logger.warn("resume", { event: accepted ? "limit_resume_reconcile_failed" : "limit_resume_failed", account, threadId, error: error instanceof Error ? error.message : "failed" });
         }

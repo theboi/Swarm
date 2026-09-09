@@ -1,7 +1,7 @@
 import type { AccountSnapshot, RateLimitWindow } from "../../shared/contracts.js";
 
 export function mergeRateLimits(_current: RateLimitWindow[], update: RateLimitWindow[]): RateLimitWindow[] {
-  return update.map((window) => ({ ...window }));
+  return update.filter((window) => window.id.toLowerCase().startsWith("codex:")).map((window) => ({ ...window }));
 }
 
 function remaining(window: RateLimitWindow, now?: number): number | undefined {

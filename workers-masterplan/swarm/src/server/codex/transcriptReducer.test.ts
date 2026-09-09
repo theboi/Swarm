@@ -80,6 +80,24 @@ describe("transcriptReducer", () => {
     expect(state.items.map((item) => item.id)).toEqual(["old", "new"]);
   });
 
+  it("uses per-item rollout timestamps instead of showing every streamed message at the turn start time", () => {
+    const state = hydrateTranscript(initialTranscriptState, {
+      ...scope,
+      turns: [{
+        id: "turn-live",
+        startedAt: 10,
+        itemsView: "full",
+        items: [
+          { type: "userMessage", id: "user", createdAtMs: 10_000, content: [{ type: "text", text: "Start" }] },
+          { type: "agentMessage", id: "agent", createdAtMs: 50_000, text: "Still working" },
+        ],
+      }],
+    });
+
+    expect(state.items.map((item) => item.createdAt)).toEqual([10_000, 50_000]);
+    expect(state.items.every((item) => !("createdAtMs" in item.payload))).toBe(true);
+  });
+
   it("streams reasoning-summary deltas into the live reasoning item without exposing raw reasoning text", () => {
     let state = reduceTranscriptEvent(initialTranscriptState, {
       method: "item/started",

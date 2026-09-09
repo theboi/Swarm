@@ -15,6 +15,13 @@ export interface DurableLimitResumeRecord extends LimitResumeRecord {
 }
 
 function key(accountId: AccountId, threadId: string): string { return `${accountId}\u0000${threadId}`; }
+
+/** Errors proving this thread cannot or no longer needs to be auto-resumed. */
+export function shouldRetireLimitResume(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already has an active writer|session .* is archived|(?:direct app-server input is not allowed|cannot resume an unloaded).*multi-agent/i.test(message);
+}
+
 function clone(record: DurableLimitResumeRecord): DurableLimitResumeRecord {
   return {
     ...record,

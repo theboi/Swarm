@@ -20,11 +20,13 @@ export interface TranscriptScope {
 export interface RawThreadTurn {
   id: string;
   startedAt: number | null;
+  status?: "inProgress" | "completed" | "failed";
+  error?: Record<string, unknown>;
   /** Stable id supplied with the first user message that started this turn. */
   clientUserMessageId?: string;
   /** Installed app-server's explicit proof that this turn contains all items. */
   itemsView: "full";
-  items: Array<Record<string, unknown>>;
+  items: Array<Record<string, unknown> & { createdAtMs?: number }>;
 }
 
 const KNOWN_ITEM_TYPES = new Set([
@@ -46,7 +48,7 @@ function toMillis(value: unknown): number | null {
 function normalizeItem(scope: TranscriptScope, turnId: string | null, raw: Record<string, unknown>, createdAt: number | null): TranscriptItem {
   const id = typeof raw.id === "string" && raw.id ? raw.id : `opaque:${turnId ?? "thread"}:${createdAt ?? "unknown"}`;
   const originalType = typeof raw.type === "string" ? raw.type : "unknown";
-  const { id: _id, type: _type, status, ...payload } = raw;
+  const { id: _id, type: _type, status, createdAtMs: _createdAtMs, ...payload } = raw;
   if (!KNOWN_ITEM_TYPES.has(originalType)) {
     return {
       id,
@@ -143,7 +145,7 @@ export function replaceTranscriptFromThreadRead(state: TranscriptState, history:
   for (const turn of turns) {
     const createdAt = turn.startedAt === null ? null : turn.startedAt * 1_000;
     for (const rawItem of turn.items) {
-      const item = normalizeItem(history, turn.id, rawItem, createdAt);
+      const item = normalizeItem(history, turn.id, rawItem, toMillis(rawItem.createdAtMs) ?? createdAt);
       const key = itemKey(item);
       const index = indexes.get(key);
       if (index === undefined) {

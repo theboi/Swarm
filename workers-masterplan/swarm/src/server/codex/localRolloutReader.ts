@@ -76,7 +76,7 @@ export class LocalRolloutTranscriptReader {
     const size = (await stat(cached.path)).size;
     if (size < cached.offset) { cached.offset = 0; cached.pending = ""; cached.turns.clear(); }
     if (size > cached.offset) await this.readAppended(cached);
-    return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
+    return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.status ? { status: turn.status } : {}), ...(turn.error ? { error: turn.error } : {}), ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
   }
 
   async readJsonl(threadId: string): Promise<string> {
@@ -108,16 +108,33 @@ export class LocalRolloutTranscriptReader {
     try { envelope = record(JSON.parse(line)); } catch { return; }
     if (envelope?.type !== "event_msg") return;
     const payload = record(envelope.payload);
-    if (payload?.type !== "item_completed" || typeof payload.turn_id !== "string") return;
+    if (!payload || typeof payload.turn_id !== "string") return;
+    const timestampMs = typeof payload.started_at_ms === "number"
+      ? payload.started_at_ms
+      : typeof envelope.timestamp === "string" && Number.isFinite(Date.parse(envelope.timestamp))
+        ? Date.parse(envelope.timestamp)
+        : null;
+    if (payload.type === "task_started" || payload.type === "task_complete") {
+      let turn = cached.turns.get(payload.turn_id);
+      if (!turn) {
+        turn = { id: payload.turn_id, startedAt: timestampMs === null ? null : timestampMs / 1_000, itemsView: "full", items: new Map() };
+        cached.turns.set(payload.turn_id, turn);
+      }
+      const completionError = payload.type === "task_complete" ? record(payload.error) : undefined;
+      turn.status = payload.type === "task_started" ? "inProgress" : completionError ? "failed" : "completed";
+      turn.error = completionError;
+      return;
+    }
+    if (payload.type !== "item_completed") return;
     const rawItem = record(payload.item);
     const item = normalizeRolloutItem(rawItem);
     if (!item || typeof item.id !== "string") return;
     let turn = cached.turns.get(payload.turn_id);
     if (!turn) {
-      turn = { id: payload.turn_id, startedAt: typeof payload.started_at_ms === "number" ? payload.started_at_ms / 1_000 : null, itemsView: "full", items: new Map() };
+      turn = { id: payload.turn_id, startedAt: timestampMs === null ? null : timestampMs / 1_000, status: "inProgress", itemsView: "full", items: new Map() };
       cached.turns.set(payload.turn_id, turn);
     }
     if (!turn.clientUserMessageId && rawItem?.type === "UserMessage" && typeof rawItem.client_id === "string" && rawItem.client_id) turn.clientUserMessageId = rawItem.client_id;
-    turn.items.set(item.id, item);
+    turn.items.set(item.id, { ...item, ...(timestampMs === null ? {} : { createdAtMs: timestampMs }) });
   }
 }

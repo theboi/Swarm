@@ -16,18 +16,22 @@ describe("LocalRolloutTranscriptReader", () => {
     await mkdir(sessions, { recursive: true });
     const threadId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcb";
     const path = join(sessions, `rollout-2026-08-29T00-00-00-${threadId}.jsonl`);
-    await writeFile(path, `${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", thread_id: threadId, turn_id: "turn-1", started_at_ms: 1_700_000_000_000, item: { id: "user-1", type: "UserMessage", client_id: "resume-message-1", content: [{ type: "text", text: "Hello" }] } } })}\n`);
+    await writeFile(path, `${JSON.stringify({ timestamp: "2023-11-14T22:13:19.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "turn-1" } })}\n${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", thread_id: threadId, turn_id: "turn-1", started_at_ms: 1_700_000_000_000, item: { id: "user-1", type: "UserMessage", client_id: "resume-message-1", content: [{ type: "text", text: "Hello" }] } } })}\n`);
     const reader = new LocalRolloutTranscriptReader(root);
 
     const first = await reader.readThread(threadId);
     expect(first.thread.turns).toEqual([expect.objectContaining({ id: "turn-1", clientUserMessageId: "resume-message-1", items: [expect.objectContaining({ id: "user-1", type: "userMessage" })] })]);
+    expect(first.thread.turns[0]).toMatchObject({ status: "inProgress" });
+    expect(first.thread.turns[0]?.items[0]).toMatchObject({ createdAtMs: 1_700_000_000_000 });
 
-    await appendFile(path, `${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", thread_id: threadId, turn_id: "turn-1", started_at_ms: 1_700_000_001_000, item: { id: "agent-1", type: "AgentMessage", content: [{ type: "Text", text: "Hi back" }] } } })}\n`);
+    await appendFile(path, `${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", thread_id: threadId, turn_id: "turn-1", started_at_ms: 1_700_000_001_000, item: { id: "agent-1", type: "AgentMessage", content: [{ type: "Text", text: "Hi back" }] } } })}\n${JSON.stringify({ timestamp: "2023-11-14T22:13:22.000Z", type: "event_msg", payload: { type: "task_complete", turn_id: "turn-1" } })}\n`);
     const second = await reader.readThread(threadId);
     expect(second.thread.turns[0]?.items).toEqual([
       expect.objectContaining({ id: "user-1", type: "userMessage" }),
       expect.objectContaining({ id: "agent-1", type: "agentMessage", text: "Hi back" }),
     ]);
+    expect(second.thread.turns[0]).toMatchObject({ status: "completed" });
+    expect(second.thread.turns[0]?.items[1]).toMatchObject({ createdAtMs: 1_700_000_001_000 });
   });
 
   it("returns the exact source JSONL for account-independent chat handoff", async () => {
@@ -41,6 +45,20 @@ describe("LocalRolloutTranscriptReader", () => {
     await writeFile(path, source);
 
     await expect(new LocalRolloutTranscriptReader(root).readJsonl(threadId)).resolves.toBe(source);
+  });
+
+  it("preserves usage-limit failures from a completed desktop-owned rollout", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
+    roots.push(root);
+    const sessions = join(root, "sessions", "2026", "08", "29");
+    await mkdir(sessions, { recursive: true });
+    const threadId = "01a03efb-f1b9-76c2-b04f-73c5e167bdcb";
+    const path = join(sessions, `rollout-2026-08-29T00-00-00-${threadId}.jsonl`);
+    await writeFile(path, `${JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: "turn-limited" } })}\n${JSON.stringify({ type: "event_msg", payload: { type: "task_complete", turn_id: "turn-limited", error: { message: "You've hit your usage limit", codex_error_info: "usage_limit_exceeded" } } })}\n`);
+
+    const result = await new LocalRolloutTranscriptReader(root).readThread(threadId);
+
+    expect(result.thread.turns[0]).toMatchObject({ status: "failed", error: { codex_error_info: "usage_limit_exceeded" } });
   });
 
   it("rejects an invalid thread identifier before inspecting the filesystem", async () => {

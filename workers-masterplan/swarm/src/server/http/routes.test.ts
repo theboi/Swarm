@@ -166,6 +166,11 @@ describe("coordinator HTTP routes", () => {
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/turns").set("origin", origin).send({ text: "Continue." }).expect(409, {
       error: { code: "TURN_ACTIVE", message: "This chat is already working. Use Steer to guide it." },
     });
+
+    (services.startTurn as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Codex app-server RPC thread/resume failed: thread thread-1 already has an active writer"));
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/turns").set("origin", origin).send({ text: "Follow up." }).expect(409, {
+      error: { code: "TURN_ACTIVE", message: "This chat is already working. Use Steer to guide it." },
+    });
   });
 
   it("validates and forwards a cross-account chat continuation", async () => {

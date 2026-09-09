@@ -426,6 +426,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const chooseThread = (nextThreadId: string) => {
     if (nextThreadId === threadId && selectedThread) {
+      if (compact) {
+        setPickerOpen(false);
+        return;
+      }
       setRenameDraft(selectedThread.name?.trim() || "Unnamed chat");
       setRenameOpen(true);
       return;
@@ -534,7 +538,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const sendMessage = async () => {
     const text = draft.trim();
-    if (!accountId || !text || isWorking || (!isDraftChat && !selectedThread)) return;
+    if (!accountId || !text || isWorking || resumeNeedsSignIn || (!isDraftChat && !selectedThread)) return;
     const turnSettings = normalizeExecutionSettings(models, executionSettings);
     try {
       if (isDraftChat) {
@@ -604,7 +608,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const canSteer = Boolean(selectedThread && accountId && activeTurnId && (isThinking || selectedThread.capabilities.canSteer));
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
-  const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking);
+  const resumeNeedsSignIn = selectedAccount?.authentication === "unauthenticated" || selectedAccount?.connection === "action_required";
+  const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking && !resumeNeedsSignIn);
   const scrollToBottom = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
@@ -615,7 +620,6 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
   const limitExhausted = Boolean(threadId && accountId && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, accountId, threadId));
   const resumeCountdown = limitCountdown(exhaustedLimit?.resetsAt ?? null, clock);
-  const resumeNeedsSignIn = selectedAccount?.authentication === "unauthenticated" || selectedAccount?.connection === "action_required";
   const resumeStatus = resumeNeedsSignIn && accountId
     ? `Sign in to ${accountId} before this chat can resume.`
     : resumeCountdown
@@ -718,10 +722,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
             const threadCount = accountThreads.length;
             const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`));
-            const accountLimitHit = snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") || [...limitExhaustedTurnKeys].some((key) => {
-              const prefix = `${account.id}\u0000`;
-              return key.startsWith(prefix) && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, account.id, key.slice(prefix.length));
-            });
+            const accountLimitHit = account.connection === "connected" && account.authentication === "authenticated"
+              && (snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") ?? false);
             const accountHasUnread = [...unreadTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
             const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
             const activityClass = accountLimitHit ? "chat-account-picker__activity chat-account-picker__activity--limit" : accountThinking ? "chat-account-picker__activity" : "";
@@ -756,6 +758,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
           <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>{resumeStatus}</p></section> : null}
+          {resumeNeedsSignIn && !limitExhausted && accountId ? <section className="chat-limit-notice" aria-label="Account sign-in required" role="status"><p>{`Sign in to ${accountId} to send messages.`}</p></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
             {pendingSteer && pendingSteer.accountId === accountId && pendingSteer.threadId === selectedThread?.id ? <section className="pending-steer" role="status" aria-label="Pending steer"><p>{pendingSteer.text}</p><div><button type="button" aria-label="Edit pending steer" title="Edit" onClick={() => { setDraft(pendingSteer.text); setPendingSteer(null); composerRef.current?.focus(); }}><Pencil aria-hidden="true" size={14} /></button><button type="button" aria-label="Cancel pending steer" title="Cancel" onClick={() => setPendingSteer(null)}><X aria-hidden="true" size={14} /></button></div></section> : null}
             <div className="chat-compose__field"><textarea ref={composerRef} id="message" aria-label="Message" rows={2} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>

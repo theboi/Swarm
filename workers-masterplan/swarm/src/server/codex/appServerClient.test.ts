@@ -297,6 +297,18 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("recovers a desktop-owned usage-limit failure from its local transcript", async () => {
+    const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: [{ id: "turn-limited", startedAt: 10, status: "failed", error: { codex_error_info: "usage_limit_exceeded" }, itemsView: "full", items: [] }] } }));
+    const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/EdenMind", threadStatus: "notLoaded", threadReadError: "thread thread-1 already has an active writer", readLockedThread });
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.readThread("thread-1", { includeTurns: true });
+
+    expect(events).toContainEqual({ type: "turn", accountId: "claudiothe", threadId: "thread-1", turnId: "turn-limited", state: "limit_exhausted", historical: true });
+    await client.close();
+  });
+
   it("falls back to the account rollout when app-server cannot read a persisted bot chat", async () => {
     const readLockedThread = vi.fn(async () => ({ thread: { id: "thread-1", turns: fullThreadHistory() } }));
     const client = await readyClient({ account: "bot2", threadStatus: "notLoaded", threadReadError: "no rollout found for thread id thread-1", readLockedThread });

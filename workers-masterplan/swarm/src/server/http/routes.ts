@@ -57,7 +57,7 @@ function executionSettings(value: unknown): ChatExecutionSettings | undefined | 
 function param(value: string | string[] | undefined): string { return typeof value === "string" ? value : ""; }
 function codeFor(error: unknown): { status: number; code: string; message: string } {
   const message = error instanceof Error ? error.message : "Codex request did not complete";
-  if (/turn.*(?:already|is).*(?:active|in progress|running)|(?:active|in progress|running).*turn/i.test(message)) {
+  if (/turn.*(?:already|is).*(?:active|in progress|running)|(?:active|in progress|running).*turn|active writer/i.test(message)) {
     return { status: 409, code: "TURN_ACTIVE", message: "This chat is already working. Use Steer to guide it." };
   }
   if (/model|reasoning effort|service tier/i.test(message) && /(?:unsupported|unavailable|invalid|rejected|failed)/i.test(message)) {

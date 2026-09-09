@@ -57,7 +57,10 @@ test.describe("Chats", () => {
     const bot3 = page.getByRole("button", { name: "bot3" });
     if (await bot3.getAttribute("aria-pressed") !== "true") await bot3.click();
     await bot3.click();
-    await expect(page.getByRole("button", { name: "T0 · Graph planning" })).toHaveAttribute("aria-pressed", "true");
+    const thread = page.getByRole("button", { name: "T0 · Graph planning" });
+    await expect(thread).toHaveAttribute("aria-pressed", "true");
+    await thread.click();
+    await expect(thread).toHaveCount(0);
 
     const send = page.getByRole("button", { name: "Send" });
     const nav = page.locator(".app-nav");
@@ -97,7 +100,8 @@ test.describe("Chats", () => {
     await expect(viewer).toHaveCount(0);
     await expect.poll(async () => Math.abs(await transcript.evaluate((element) => element.scrollTop) - scrollBeforeViewer)).toBeLessThanOrEqual(1);
 
-    for (const name of ["Send", "Archive chat", "Steer", "Interrupt"]) await expect(page.getByRole("button", { name })).toBeEnabled();
+    for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
     const targetSizes = await page.locator(".chat-compose button:visible").evaluateAll((buttons) => buttons.map((button) => {
       const box = button.getBoundingClientRect();
       return { width: box.width, height: box.height };
@@ -111,8 +115,7 @@ test.describe("Chats", () => {
     await page.getByRole("button", { name: "Send" }).click();
     await expect(toast).toHaveText("Message sent.");
     await page.getByLabel("Message", { exact: true }).fill("Clarify the fixture handoff");
-    await page.getByRole("button", { name: "Steer" }).click();
-    await expect(toast).toHaveText("Turn steered.");
+    await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
     await page.getByRole("button", { name: "Interrupt" }).click();
     await expect(toast).toHaveText("Turn interrupted.");
 

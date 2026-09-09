@@ -11,7 +11,7 @@ describe("account scheduler", () => {
     expect(rankAccounts([account("bot3", [limit("five-hour", 3, 1), limit("weekly", 80, 1)]), account("bot5", [limit("five-hour", 20, 1), limit("weekly", 30, 1)])])[0]?.id).toBe("bot5");
   });
   it("replaces the previous authoritative snapshot so stale reserve buckets cannot survive refresh", () => {
-    expect(mergeRateLimits([limit("base_model_inference:primary", 0, 100), limit("codex:primary", 10, 100), limit("codex:secondary", 20, 200)], [limit("codex:primary", 30, 300), limit("codex:secondary", 40, 400)])).toEqual([limit("codex:primary", 30, 300), limit("codex:secondary", 40, 400)]);
+    expect(mergeRateLimits([limit("base_model_inference:primary", 0, 100), limit("codex:primary", 10, 100), limit("codex:secondary", 20, 200)], [limit("luna_reserve:primary", 0, 500), limit("codex:primary", 30, 300), limit("codex:secondary", 40, 400)])).toEqual([limit("codex:primary", 30, 300), limit("codex:secondary", 40, 400)]);
   });
   it("makes malformed buckets ineligible", () => {
     expect(rankAccounts([account("bot3", [limit("five", null, null)])])).toEqual([]);
