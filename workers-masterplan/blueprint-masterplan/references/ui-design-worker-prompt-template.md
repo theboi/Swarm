@@ -12,7 +12,7 @@ ordinary implementation prompt.
 3. Set the established repository development-server command, presentation handoff path, and separate UI requirements path.
 4. Name the upstream approved specification and implementation-plan paths, and the live-wiring worker that receives ownership after the accepted handoff.
 5. Keep the worker's scope presentation-only; return a discovered functional decision to planning.
-6. Preserve the canonical four-row source-read checklist below unabridged.
+6. Preserve the design-method reference map and just-in-time lookup instruction below unabridged.
 7. Set `<CHECKOUT_OR_CLONE_MODE>`, `<MAIN_MUTATION_LOCK>`, and
    `<MAIN_PUSH_LOCK_OR_QUEUE>` to exact repository values; retain the dedicated
    UI-design shared-main lifecycle below.
@@ -26,31 +26,38 @@ ordinary implementation prompt.
 ## UI-design worker prompt
 
 ```markdown
-Read `<BLUEPRINT_PATH>` together with these relevant living masterplans:
+Repository authority map:
 
-- `<LIVING_MASTERPLAN_PATH>`
-- `<LIVING_MASTERPLAN_PATH>`
+- Frozen blueprint: `<BLUEPRINT_PATH>`
+- Relevant living masterplans:
 
-Read the UI brief for `<DESIGN_WORKER_ID>`, the existing application surface,
-its existing design system, and these approved planned upstream contracts:
+  - `<LIVING_MASTERPLAN_PATH>`
+  - `<LIVING_MASTERPLAN_PATH>`
+- UI brief: `<UI_BRIEF_PATH>`
+- Existing application surface: `<EXISTING_APPLICATION_SURFACE>`
+- Existing design system: `<EXISTING_DESIGN_SYSTEM_PATH>`
+- Approved planned upstream contracts:
 
-- `<UPSTREAM_SPEC_PATH>`
-- `<UPSTREAM_PLAN_PATH>`
+  - `<UPSTREAM_SPEC_PATH>`
+  - `<UPSTREAM_PLAN_PATH>`
 
-Do not rely on private conversation history.
+Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document. Do not rely on private conversation history.
 
 You are `<DESIGN_WORKER_ID>`, responsible only for the live, presentation-only
 design of `<BOUNDED_UI_SURFACE>`.
 
-**Mandatory pre-edit source-read checklist** — do not abbreviate:
-- [ ] Completely read `claude-design/codex/AGENTS.md`.
-- [ ] Completely read `claude-design/codex/system-prompt.md`.
-- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
-- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
+Design-method reference map:
 
-Read any linked supporting references these sources require. Inventory the
-existing components, tokens, typography, spacing, icons, motion, and nearby
-interaction patterns before changing the app.
+- Repository instructions: `claude-design/codex/AGENTS.md`
+- Design-system prompt: `claude-design/codex/system-prompt.md`
+- Relevant design procedures: `claude-design/codex/skills/`
+- UI polish guidance: `.agents/skills/better-ui/SKILL.md`
+
+Consult a design source or its linked supporting reference when the current
+decision needs it. Inventory the existing components, tokens, typography,
+spacing, icons, motion, and nearby interaction patterns as those surfaces enter
+the work; do not delay the first useful task action to read every source
+end-to-end.
 
 Work directly on `main` in `<MAIN_CHECKOUT_PATH>` using checkout/clone mode
 `<CHECKOUT_OR_CLONE_MODE>`. Feature branches and linked Git worktrees are
@@ -63,6 +70,14 @@ change live APIs, authorization, persistence, migrations, domain rules, scoring,
 background processing, or other business behavior. If the design needs any
 functional change, record the named decision in `<STATUS_PATH>` and
 `<UI_REQUIREMENTS_PATH>`, then return it to ordinary specification and planning.
+
+Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction below.
+
+This repository is pre-production and has no live users. Update all old code, callers, tests, fixtures, and contracts directly. Do not add adapters for legacy code or preserve compatibility merely for backward compatibility. Remove obsolete compatibility and fallback paths, avoid parallel old/new implementations, eliminate duplication, and keep the result lightweight and DRY.
 
 ## UI-design shared-main lifecycle
 

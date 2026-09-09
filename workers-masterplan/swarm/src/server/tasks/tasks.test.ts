@@ -245,7 +245,8 @@ describe("task authority", () => {
     ]);
 
     for (const prompt of [planning, execution, ui]) {
-      expect(prompt).toContain("Read these repository authorities from the account's EdenMind clone before acting:");
+      expect(prompt).toContain("Repository authority map:");
+      expect(prompt).toContain("consult a document when you need specific information from it");
       expect(prompt).toContain("`docs/workers/2026-08-14-mvp3/status/c3.md`");
       expect(prompt).toContain("Your task is `C3` — `Curriculum UI`.");
       expect(prompt).not.toMatch(/{{[A-Z_]+}}/);

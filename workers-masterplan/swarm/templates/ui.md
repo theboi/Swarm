@@ -1,4 +1,4 @@
-Read these repository authorities from the account's EdenMind clone before acting:
+Repository authority map:
 
 - Blueprint: `{{BLUEPRINT_PATH}}`
 - Masterplan: `{{MASTERPLAN_PATH}}`
@@ -11,13 +11,18 @@ Read these repository authorities from the account's EdenMind clone before actin
 - UI requirements contract destination: `{{UI_REQUIREMENTS_PATH}}`
 - Presentation handoff destination: `{{UI_HANDOFF_PATH}}`
 
+Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document.
+
 You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is a UI-only launch. This is a UI-only Pass 1 launch. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
 
-**Mandatory pre-edit source-read checklist** — do not abbreviate:
-- [ ] Completely read `claude-design/codex/AGENTS.md`.
-- [ ] Completely read `claude-design/codex/system-prompt.md`.
-- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
-- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
+Design-method reference map:
+
+- Repository instructions: `claude-design/codex/AGENTS.md`
+- Design-system prompt: `claude-design/codex/system-prompt.md`
+- Relevant design procedures: `claude-design/codex/skills/`
+- UI polish guidance: `.agents/skills/better-ui/SKILL.md`
+
+Consult the relevant source when the current design decision or implementation needs it; do not delay the first useful task action to read every source end-to-end.
 
 Use the real application and existing design system to design only presentation and contents with explicit fixture/mock-backed state. Show the reviewed presentation through the established development server; preserve deterministic fixture scenarios for loading, empty, validation, success, failure, attention, and recovery states. Do not add or change live wiring, live APIs, authorization, persistence, migrations, domain rules, scoring, model behavior, background processing, or provider integration.
 
@@ -49,6 +54,14 @@ separate command session. Record redacted holder inspection, restart, log, and
 scoped shutdown commands in the worker status and handoff.
 
 Confirm every listed UI prerequisite is reachable from `origin/main` before editing. If inspected status, handoff, tests, artifacts, or `origin/main` proves an upstream worker ended its attempt without completing a required prerequisite, temporarily assume that upstream role for the bounded missing work, complete and integrate it under the upstream package's phase and acceptance boundaries, reassess UI readiness, and continue. Do not ask the user whether the original worker should retry and do not hand the failure back through Codex chat. Treat other missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`.
+
+Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction below.
+
+This repository is pre-production and has no live users. Update all old code, callers, tests, fixtures, and contracts directly. Do not add adapters for legacy code or preserve compatibility merely for backward compatibility. Remove obsolete compatibility and fallback paths, avoid parallel old/new implementations, eliminate duplication, and keep the result lightweight and DRY.
 
 Write `{{UI_REQUIREMENTS_PATH}}` as a separate UI requirements contract with: authority and accepted presentation reference; surface inventory; actor/capability matrix; read and command requirements; async/lifecycle states; navigation/client state; files/exports; accessibility; deterministic fixture scenarios; planned-contract traceability; Pass 2 acceptance mapping; and open product decisions. Write `{{UI_HANDOFF_PATH}}` with the accepted app-state commit, user approval, reviewed states, affected presentation files, design foundations, limitations, and mutable ownership transfer to the named Layer 3 live-wiring consumer in the task brief. Do not embed the requirements contract only inside the handoff.
 

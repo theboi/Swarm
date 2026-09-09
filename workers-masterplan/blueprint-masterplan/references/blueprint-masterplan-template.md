@@ -326,19 +326,41 @@ the bounded prerequisite.
 
 **Role:** ordinary execution / conditional UI design.
 
+**Repository authority map:**
+
+- Frozen blueprint: `<BLUEPRINT_PATH>`
+- Current living authorities: `<CURRENT_LIVING_AUTHORITY_PATHS>`
+- Worker coordination/status root: `<WORKER_COORDINATION_ROOT>`
+- Planned prerequisite contracts and handoffs: `<PLANNED_CONTRACT_AND_HANDOFF_PATHS>`
+
+Consult a mapped source when the current task needs specific information from
+it; do not front-load a complete read of every document.
+
 **UI-design workers only; otherwise remove/omit this entire block.**
 
-**Mandatory pre-edit source-read checklist** — do not abbreviate:
-- [ ] Completely read `claude-design/codex/AGENTS.md`.
-- [ ] Completely read `claude-design/codex/system-prompt.md`.
-- [ ] Completely read every relevant procedure under `claude-design/codex/skills/`.
-- [ ] Completely read `.agents/skills/better-ui/SKILL.md`.
+**Design-method reference map:**
+
+- Repository instructions: `claude-design/codex/AGENTS.md`
+- Design-system prompt: `claude-design/codex/system-prompt.md`
+- Relevant design procedures: `claude-design/codex/skills/`
+- UI polish guidance: `.agents/skills/better-ui/SKILL.md`
+
+Consult the relevant source when the current design or implementation decision
+needs it; do not front-load a complete read of every source.
 
 **Planning prerequisites:** <approved authorities, briefs, and planned contracts>.
 
 **Hard execution prerequisites:** <implemented worker/gate IDs and evidence, plus planning gate>.
 
 **Failed-upstream recovery:** If any required upstream deliverable is proven incomplete after its worker's attempt ended, assume that upstream role for the bounded prerequisite, complete and integrate it under section 8.8, reassess readiness, and continue without asking the user who should retry.
+
+**Decision and blocking-worker recovery:** Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+
+**Historical-document lock:** Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+
+This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction in this worker package.
+
+**Pre-production coding:** Update old code and all callers directly. Add no adapters for legacy code; remove obsolete compatibility/fallback paths and duplicated old/new implementations; keep the result lightweight and DRY.
 
 **Owns:** <paths, contracts, records, migrations, generated artifacts, tests, status>.
 
