@@ -57,6 +57,33 @@ describe("ChatsPage", () => {
     expect(within(parentRow).getByRole("img", { name: "T0 · Graph planning working" })).toBeVisible();
   });
 
+  it("does not keep an idle parent thinking from a stale child-start transcript event", async () => {
+    setViewport(1440);
+    const staleTranscript: TranscriptItem[] = [{ id: "child-start", accountId: "bot3", threadId: "thread-1", turnId: "turn-old", type: "subAgentActivity", status: "completed", createdAt: 1, payload: { kind: "interacted", agentThreadId: "child-thread", agentPath: "review" } }];
+    const readTranscript = vi.fn(async () => ({ data: staleTranscript }));
+
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} activeTurnKeys={new Set()} />);
+
+    await screen.findByRole("button", { name: "Open subagent review" });
+    expect(screen.queryByLabelText("Codex is thinking")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("review working")).not.toBeInTheDocument();
+  });
+
+  it("shows the subagent spinner from live child thread activity after reload", async () => {
+    setViewport(1440);
+    const parentTranscript: TranscriptItem[] = [{ id: "child-start", accountId: "bot3", threadId: "thread-1", turnId: "turn-live", type: "subAgentActivity", status: "completed", createdAt: 1, payload: { kind: "started", agentThreadId: "child-thread", agentPath: "review" } }];
+    const childThread = { ...chatSnapshot.threads[0]!, id: "child-thread", name: "review", activity: "active" as const };
+    const liveChildSnapshot = { ...chatSnapshot, threads: [...chatSnapshot.threads, childThread] };
+    const readTranscript = vi.fn(async () => ({ data: parentTranscript }));
+
+    const listThreads = vi.fn(async (accountId: string) => ({ data: liveChildSnapshot.threads.filter((thread) => thread.accountId === accountId) }));
+    render(<ChatsPage snapshot={liveChildSnapshot} api={{ ...api, readTranscript, listThreads }} activeTurnKeys={new Set()} />);
+
+    await screen.findByRole("button", { name: "Open subagent review" });
+    expect(screen.getByLabelText("Codex is thinking")).toBeVisible();
+    expect(within(screen.getByRole("navigation", { name: "Subagents" })).getByLabelText("review working")).toBeVisible();
+  });
+
   it("presents chat navigation, conversation, and composer as a clear operator workflow", async () => {
     setViewport(1440);
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
