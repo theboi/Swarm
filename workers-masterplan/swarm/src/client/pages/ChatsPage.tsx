@@ -19,6 +19,7 @@ const noopMarkThreadRead = () => undefined;
 interface SubagentReference {
   threadId: string;
   label: string;
+  active: boolean;
 }
 
 function textField(value: unknown): string | null {
@@ -27,14 +28,22 @@ function textField(value: unknown): string | null {
 
 export function subagentReferences(items: TranscriptItem[], parentThreadId?: string | null): SubagentReference[] {
   const references = new Map<string, SubagentReference>();
-  const add = (threadId: unknown, label?: unknown) => {
+  const add = (threadId: unknown, label?: unknown, active?: boolean) => {
     const id = textField(threadId);
-    if (!id || id === parentThreadId || references.has(id)) return;
-    references.set(id, { threadId: id, label: textField(label) ?? `Subagent ${references.size + 1}` });
+    if (!id || id === parentThreadId) return;
+    const prior = references.get(id);
+    references.set(id, {
+      threadId: id,
+      label: textField(label) ?? prior?.label ?? `Subagent ${references.size + 1}`,
+      active: active ?? prior?.active ?? false,
+    });
   };
 
   for (const item of items) {
-    if (item.type === "subAgentActivity") add(item.payload.agentThreadId, item.payload.agentPath);
+    if (item.type === "subAgentActivity") {
+      const kind = textField(item.payload.kind)?.toLowerCase();
+      add(item.payload.agentThreadId, item.payload.agentPath, kind === "started" || kind === "interacted" ? true : kind === "completed" || kind === "failed" ? false : undefined);
+    }
     if (item.type !== "collabAgentToolCall") continue;
     const states = item.payload.agentsStates && typeof item.payload.agentsStates === "object" && !Array.isArray(item.payload.agentsStates)
       ? item.payload.agentsStates as Record<string, unknown>
@@ -44,10 +53,19 @@ export function subagentReferences(items: TranscriptItem[], parentThreadId?: str
       const state = typeof receiver === "string" && states[receiver] && typeof states[receiver] === "object" && !Array.isArray(states[receiver])
         ? states[receiver] as Record<string, unknown>
         : {};
-      add(receiver, state.agentPath ?? state.path ?? state.name);
+      const status = textField(state.status)?.toLowerCase();
+      add(receiver, state.agentPath ?? state.path ?? state.name, status === "running" || status === "inprogress" || status === "pending" ? true : status === "completed" || status === "failed" ? false : undefined);
     }
   }
   return [...references.values()];
+}
+
+export function hasActiveDescendant(threadId: string, accountId: AccountId, graph: ReadonlyMap<string, SubagentReference[]>, activeTurnKeys: ReadonlySet<string>, activeThreadIds: ReadonlySet<string> = new Set(), visited: ReadonlySet<string> = new Set()): boolean {
+  if (visited.has(threadId)) return false;
+  const nextVisited = new Set([...visited, threadId]);
+  return (graph.get(threadId) ?? []).some((child) => activeTurnKeys.has(`${accountId}\u0000${child.threadId}`)
+    || activeThreadIds.has(child.threadId)
+    || hasActiveDescendant(child.threadId, accountId, graph, activeTurnKeys, activeThreadIds, nextVisited));
 }
 
 function settingsKey(accountId: AccountId | null, threadId: string | null, isDraftChat: boolean): string | null {
@@ -127,7 +145,7 @@ function queuedTurnFromStart(value: unknown): boolean {
   return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).queued === true);
 }
 
-function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onOpenMarkdown, onClose, report, reportError }: {
+function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onTranscript, onOpenMarkdown, onClose, report, reportError }: {
   accountId: AccountId;
   reference: SubagentReference;
   api: ChatsApi;
@@ -137,6 +155,7 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   activeTurnIds: ReadonlyMap<string, string>;
   markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
   onSettingsChange: (settings: ChatExecutionSettings) => void;
+  onTranscript: (threadId: string, items: TranscriptItem[]) => void;
   onOpenMarkdown: (path: string) => void;
   onClose: () => void;
   report: (message: string) => void;
@@ -160,13 +179,14 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
       setLoading(false);
       if ("error" in result && result.error) return reportError(result.error.message);
       setItems(result.data);
+      onTranscript(reference.threadId, result.data);
     }).catch(() => {
       if (!live) return;
       setLoading(false);
       reportError("Unable to load this subagent.");
     });
     return () => { live = false; };
-  }, [accountId, api, reference.threadId, reportError, revision]);
+  }, [accountId, api, onTranscript, reference.threadId, reportError, revision]);
 
   useLayoutEffect(() => {
     if (loading || opened.current || !scrollRef.current) return;
@@ -267,6 +287,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [renameDraft, setRenameDraft] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [openSubagent, setOpenSubagent] = useState<SubagentReference | null>(null);
+  const [subagentGraph, setSubagentGraph] = useState<ReadonlyMap<string, SubagentReference[]>>(() => new Map());
   const [clock, setClock] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -295,6 +316,15 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const terminalCommand = selectedAccount?.terminalCommand;
   const approvals = snapshot.pendingApprovals.filter((approval) => approval.accountId === accountId && approval.threadId === threadId);
   const currentSettingsKey = settingsKey(accountId, threadId, isDraftChat);
+  const rememberSubagents = useCallback((parentThreadId: string, transcript: TranscriptItem[]) => {
+    const references = subagentReferences(transcript, parentThreadId);
+    setSubagentGraph((current) => {
+      if (JSON.stringify(current.get(parentThreadId)) === JSON.stringify(references)) return current;
+      const next = new Map(current);
+      next.set(parentThreadId, references);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!initialTarget) return;
@@ -343,6 +373,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             if (selectedTranscriptKeyRef.current !== openedKey) continue;
             if ("error" in result && result.error) { if (itemsRef.current.length === 0) setError(result.error.message); continue; }
             setItems(result.data);
+            rememberSubagents(threadId, result.data);
             markThreadRead(accountId, threadId);
             if (state.scrollOnSuccess) {
               state.scrollOnSuccess = false;
@@ -358,7 +389,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       }
     };
     void drain();
-  }, [api, accountId, threadId, isDraftChat, markThreadRead, transcriptRevision, liveTranscriptRevision]);
+  }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision]);
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat) return;
@@ -603,7 +634,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const activeTurnKey = accountId && threadId ? `${accountId}\u0000${threadId}` : "";
   const activeTurnId = activeTurnKey ? activeTurnIds.get(activeTurnKey) : undefined;
   const latestTurnId = activeTurnId ?? [...items].reverse().find((item) => item.turnId)?.turnId;
-  const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active"));
+  const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);
+  const activeThreadIds = new Set(threads.filter((thread) => thread.activity === "active").map((thread) => thread.id));
+  const subagentThinking = Boolean(accountId && threadId && (subagents.some((subagent) => subagent.active || activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`)) || hasActiveDescendant(threadId, accountId, subagentGraph, activeTurnKeys, activeThreadIds)));
+  const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active" || subagentThinking));
   const isWorking = isThinking;
   const canSteer = Boolean(selectedThread && accountId && activeTurnId && (isThinking || selectedThread.capabilities.canSteer));
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
@@ -627,7 +661,6 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       : "Waiting for usage availability before resuming. Retrying automatically.";
   const continuationAccounts = snapshot.accounts.filter((account) => account.id !== accountId && account.connection === "connected" && account.authentication === "authenticated");
   const liveReasoningId = isThinking && latestTurnId ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning" && Array.isArray(item.payload.summary) && item.payload.summary.some((part) => typeof part === "string" && part.trim()))?.id : undefined;
-  const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);
   const openSubagentSettings = openSubagent && accountId
     ? settingsByChat[chatExecutionSettingsKey(accountId, openSubagent.threadId)] ?? (models.length ? normalizeExecutionSettings(models, globalSettings) : defaultExecutionSettings(models))
     : null;
@@ -721,8 +754,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           {snapshot.accounts.map((account) => {
             const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
             const threadCount = accountThreads.length;
-            const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`));
-            const accountLimitHit = account.connection === "connected" && account.authentication === "authenticated"
+            const accountActiveThreadIds = new Set(accountThreads.filter((thread) => thread.activity === "active").map((thread) => thread.id));
+            const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`))
+              || [...activeTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`))
+              || accountThreads.some((thread) => hasActiveDescendant(thread.id, account.id, subagentGraph, activeTurnKeys, accountActiveThreadIds));
+            const accountLimitHit = !accountThinking && account.connection === "connected" && account.authentication === "authenticated"
               && (snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") ?? false);
             const accountHasUnread = [...unreadTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
             const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
@@ -736,7 +772,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           <div className="thread-picker__list">{loadingAccountId === accountId && threads.length === 0 ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : threads.length ? threads.map((thread) => {
             const name = thread.name ?? "Unnamed chat";
             const threadKey = `${thread.accountId}\u0000${thread.id}`;
-            const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active";
+            const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active" || (thread.id === threadId && subagentThinking) || hasActiveDescendant(thread.id, thread.accountId, subagentGraph, activeTurnKeys, activeThreadIds);
             const waitingForLimit = isWaitingForLimit(snapshot, limitExhaustedTurnKeys, thread.accountId, thread.id);
             const hasUnread = unreadTurnKeys.has(threadKey);
             const needsAttention = attentionTurnKeys.has(threadKey);
@@ -755,7 +791,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const missingPermissions = isPermissionGrant(decision) && (!permissions || Object.keys(permissions).length === 0);
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
           })}</div></section>)}</div> : null}
-          {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
+          {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{subagent.active || activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
           <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>{resumeStatus}</p></section> : null}
           {resumeNeedsSignIn && !limitExhausted && accountId ? <section className="chat-limit-notice" aria-label="Account sign-in required" role="status"><p>{`Sign in to ${accountId} to send messages.`}</p></section> : null}
@@ -768,7 +804,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         </section>
       </div>
       {document ? <MarkdownViewer document={document} onClose={closeMarkdown} /> : null}
-      {openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onOpenMarkdown={(path) => void openMarkdown(path)} onClose={() => setOpenSubagent(null)} report={report} reportError={reportError} /> : null}
+      {openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onTranscript={rememberSubagents} onOpenMarkdown={(path) => void openMarkdown(path)} onClose={() => setOpenSubagent(null)} report={report} reportError={reportError} /> : null}
       {moveOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !moving) setMoveOpen(false); }}><section className="launch-dialog chat-move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-chat-title" tabIndex={-1} ref={moveDialogRef} onKeyDown={(event) => { if (event.key === "Escape" && !moving) setMoveOpen(false); }}><OverlayCloseButton ref={moveCloseButton} disabled={moving} onClick={() => setMoveOpen(false)} /><h2 id="move-chat-title">Move to another account</h2><p>The original chat will remain on {accountId}. Swarm will attach its JSONL to a new chat on the selected account and ask it to continue from that session.</p>{continuationAccounts.length ? <fieldset className="chat-move-dialog__accounts"><legend>New chat account</legend>{continuationAccounts.map((account) => <label key={account.id}><input type="radio" name="continuation-account" value={account.id} checked={moveTarget === account.id} onChange={() => setMoveTarget(account.id)} />{account.id}</label>)}</fieldset> : <p>No other signed-in account is available.</p>}<div className="dialog-actions"><button className="primary-button" type="button" disabled={!moveTarget || moving} onClick={() => void moveToAccount()}>{moving ? "Moving…" : `Move to ${moveTarget ?? "account"}`}</button></div></section></div> : null}
       {renameOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !renaming) setRenameOpen(false); }}><section className="launch-dialog chat-rename-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-chat-title" onKeyDown={(event) => { if (event.key === "Escape" && !renaming) setRenameOpen(false); }}><OverlayCloseButton ref={renameCloseButton} disabled={renaming} onClick={() => setRenameOpen(false)} /><h2 id="rename-chat-title">Rename chat</h2><label htmlFor="rename-chat-name">Chat name</label><input id="rename-chat-name" autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /><div className="dialog-actions"><button className="primary-button" type="button" disabled={!renameDraft.trim() || renaming} onClick={() => void renameChat()}>{renaming ? "Renaming…" : "Rename"}</button></div></section></div> : null}
     </section>

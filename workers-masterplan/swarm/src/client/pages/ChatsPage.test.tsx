@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChatsPage, normalizeExecutionSettings } from "./ChatsPage";
+import { ChatsPage, hasActiveDescendant, normalizeExecutionSettings, subagentReferences } from "./ChatsPage";
 import { chatSnapshot, chatTranscript, setViewport } from "../test/fixtures";
 import type { TranscriptItem } from "../../shared/contracts";
 
@@ -23,6 +23,40 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("derives descendant activity from subagent lifecycle events", () => {
+    const base = { accountId: "bot3" as const, threadId: "parent", turnId: "turn-1", type: "subAgentActivity" as const, status: "completed" as const, createdAt: 1 };
+    const started = { ...base, id: "started", payload: { kind: "started", agentThreadId: "child", agentPath: "review" } };
+    const completed = { ...base, id: "completed", createdAt: 2, payload: { kind: "completed", agentThreadId: "child", agentPath: "review" } };
+
+    expect(subagentReferences([started], "parent")).toEqual([{ threadId: "child", label: "review", active: true }]);
+    expect(subagentReferences([started, completed], "parent")).toEqual([{ threadId: "child", label: "review", active: false }]);
+  });
+
+  it("propagates a running grandchild through the cached subagent graph", () => {
+    const graph = new Map([
+      ["parent", [{ threadId: "child", label: "child", active: false }]],
+      ["child", [{ threadId: "grandchild", label: "grandchild", active: false }]],
+    ]);
+
+    expect(hasActiveDescendant("parent", "bot3", graph, new Set(["bot3\u0000grandchild"]))).toBe(true);
+    expect(hasActiveDescendant("parent", "bot3", new Map([["parent", [{ threadId: "child", label: "child", active: true }]]]), new Set())).toBe(false);
+  });
+
+  it("keeps a parent chat row working after navigation while its child is active", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const parentTranscript: TranscriptItem[] = [{ id: "child-start", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "subAgentActivity", status: "completed", createdAt: 1, payload: { kind: "started", agentThreadId: "child-thread", agentPath: "review" } }];
+    const readTranscript = vi.fn(async (_accountId: string, requestedThreadId: string) => ({ data: requestedThreadId === "thread-1" ? parentTranscript : [] }));
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} activeTurnKeys={new Set(["bot3\u0000child-thread"])} />);
+
+    await screen.findByRole("button", { name: "Open subagent review" });
+    await user.click(screen.getByRole("button", { name: /U1 · Coordinator UI/ }));
+
+    const parentRow = screen.getByRole("button", { name: "T0 · Graph planning" });
+    expect(within(parentRow).getByText("Thinking")).toBeVisible();
+    expect(within(parentRow).getByRole("img", { name: "T0 · Graph planning working" })).toBeVisible();
+  });
+
   it("presents chat navigation, conversation, and composer as a clear operator workflow", async () => {
     setViewport(1440);
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
@@ -50,10 +84,15 @@ describe("ChatsPage", () => {
     const readTranscript = vi.fn(async (_accountId: string, requestedThreadId: string) => ({ data: requestedThreadId === "child-thread" ? childTranscript : parentTranscript }));
     const startTurn = vi.fn(async () => ({ data: { turn: { id: "child-next-turn" } } }));
     const markTurnActive = vi.fn();
-    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript, startTurn }} markTurnActive={markTurnActive} />);
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript, startTurn }} activeTurnKeys={new Set(["bot3\u0000child-thread"])} markTurnActive={markTurnActive} />);
 
     const pill = await screen.findByRole("button", { name: "Open subagent ui-review" });
     expect(screen.getAllByRole("button", { name: "Open subagent ui-review" })).toHaveLength(1);
+    expect(screen.getByLabelText("Codex is thinking")).toBeVisible();
+    expect(screen.getByLabelText("bot3 working")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript, startTurn }} activeTurnKeys={new Set()} markTurnActive={markTurnActive} />);
     await user.click(pill);
 
     const dialog = await screen.findByRole("dialog", { name: "Subagent ui-review" });
@@ -690,6 +729,20 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={waitingSnapshot} api={api} />);
 
     expect(screen.getByLabelText("bot3 waiting for limit")).toHaveClass("chat-account-picker__activity--limit");
+  });
+
+  it("shows active work instead of a stale yellow wait when another chat is thinking", () => {
+    setViewport(1440);
+    const waitingSnapshot = {
+      ...chatSnapshot,
+      pendingApprovals: [],
+      limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "waiting_for_limit" as const, updatedAt: 2 }],
+    };
+
+    render(<ChatsPage snapshot={waitingSnapshot} api={api} activeTurnKeys={new Set(["bot3\u0000child-thread"])} />);
+
+    expect(screen.queryByLabelText("bot3 waiting for limit")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("bot3 working")).toBeVisible();
   });
 
   it("clears the yellow wait state as soon as the durable chat state is resuming", () => {

@@ -38,7 +38,7 @@ import { AutoPilotController, AutoPilotRecoveryGuard, latestThreadTurnCompleted,
 import { nextRateLimitCheck } from "./scheduler/accountScheduler.js";
 import { CoordinatorState } from "./state/coordinatorState.js";
 import { createCoordinatorStateStore } from "./state/atomicStateStore.js";
-import { latestUnarchivedTaskThread, projectDispatchState } from "./tasks/taskProjection.js";
+import { projectDispatchState, reconcileTaskAssignments } from "./tasks/taskProjection.js";
 import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
@@ -176,7 +176,7 @@ async function createRuntime(config: SwarmConfig) {
       refresh: () => refreshTasks(true),
       provenComplete: () => !manifestError && completedByPass[pass].has(taskId),
       complete: async () => {
-        await assignments.complete(account, threadId);
+        await assignments.completeTask(taskId, pass);
         await outbox.completeAcceptedForThread(account, threadId);
         completedByPass[pass].add(taskId);
         if (shouldAutoArchive(accepted, true)) {
@@ -377,18 +377,8 @@ async function createRuntime(config: SwarmConfig) {
   };
   const health = async (): Promise<HealthSnapshot> => ({ server: { state: "ok" }, stateStore: { state: "ok" }, readiness: { state: manifestError ? "degraded" : "ok", ...(manifestError ? { message: manifestError } : {}) }, outbox: { state: "ok" }, scheduler: { state: "ok" }, accounts: { state: accountSnapshot().some((item) => item.connection === "error") ? "degraded" : "ok" } });
   const reconcileAssignments = async (threadSummaries: ThreadSummary[]) => {
-    for (const node of nodes) {
-      const existing = assignments.forTask(node.id);
-      if (existing) {
-        const taskComplete = completedTaskIds.has(node.id) || node.readiness.state === "complete";
-        if (taskComplete && existing.state !== "completed") await assignments.complete(existing.accountId, existing.threadId);
-        continue;
-      }
-      const thread = latestUnarchivedTaskThread(threadSummaries, node.id);
-      if (!thread) continue;
-      await assignments.assign(node.id, thread.accountId, thread.id, thread.updatedAt);
-      if (node.readiness.state === "complete") await assignments.complete(thread.accountId, thread.id, thread.updatedAt);
-    }
+    const pass = manifest?.lifecycle?.activePass ?? "planning";
+    await reconcileTaskAssignments(nodes, pass, threadSummaries, assignments, completedTaskIds);
   };
   const snapshot = async (): Promise<CoordinatorSnapshot> => {
     await refreshTasks(false);
@@ -750,7 +740,7 @@ async function createRuntime(config: SwarmConfig) {
     if (shuttingDown) return;
     try {
       await services.connectAccount(id);
-      await reconcileAssignments(await threads(id));
+      await threads(id);
       const timer = accountRetryTimers.get(id);
       if (timer) clearTimeout(timer);
       accountRetryTimers.delete(id);

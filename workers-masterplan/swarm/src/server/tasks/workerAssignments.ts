@@ -20,7 +20,7 @@ export class WorkerAssignmentManifest {
   list(): WorkerAssignmentRecord[] { return [...this.records.values()].map(clone); }
   forTask(taskId: string, pass: ManifestPass = "planning"): WorkerAssignmentRecord | undefined { const value = this.records.get(recordKey(taskId, pass)); return value && clone(value); }
   forThread(accountId: AccountId, threadId: string): WorkerAssignmentRecord | undefined {
-    const value = [...this.records.values()].find((record) => record.accountId === accountId && record.threadId === threadId);
+    const value = this.currentForThread(accountId, threadId);
     return value && clone(value);
   }
   waitingForAccount(accountId: AccountId): WorkerAssignmentRecord[] {
@@ -37,7 +37,12 @@ export class WorkerAssignmentManifest {
   }
 
   async markAssigned(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
-    await this.updateCurrent(accountId, threadId, (record) => { record.state = "assigned"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
+    await this.updateCurrent(accountId, threadId, (record) => {
+      if (record.state === "completed") return;
+      record.state = "assigned";
+      delete record.resumeClientUserMessageId;
+      record.updatedAt = now;
+    });
   }
 
   async markWaitingForLimit(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
@@ -50,6 +55,10 @@ export class WorkerAssignmentManifest {
 
   async complete(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
     await this.updateCurrent(accountId, threadId, (record) => { record.state = "completed"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
+  }
+
+  async completeTask(taskId: string, pass: ManifestPass, now = Date.now()): Promise<void> {
+    await this.updateTask(taskId, pass, (record) => { record.state = "completed"; delete record.resumeClientUserMessageId; record.updatedAt = now; });
   }
 
   async markAttentionRequired(accountId: AccountId, threadId: string, now = Date.now()): Promise<void> {
@@ -108,12 +117,28 @@ export class WorkerAssignmentManifest {
   }
 
   private async updateCurrent(accountId: AccountId, threadId: string, operation: (record: WorkerAssignmentRecord) => void): Promise<void> {
-    const record = [...this.records.values()].find((candidate) => candidate.accountId === accountId && candidate.threadId === threadId);
+    const record = this.currentForThread(accountId, threadId);
     if (!record) return;
     const prior = clone(record);
     operation(record);
     if (JSON.stringify(record) === JSON.stringify(prior)) return;
     try { await this.flush(); } catch (error) { this.records.set(recordKey(prior.taskId, prior.pass ?? "planning"), prior); throw error; }
+  }
+
+  private currentForThread(accountId: AccountId, threadId: string): WorkerAssignmentRecord | undefined {
+    return [...this.records.values()]
+      .filter((record) => record.accountId === accountId && record.threadId === threadId)
+      .sort((left, right) => Number(left.state === "completed") - Number(right.state === "completed") || right.updatedAt - left.updatedAt)[0];
+  }
+
+  private async updateTask(taskId: string, pass: ManifestPass, operation: (record: WorkerAssignmentRecord) => void): Promise<void> {
+    const key = recordKey(taskId, pass);
+    const record = this.records.get(key);
+    if (!record) return;
+    const prior = clone(record);
+    operation(record);
+    if (JSON.stringify(record) === JSON.stringify(prior)) return;
+    try { await this.flush(); } catch (error) { this.records.set(key, prior); throw error; }
   }
 
   private async flush(): Promise<void> { await this.persist(this.list()); }

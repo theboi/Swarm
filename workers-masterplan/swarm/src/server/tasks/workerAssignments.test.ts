@@ -84,4 +84,30 @@ describe("WorkerAssignmentManifest", () => {
     expect(manifest.forTask("F0", "planning")).toMatchObject({ state: "completed", threadId: "planning-thread", pass: "planning" });
     expect(manifest.forTask("F0", "execution")).toMatchObject({ state: "assigned", threadId: "execution-thread", pass: "execution" });
   });
+
+  it("applies thread lifecycle changes to the newest open pass and never reopens completion", async () => {
+    const manifest = new WorkerAssignmentManifest([]);
+    await manifest.assign("F0", "bot3", "same-thread", 10, "planning");
+    await manifest.completeTask("F0", "planning", 20);
+    await manifest.assign("F0", "bot3", "same-thread", 30, "execution");
+
+    await manifest.markWaitingForLimit("bot3", "same-thread", 40);
+    expect(manifest.forTask("F0", "planning")?.state).toBe("completed");
+    expect(manifest.forTask("F0", "execution")?.state).toBe("waiting_for_limit");
+
+    await manifest.markAssigned("bot3", "same-thread", 50);
+    expect(manifest.forTask("F0", "planning")?.state).toBe("completed");
+    expect(manifest.forTask("F0", "execution")?.state).toBe("assigned");
+  });
+
+  it("completes the exact pass when two assignments share one chat", async () => {
+    const manifest = new WorkerAssignmentManifest([]);
+    await manifest.assign("C1", "bot3", "shared-thread", 10, "planning");
+    await manifest.assign("C1", "bot3", "shared-thread", 20, "execution");
+
+    await manifest.completeTask("C1", "execution", 30);
+
+    expect(manifest.forTask("C1", "planning")?.state).toBe("assigned");
+    expect(manifest.forTask("C1", "execution")?.state).toBe("completed");
+  });
 });

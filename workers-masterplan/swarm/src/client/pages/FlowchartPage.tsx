@@ -119,7 +119,8 @@ function TaskInspector({ task, assignment, onOpenChat, onReviewLaunch, threadId,
 type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<Pick<CoordinatorApi, "listModels" | "setAutoPilot">>;
 
 export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, initialViewport = { x: 0, y: 0, zoom: 1 } }: { snapshot: CoordinatorSnapshot; api?: FlowLaunchApi; onOpenChat: (threadId: string) => void; onOpenLaunchedChat?: (target: ChatTarget) => void; initialViewport?: Viewport }) {
-  const [pass, setPass] = useState<ManifestPass>("planning");
+  const [pass, setPass] = useState<ManifestPass>(() => snapshot.taskPasses?.execution?.length ? "execution" : "planning");
+  const passSelectedByUser = useRef(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTask, setSelectedTask] = useState<TaskNode | null>(null);
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
@@ -139,6 +140,9 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   useEffect(() => {
     setAutoPilotEnabled(snapshot.autoPilot.enabled);
   }, [snapshot]);
+  useEffect(() => {
+    if (!passSelectedByUser.current && snapshot.taskPasses?.execution?.length) setPass("execution");
+  }, [snapshot.taskPasses?.execution?.length]);
   const passTasks = snapshot.taskPasses?.[pass] ?? (pass === "planning" ? snapshot.tasks : []);
   const visibleTasks = useMemo(() => passTasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, passTasks]);
   useEffect(() => { if (filter !== "all" && passTasks.length > 0 && visibleTasks.length === 0) setFilter("all"); }, [filter, passTasks.length, visibleTasks.length]);
@@ -196,7 +200,7 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
         <span className="auto-pilot-toggle__copy"><strong>Auto-pilot</strong><small>Assign ready work to idle bot accounts</small></span>
         <input type="checkbox" role="switch" aria-label="Auto-pilot" checked={autoPilotEnabled} disabled={autoPilotPending || !api?.setAutoPilot} onChange={(event) => void changeAutoPilot(event.currentTarget.checked)} />
       </label>
-      <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "planning"} onClick={() => { setPass("planning"); setFilter("all"); setSelectedTask(null); }}>Pass 1 · Planning</button><button role="tab" aria-selected={pass === "execution"} onClick={() => { setPass("execution"); setFilter("all"); setSelectedTask(null); }}>Pass 2 · Execution</button></div>
+      <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "execution"} onClick={() => { passSelectedByUser.current = true; setPass("execution"); setFilter("all"); setSelectedTask(null); }}>Pass 2 · Execution</button><button role="tab" aria-selected={pass === "planning"} onClick={() => { passSelectedByUser.current = true; setPass("planning"); setFilter("all"); setSelectedTask(null); }}>Pass 1 · Planning</button></div>
       <div className="flow-filters" aria-label="Task state filters">{(["all", "ready", "blocked", "running", "complete"] as Filter[]).map((state) => <button key={state} type="button" aria-pressed={filter === state} onClick={() => setFilter(state)}>Show {state} tasks</button>)}</div>
       <div className="flow-layout">
         <div className="flowchart-surface" data-testid="flowchart-surface" data-viewport={`${viewport.x},${viewport.y},${viewport.zoom}`}>

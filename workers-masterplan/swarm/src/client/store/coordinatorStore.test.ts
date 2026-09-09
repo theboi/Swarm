@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import { acknowledgeApprovalsForThread, classifyRealtimeMessage, clearUnreadTurn, unreadAfterTurnEvent, unreadApprovalTurnKeys } from "./coordinatorStore.js";
+import * as coordinatorStore from "./coordinatorStore.js";
 
 describe("coordinator realtime messages", () => {
+  it("does not let a late terminal event stop a newer active turn", () => {
+    const shouldClear = (coordinatorStore as unknown as { shouldClearActiveTurn?: (activeTurnId: string | undefined, eventTurnId: string | undefined, historical: boolean) => boolean }).shouldClearActiveTurn;
+
+    expect(shouldClear).toBeTypeOf("function");
+    expect(shouldClear?.("turn-new", "turn-old", true)).toBe(false);
+    expect(shouldClear?.("turn-new", "turn-new", true)).toBe(true);
+    expect(shouldClear?.("turn-new", undefined, true)).toBe(false);
+    expect(shouldClear?.("turn-new", "turn-old", false)).toBe(false);
+    expect(shouldClear?.("turn-new", undefined, false)).toBe(false);
+    expect(shouldClear?.("turn-new", "turn-new", false)).toBe(true);
+  });
+
   it("accepts snapshots and detects sequence gaps before applying an incremental event", () => {
     expect(classifyRealtimeMessage({ type: "snapshot", sequence: 4, payload: {} }, 0)).toEqual({ kind: "snapshot", sequence: 4 });
     expect(classifyRealtimeMessage({ type: "rate_limit", sequence: 6, payload: {} }, 4)).toEqual({ kind: "gap", sequence: 6 });

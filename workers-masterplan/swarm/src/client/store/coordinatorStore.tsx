@@ -55,6 +55,11 @@ export function clearUnreadTurn(current: ReadonlySet<string>, key: string): Read
   return next;
 }
 
+export function shouldClearActiveTurn(activeTurnId: string | undefined, eventTurnId: string | undefined, historical: boolean): boolean {
+  if (historical) return Boolean(activeTurnId && eventTurnId === activeTurnId);
+  return activeTurnId ? eventTurnId === activeTurnId : true;
+}
+
 export function acknowledgeApprovalsForThread(current: ReadonlySet<string>, approvals: PendingApproval[], accountId: string, threadId: string): ReadonlySet<string> {
   const ids = approvals.filter((approval) => approval.accountId === accountId && approval.threadId === threadId).map((approval) => approval.id);
   if (!ids.some((id) => !current.has(id))) return current;
@@ -77,6 +82,8 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const [activeTurnKeys, setActiveTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [activeTurnIds, setActiveTurnIds] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const activeTurnIdsRef = useRef<ReadonlyMap<string, string>>(activeTurnIds);
+  activeTurnIdsRef.current = activeTurnIds;
   const [limitExhaustedTurnKeys, setLimitExhaustedTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [unreadTurnKeys, setUnreadTurnKeys] = useState<ReadonlySet<string>>(readUnreadTurns);
   const [acknowledgedApprovalIds, setAcknowledgedApprovalIds] = useState<ReadonlySet<string>>(() => readStringSet(ACKNOWLEDGED_APPROVALS_STORAGE_KEY));
@@ -86,7 +93,11 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const markTurnActive = useCallback((accountId: string, threadId: string, turnId?: string) => {
     const key = `${accountId}\u0000${threadId}`;
     setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
-    if (turnId) setActiveTurnIds((current) => current.get(key) === turnId ? current : new Map([...current, [key, turnId]]));
+    if (turnId) setActiveTurnIds((current) => {
+      const next = current.get(key) === turnId ? current : new Map([...current, [key, turnId]]);
+      activeTurnIdsRef.current = next;
+      return next;
+    });
   }, []);
   const markThreadRead = useCallback((accountId: string, threadId: string) => {
     const key = `${accountId}\u0000${threadId}`;
@@ -170,10 +181,16 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
               });
               if (typeof eventPayload.turnId === "string" && eventPayload.turnId) {
                 const turnId = eventPayload.turnId;
-                setActiveTurnIds((current) => current.get(key) === turnId ? current : new Map<string, string>([...current, [key, turnId]]));
+                setActiveTurnIds((current) => {
+                  const next = current.get(key) === turnId ? current : new Map<string, string>([...current, [key, turnId]]);
+                  activeTurnIdsRef.current = next;
+                  return next;
+                });
               }
             }
             if (["completed", "failed", "interrupted", "limit_exhausted"].includes(String(eventPayload?.state))) {
+              const eventTurnId = typeof eventPayload?.turnId === "string" ? eventPayload.turnId : undefined;
+              if (!shouldClearActiveTurn(activeTurnIdsRef.current.get(key), eventTurnId, eventPayload?.historical === true)) return;
               setActiveTurnKeys((current) => {
                 if (!current.has(key)) return current;
                 const next = new Set(current);
@@ -184,6 +201,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
                 if (!current.has(key)) return current;
                 const next = new Map(current);
                 next.delete(key);
+                activeTurnIdsRef.current = next;
                 return next;
               });
               if (eventPayload?.state === "limit_exhausted") setLimitExhaustedTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));

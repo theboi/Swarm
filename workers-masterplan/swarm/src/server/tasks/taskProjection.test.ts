@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DispatchRecord, TaskNode, ThreadSummary } from "../../shared/contracts.js";
 import { projectDispatchState, retainCompletedTaskIds } from "./taskProjection.js";
+import * as taskProjection from "./taskProjection.js";
+import { WorkerAssignmentManifest } from "./workerAssignments.js";
 
 const task = (id: string, state: TaskNode["readiness"]["state"]): TaskNode => ({
   id,
@@ -35,6 +37,31 @@ const activeThread = (name: string): ThreadSummary => ({
 });
 
 describe("task dispatch projection", () => {
+  it("reconciles a live execution chat without overwriting the planning assignment", async () => {
+    const reconcile = (taskProjection as unknown as { reconcileTaskAssignments?: (nodes: TaskNode[], pass: "planning" | "execution", threads: ThreadSummary[], assignments: WorkerAssignmentManifest) => Promise<void> }).reconcileTaskAssignments;
+    const assignments = new WorkerAssignmentManifest([]);
+    await assignments.assign("C2", "bot1", "planning-thread", 1, "planning");
+    const executionTask = { ...task("C2", "ready"), kind: "execution" as const, promptTemplate: "execution" as const, readiness: { ...task("C2", "ready").readiness, phase: "execution" as const } };
+
+    expect(reconcile).toBeTypeOf("function");
+    await reconcile?.([executionTask], "execution", [
+      { ...activeThread("C2 · Curriculum publication"), accountId: "bot1", id: "planning-thread", updatedAt: 1 },
+      { ...activeThread("C2 · Curriculum publication"), accountId: "bot3", id: "execution-thread", updatedAt: 2 },
+    ], assignments);
+
+    expect(assignments.forTask("C2", "planning")).toMatchObject({ accountId: "bot1", threadId: "planning-thread" });
+    expect(assignments.forTask("C2", "execution")).toMatchObject({ accountId: "bot3", threadId: "execution-thread", state: "assigned" });
+  });
+
+  it("keeps durable pass completion evidence when reconciling an existing assignment", async () => {
+    const assignments = new WorkerAssignmentManifest([]);
+    await assignments.assign("C1", "bot3", "execution-thread", 1, "execution");
+
+    await taskProjection.reconcileTaskAssignments([task("C1", "blocked")], "execution", [], assignments, new Set(["C1"]));
+
+    expect(assignments.forTask("C1", "execution")).toMatchObject({ state: "completed" });
+  });
+
   it("keeps an unproven autonomous completion in attention and excludes accepted work from ready tasks", () => {
     const projected = projectDispatchState([task("T0", "ready"), task("T1", "ready")], [
       { ...dispatch("T0", "attention_required"), origin: "auto_pilot" },

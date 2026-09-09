@@ -78,9 +78,19 @@ describe("FlowchartPage", () => {
     const snapshot = { ...dashboardSnapshot, taskPasses: { planning: dashboardSnapshot.tasks, execution: executionTasks } };
     render(<FlowchartPage snapshot={snapshot} onOpenChat={() => undefined} />);
 
-    expect(screen.getByRole("tab", { name: "Pass 1 · Planning" })).toHaveAttribute("aria-selected", "true");
-    await user.click(screen.getByRole("tab", { name: "Pass 2 · Execution" }));
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Pass 2 · Execution", "Pass 1 · Planning"]);
+    expect(screen.getByRole("tab", { name: "Pass 2 · Execution" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "T0 Graph planning ready" })).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Pass 1 · Planning" }));
+    expect(screen.getByRole("tab", { name: "Pass 1 · Planning" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("selects Pass 2 when execution tasks arrive after an empty initial load", () => {
+    const executionTasks = dashboardSnapshot.tasks.map((task) => ({ ...task, readiness: { ...task.readiness, phase: "execution" as const } }));
+    const { rerender } = render(<FlowchartPage snapshot={{ ...dashboardSnapshot, taskPasses: { planning: dashboardSnapshot.tasks, execution: [] } }} onOpenChat={() => undefined} />);
+
+    rerender(<FlowchartPage snapshot={{ ...dashboardSnapshot, taskPasses: { planning: dashboardSnapshot.tasks, execution: executionTasks } }} onOpenChat={() => undefined} />);
+
     expect(screen.getByRole("tab", { name: "Pass 2 · Execution" })).toHaveAttribute("aria-selected", "true");
   });
 
