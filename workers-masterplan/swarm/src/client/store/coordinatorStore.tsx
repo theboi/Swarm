@@ -22,6 +22,7 @@ interface CoordinatorStoreValue {
 
 const CoordinatorStore = createContext<CoordinatorStoreValue | null>(null);
 const UNREAD_STORAGE_KEY = "swarm.unread-turns.v1";
+const NOTIFIED_COMPLETIONS_STORAGE_KEY = "swarm.notified-completions.v1";
 const ACKNOWLEDGED_APPROVALS_STORAGE_KEY = "swarm.acknowledged-approvals.v1";
 
 function readStringSet(key: string): ReadonlySet<string> {
@@ -34,6 +35,14 @@ function readStringSet(key: string): ReadonlySet<string> {
 
 function readUnreadTurns(): ReadonlySet<string> { return readStringSet(UNREAD_STORAGE_KEY); }
 
+function readStringMap(key: string): ReadonlyMap<string, string> {
+  try {
+    const value = window.localStorage.getItem(key);
+    const parsed = value ? JSON.parse(value) : [];
+    return new Map(Array.isArray(parsed) ? parsed.filter((entry): entry is [string, string] => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" && typeof entry[1] === "string") : []);
+  } catch { return new Map(); }
+}
+
 export function classifyRealtimeMessage(value: unknown, currentSequence: number): { kind: "snapshot" | "event" | "gap" | "invalid"; sequence?: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "invalid" };
   const message = value as { type?: unknown; sequence?: unknown };
@@ -43,9 +52,12 @@ export function classifyRealtimeMessage(value: unknown, currentSequence: number)
   return { kind: "event", sequence: message.sequence as number };
 }
 
-export function unreadAfterTurnEvent(current: ReadonlySet<string>, key: string, state: unknown, historical = false): ReadonlySet<string> {
-  if (state !== "completed" || historical || current.has(key)) return current;
-  return new Set([...current, key]);
+export function completionNotificationUpdate(unread: ReadonlySet<string>, notifiedCompletionIds: ReadonlyMap<string, string>, key: string, turnId: unknown, state: unknown, historical = false): { unread: ReadonlySet<string>; notifiedCompletionIds: ReadonlyMap<string, string> } {
+  if (state !== "completed" || historical || typeof turnId !== "string" || !turnId || notifiedCompletionIds.get(key) === turnId) return { unread, notifiedCompletionIds };
+  return {
+    unread: unread.has(key) ? unread : new Set([...unread, key]),
+    notifiedCompletionIds: new Map([...notifiedCompletionIds, [key, turnId]]),
+  };
 }
 
 export function clearUnreadTurn(current: ReadonlySet<string>, key: string): ReadonlySet<string> {
@@ -86,6 +98,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   activeTurnIdsRef.current = activeTurnIds;
   const [limitExhaustedTurnKeys, setLimitExhaustedTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [unreadTurnKeys, setUnreadTurnKeys] = useState<ReadonlySet<string>>(readUnreadTurns);
+  const notifiedCompletionIdsRef = useRef<ReadonlyMap<string, string>>(readStringMap(NOTIFIED_COMPLETIONS_STORAGE_KEY));
   const [acknowledgedApprovalIds, setAcknowledgedApprovalIds] = useState<ReadonlySet<string>>(() => readStringSet(ACKNOWLEDGED_APPROVALS_STORAGE_KEY));
   const pendingApprovalsRef = useRef<PendingApproval[]>([]);
   pendingApprovalsRef.current = snapshot?.pendingApprovals ?? [];
@@ -170,7 +183,14 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
           }
           if (message.type === "turn" && accountId && threadId) {
             const key = `${accountId}\u0000${threadId}`;
-            setUnreadTurnKeys((current) => unreadAfterTurnEvent(current, key, eventPayload?.state, eventPayload?.historical === true));
+            setUnreadTurnKeys((current) => {
+              const update = completionNotificationUpdate(current, notifiedCompletionIdsRef.current, key, eventPayload?.turnId, eventPayload?.state, eventPayload?.historical === true);
+              if (update.notifiedCompletionIds !== notifiedCompletionIdsRef.current) {
+                notifiedCompletionIdsRef.current = update.notifiedCompletionIds;
+                try { window.localStorage.setItem(NOTIFIED_COMPLETIONS_STORAGE_KEY, JSON.stringify([...update.notifiedCompletionIds])); } catch { /* storage is optional */ }
+              }
+              return update.unread;
+            });
             if (eventPayload?.state === "started") {
               setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
               setLimitExhaustedTurnKeys((current) => {

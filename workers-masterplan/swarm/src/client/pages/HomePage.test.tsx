@@ -40,6 +40,25 @@ describe("HomePage", () => {
     expect(onViewAccounts).toHaveBeenCalledOnce();
   });
 
+  it("uses the chat account activity icon and mirrors unread chat notifications", () => {
+    const api = { previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: successfulLaunch };
+    const activeSnapshot: CoordinatorSnapshot = {
+      ...dashboardSnapshot,
+      threads: [{ id: "thread-1", accountId: "bot3", name: "Active", archived: false, updatedAt: 1, activity: "active", capabilities: { canArchive: true, canInterrupt: true, canStartTurn: true, canSteer: true } }],
+      limitResumes: [],
+    };
+
+    const view = render(<HomePage snapshot={activeSnapshot} api={api} activeTurnKeys={new Set(["bot3\u0000thread-1"])} unreadTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+    expect(screen.getByLabelText("bot3 working")).toHaveClass("chat-account-picker__activity");
+    expect(screen.getByLabelText("bot3 working").querySelector(".chat-account-picker__status")).toHaveClass("chat-account-picker__status--connected");
+    expect(screen.getByLabelText("bot3 has unread replies")).toBeVisible();
+
+    view.rerender(<HomePage snapshot={{ ...activeSnapshot, threads: activeSnapshot.threads.map((thread) => ({ ...thread, activity: "idle" as const })), limitResumes: [{ accountId: "bot3", threadId: "thread-1", state: "waiting_for_limit", updatedAt: 2 }] }} api={api} activeTurnKeys={new Set()} unreadTurnKeys={new Set()} />);
+    expect(screen.getByLabelText("bot3 waiting for limit")).toHaveClass("chat-account-picker__activity--limit");
+    expect(screen.getByLabelText("bot1 requires attention").querySelector(".chat-account-picker__status")).toHaveClass("chat-account-picker__status--error");
+    expect(screen.queryByLabelText("bot3 has unread replies")).not.toBeInTheDocument();
+  });
+
   it("colors each overlaid limit independently and empties five-hour capacity when weekly is exhausted", () => {
     const api = { previewLaunch: async () => ({ error: { code: "TASK_NOT_READY", message: "Not ready" } }), launch: successfulLaunch };
     const coloredSnapshot: CoordinatorSnapshot = {

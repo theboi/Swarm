@@ -8,12 +8,14 @@ import { MarkdownViewer } from "../components/MarkdownViewer.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
 import { TranscriptItemView } from "../components/TranscriptItemView.js";
 import { AccountUsageBar } from "../components/AccountSummaryPanel.js";
+import { AccountStatusIndicator } from "../components/AccountStatusIndicator.js";
 import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
 type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount" | "renameThread">>;
 const EMPTY_TURN_KEYS: ReadonlySet<string> = new Set<string>();
+const TRANSCRIPT_RENDER_BATCH = 100;
 const noopMarkThreadRead = () => undefined;
 
 interface SubagentReference {
@@ -269,6 +271,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [loadingAccountId, setLoadingAccountId] = useState<AccountId | null>(null);
   const [pendingTarget, setPendingTarget] = useState<ChatTarget | null>(initialTarget ?? null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [visibleItemCount, setVisibleItemCount] = useState(TRANSCRIPT_RENDER_BATCH);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const [scrollRequest, setScrollRequest] = useState(0);
   const [draft, setDraft] = useState("");
@@ -390,6 +393,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     };
     void drain();
   }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision]);
+
+  useEffect(() => setVisibleItemCount(TRANSCRIPT_RENDER_BATCH), [accountId, threadId]);
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat) return;
@@ -639,6 +644,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const subagentThinking = Boolean(accountId && threadId && (subagents.some((subagent) => activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`)) || hasActiveDescendant(threadId, accountId, subagentGraph, activeTurnKeys, activeThreadIds)));
   const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active" || subagentThinking));
   const isWorking = isThinking;
+  const visibleItems = items.slice(-visibleItemCount);
+  const hiddenItemCount = items.length - visibleItems.length;
   const canSteer = Boolean(selectedThread && accountId && activeTurnId && (isThinking || selectedThread.capabilities.canSteer));
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
@@ -760,10 +767,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
               || accountThreads.some((thread) => hasActiveDescendant(thread.id, account.id, subagentGraph, activeTurnKeys, accountActiveThreadIds));
             const accountLimitHit = !accountThinking && account.connection === "connected" && account.authentication === "authenticated"
               && (snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") ?? false);
-            const accountHasUnread = [...unreadTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
+            const accountHasUnread = accountThreads.some((thread) => unreadTurnKeys.has(`${account.id}\u0000${thread.id}`));
             const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
-            const activityClass = accountLimitHit ? "chat-account-picker__activity chat-account-picker__activity--limit" : accountThinking ? "chat-account-picker__activity" : "";
-            return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><span className={activityClass} aria-label={accountLimitHit ? `${account.id} waiting for limit` : accountThinking ? `${account.id} working` : undefined}><span className={`chat-account-picker__status chat-account-picker__status--${account.connection}`} aria-hidden="true" /></span><span>{account.id}</span><span className="chat-account-picker__count"><span aria-hidden="true">{threadCount}</span>{accountHasUnread ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span></button>;
+            return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><AccountStatusIndicator account={account} working={accountThinking} waitingForLimit={accountLimitHit} /><span>{account.id}</span><span className="chat-account-picker__count"><span aria-hidden="true">{threadCount}</span>{accountHasUnread ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span></button>;
           })}
         </nav>
         {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
@@ -792,7 +798,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
           })}</div></section>)}</div> : null}
           {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) || activeThreadIds.has(subagent.threadId) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
-          <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? items.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
+          <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{hiddenItemCount ? <button className="transcript-load-earlier" type="button" aria-label={`Show ${Math.min(TRANSCRIPT_RENDER_BATCH, hiddenItemCount)} earlier messages`} onClick={() => setVisibleItemCount((count) => count + TRANSCRIPT_RENDER_BATCH)}>Show earlier messages</button> : null}{items.length ? visibleItems.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>{resumeStatus}</p></section> : null}
           {resumeNeedsSignIn && !limitExhausted && accountId ? <section className="chat-limit-notice" aria-label="Account sign-in required" role="status"><p>{`Sign in to ${accountId} to send messages.`}</p></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>

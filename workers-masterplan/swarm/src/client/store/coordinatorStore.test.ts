@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { acknowledgeApprovalsForThread, classifyRealtimeMessage, clearUnreadTurn, unreadAfterTurnEvent, unreadApprovalTurnKeys } from "./coordinatorStore.js";
+import { acknowledgeApprovalsForThread, classifyRealtimeMessage, clearUnreadTurn, completionNotificationUpdate, unreadApprovalTurnKeys } from "./coordinatorStore.js";
 import * as coordinatorStore from "./coordinatorStore.js";
 
 describe("coordinator realtime messages", () => {
@@ -23,12 +23,22 @@ describe("coordinator realtime messages", () => {
   });
 
   it("marks only completed replies unread and clears the exact chat when it is opened", () => {
-    const first = unreadAfterTurnEvent(new Set<string>(), "bot3\u0000thread-1", "completed");
-    const ignored = unreadAfterTurnEvent(first, "bot3\u0000thread-2", "limit_exhausted");
-    const historical = unreadAfterTurnEvent(ignored, "bot3\u0000thread-old", "completed", true);
+    const first = completionNotificationUpdate(new Set(), new Map(), "bot3\u0000thread-1", "turn-1", "completed");
+    const ignored = completionNotificationUpdate(first.unread, first.notifiedCompletionIds, "bot3\u0000thread-2", "turn-2", "limit_exhausted");
+    const historical = completionNotificationUpdate(ignored.unread, ignored.notifiedCompletionIds, "bot3\u0000thread-old", "turn-old", "completed", true);
 
-    expect([...historical]).toEqual(["bot3\u0000thread-1"]);
-    expect([...clearUnreadTurn(historical, "bot3\u0000thread-1")]).toEqual([]);
+    expect([...historical.unread]).toEqual(["bot3\u0000thread-1"]);
+    expect([...clearUnreadTurn(historical.unread, "bot3\u0000thread-1")]).toEqual([]);
+  });
+
+  it("does not notify twice when the same completed turn is replayed after its chat was opened", () => {
+    const first = completionNotificationUpdate(new Set(), new Map(), "bot3\u0000thread-1", "turn-1", "completed");
+    const read = clearUnreadTurn(first.unread, "bot3\u0000thread-1");
+    const replayed = completionNotificationUpdate(read, first.notifiedCompletionIds, "bot3\u0000thread-1", "turn-1", "completed");
+    const nextTurn = completionNotificationUpdate(replayed.unread, replayed.notifiedCompletionIds, "bot3\u0000thread-1", "turn-2", "completed");
+
+    expect([...replayed.unread]).toEqual([]);
+    expect([...nextTurn.unread]).toEqual(["bot3\u0000thread-1"]);
   });
 
   it("acknowledges only the pending approvals belonging to the chat that was opened", () => {

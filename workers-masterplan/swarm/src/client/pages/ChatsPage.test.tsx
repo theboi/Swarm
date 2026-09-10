@@ -524,6 +524,31 @@ describe("ChatsPage", () => {
     expect(transcript.scrollTop).toBe(240);
   });
 
+  it("bounds the initial DOM for a very long chat and lets the operator reveal earlier messages", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const longTranscript: TranscriptItem[] = Array.from({ length: 500 }, (_, index) => ({
+      id: `message-${index}`,
+      accountId: "bot3",
+      threadId: "thread-1",
+      turnId: `turn-${index}`,
+      type: "agentMessage",
+      status: "completed",
+      createdAt: index,
+      payload: { text: `Reply ${index}` },
+    }));
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript: async () => ({ data: longTranscript }) }} />);
+
+    await screen.findByText("Reply 499");
+    expect(screen.queryByText("Reply 0")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article", { name: "agentMessage" }).length).toBeLessThan(500);
+
+    while (screen.queryByRole("button", { name: /earlier messages/i })) {
+      await user.click(screen.getByRole("button", { name: /earlier messages/i }));
+    }
+    expect(screen.getByText("Reply 0")).toBeVisible();
+  });
+
   it("uses the conversation as the page surface and reports actions in a toast", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -799,6 +824,13 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "U1 · Coordinator UI" }));
 
     await waitFor(() => expect(markThreadRead).toHaveBeenCalledWith("bot3", "thread-2"));
+  });
+
+  it("does not show an account notification for a stale chat key that is no longer listed", () => {
+    setViewport(1440);
+    render(<ChatsPage snapshot={{ ...chatSnapshot, pendingApprovals: [] }} api={api} unreadTurnKeys={new Set(["bot3\u0000missing-thread"])} />);
+
+    expect(screen.queryByLabelText("bot3 has unread replies")).not.toBeInTheDocument();
   });
 
   it("does not recreate a notification dot from a pending approval after its chat is opened", async () => {
