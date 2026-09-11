@@ -72,7 +72,7 @@ describe("LocalRolloutTranscriptReader", () => {
     const now = Date.parse("2026-09-09T08:05:00.000Z");
     await utimes(path, now / 1_000, now / 1_000);
 
-    await expect(new LocalRolloutTranscriptReader(root).readRecentActivity(threadId, now)).resolves.toBe("active");
+    await expect(new LocalRolloutTranscriptReader(root).readRecentActivity(threadId, now)).resolves.toEqual({ activity: "active", turnId: "turn-live" });
   });
 
   it("does not recover aborted or stale rollout activity", async () => {
@@ -91,8 +91,8 @@ describe("LocalRolloutTranscriptReader", () => {
     await utimes(stalePath, (now - 10 * 60_000) / 1_000, (now - 10 * 60_000) / 1_000);
     const reader = new LocalRolloutTranscriptReader(root);
 
-    await expect(reader.readRecentActivity(abortedId, now)).resolves.toBe("idle");
-    await expect(reader.readRecentActivity(staleId, now)).resolves.toBe("idle");
+    await expect(reader.readRecentActivity(abortedId, now)).resolves.toEqual({ activity: "idle" });
+    await expect(reader.readRecentActivity(staleId, now)).resolves.toEqual({ activity: "idle" });
   });
 
   it("rejects an invalid thread identifier before inspecting the filesystem", async () => {

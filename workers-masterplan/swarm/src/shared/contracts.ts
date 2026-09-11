@@ -235,6 +235,8 @@ export interface ThreadSummary {
   updatedAt: number;
   /** Current app-server activity, retained so a missed browser event cannot hide a running turn. */
   activity?: "active" | "idle";
+  /** Active turn recovered from a desktop-owned rollout when this app-server did not start it. */
+  activeTurnId?: string;
   capabilities: ThreadCapabilities;
 }
 

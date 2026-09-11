@@ -51,8 +51,9 @@ test.describe("Chats", () => {
     expect((optionsBox?.y ?? 0) + (optionsBox?.height ?? 0)).toBeLessThanOrEqual(844);
   });
 
-  test("keeps a 44px Send target clear of the mobile navigation at 320 by 568", async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 568 });
+  test("keeps a 44px Send target clear of the mobile navigation below the legacy 320px layout floor", async ({ page }) => {
+    const viewportWidth = 280;
+    await page.setViewportSize({ width: viewportWidth, height: 568 });
     await signIn(page);
     const bot3 = page.getByRole("button", { name: "bot3" });
     if (await bot3.getAttribute("aria-pressed") !== "true") await bot3.click();
@@ -85,9 +86,9 @@ test.describe("Chats", () => {
     expect(longLinkBox).not.toBeNull();
     expect(sendBox!.width).toBeGreaterThanOrEqual(44);
     expect(sendBox!.height).toBeGreaterThanOrEqual(44);
-    expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(320);
+    expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(viewportWidth);
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
-    expect(longLinkBox!.x + longLinkBox!.width).toBeLessThanOrEqual(320);
+    expect(longLinkBox!.x + longLinkBox!.width).toBeLessThanOrEqual(viewportWidth);
 
     await send.click();
     await expect(page.locator(".app-toast[role='status']")).toHaveText("Message sent.");

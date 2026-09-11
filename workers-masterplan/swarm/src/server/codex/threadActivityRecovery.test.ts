@@ -16,16 +16,16 @@ const idleThread: ThreadSummary = {
 
 describe("recoverThreadActivity", () => {
   it("promotes an idle replacement-server summary when the local rollout is still active", async () => {
-    const recovered = await recoverThreadActivity(idleThread, { readRecentActivity: vi.fn(async () => "active" as const) });
+    const recovered = await recoverThreadActivity(idleThread, { readRecentActivity: vi.fn(async () => ({ activity: "active" as const, turnId: "turn-live" })) });
 
-    expect(recovered).toMatchObject({ id: "thread-1", activity: "active" });
+    expect(recovered).toMatchObject({ id: "thread-1", activity: "active", activeTurnId: "turn-live" });
   });
 
-  it("preserves authoritative app-server activity and ignores unavailable rollout evidence", async () => {
-    const readRecentActivity = vi.fn(async () => "idle" as const);
+  it("preserves authoritative app-server activity when rollout evidence is idle or unavailable", async () => {
+    const readRecentActivity = vi.fn(async () => ({ activity: "idle" as const }));
 
     await expect(recoverThreadActivity({ ...idleThread, activity: "active" }, { readRecentActivity })).resolves.toMatchObject({ activity: "active" });
     await expect(recoverThreadActivity(idleThread, { readRecentActivity: vi.fn(async () => { throw new Error("missing"); }) })).resolves.toBe(idleThread);
-    expect(readRecentActivity).not.toHaveBeenCalled();
+    expect(readRecentActivity).toHaveBeenCalledWith("thread-1");
   });
 });

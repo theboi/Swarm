@@ -639,7 +639,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   const activeTurnKey = accountId && threadId ? `${accountId}\u0000${threadId}` : "";
-  const activeTurnId = activeTurnKey ? activeTurnIds.get(activeTurnKey) : undefined;
+  const activeTurnId = activeTurnKey ? activeTurnIds.get(activeTurnKey) ?? selectedThread?.activeTurnId : undefined;
   const latestTurnId = activeTurnId ?? [...items].reverse().find((item) => item.turnId)?.turnId;
   const subagents = useMemo(() => subagentReferences(items, threadId), [items, threadId]);
   const activeThreadIds = new Set(threads.filter((thread) => thread.activity === "active").map((thread) => thread.id));

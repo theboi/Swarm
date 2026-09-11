@@ -233,6 +233,21 @@ describe("ChatsPage", () => {
     expect(screen.getByText("Thinking", { selector: ".thread-picker__copy small" })).toBeVisible();
   });
 
+  it("steers an externally owned active turn using the turn ID recovered from its rollout", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const steerTurn = vi.fn(async () => ({ data: {} }));
+    const activeSnapshot = { ...chatSnapshot, threads: chatSnapshot.threads.map((thread) => thread.id === "thread-1" ? { ...thread, activity: "active" as const, activeTurnId: "turn-recovered" } : thread) };
+    const listThreads = vi.fn(async (accountId: string) => ({ data: activeSnapshot.threads.filter((thread) => thread.accountId === accountId) }));
+    render(<ChatsPage snapshot={activeSnapshot} api={{ ...api, listThreads, steerTurn }} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Use the correction I just sent.");
+    expect(screen.getByRole("button", { name: "Steer" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Steer" }));
+
+    expect(steerTurn).toHaveBeenCalledWith("bot3", "thread-1", "turn-recovered", "Use the correction I just sent.");
+  });
+
   it("does not steer a historical turn when the active turn ID is unavailable", async () => {
     setViewport(1440);
     const steerTurn = vi.fn(async () => ({ data: {} }));
