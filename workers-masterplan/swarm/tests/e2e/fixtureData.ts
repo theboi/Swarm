@@ -88,6 +88,9 @@ export function createFixtureState(options: { manifest?: FixtureManifest } = {})
   return {
     snapshot,
     transcripts: new Map([["bot3:thread-1", transcript()]]),
-    markdownFiles: new Map([["bot3:docs/runbook.md", { filename: "runbook.md", content: "# Runbook\n\n<script>window.evil = true</script>\n\nFixture-only coordinator instructions." }]]),
+    markdownFiles: new Map([
+      ["bot3:docs/runbook.md", { filename: "runbook.md", content: "# Runbook\n\n<script>window.evil = true</script>\n\nFixture-only coordinator instructions." }],
+      ["bot3:src/client/App.tsx", { filename: "App.tsx", content: "export function App() { return null; }" }],
+    ]),
   };
 }

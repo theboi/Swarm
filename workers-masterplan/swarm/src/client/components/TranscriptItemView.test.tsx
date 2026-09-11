@@ -71,7 +71,7 @@ describe("TranscriptItemView", () => {
     render(<TranscriptItemView item={{ id: "markdown-file", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "Read docs/runbook.md" } }} onOpenMarkdown={onOpenMarkdown} />);
 
     const file = screen.getByRole("link", { name: "docs/runbook.md" });
-    expect(file).toHaveAttribute("href", "/chats?open=docs%2Frunbook.md");
+    expect(file).toHaveAttribute("href", "/?file=docs%2Frunbook.md&account=bot3");
     let defaultPrevented: boolean | undefined;
     const observeClick = (event: MouseEvent) => {
       defaultPrevented = event.defaultPrevented;
@@ -82,6 +82,28 @@ describe("TranscriptItemView", () => {
     document.removeEventListener("click", observeClick);
     expect(defaultPrevented).toBe(false);
     expect(onOpenMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("links every structured changed file through the owning account's file query", () => {
+    render(<TranscriptItemView item={{ id: "source-change", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "fileChange", status: "completed", createdAt: null, payload: { changes: [{ path: "src/client/App.tsx", kind: "update" }] } }} onOpenMarkdown={() => undefined} />);
+
+    expect(screen.getByRole("link", { name: "src/client/App.tsx" })).toHaveAttribute("href", "/?file=src%2Fclient%2FApp.tsx&account=bot3");
+  });
+
+  it("converts a rendered Markdown workspace path into an in-app file link", () => {
+    const onOpenFile = vi.fn();
+    render(<TranscriptItemView item={{ id: "source-link", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "[Open App](/Users/bot3/Dev/EdenMind/src/client/App.tsx)" } }} onOpenMarkdown={onOpenFile} />);
+
+    const file = screen.getByRole("link", { name: "Open App" });
+    expect(file).toHaveAttribute("href", "/?file=%2FUsers%2Fbot3%2FDev%2FEdenMind%2Fsrc%2Fclient%2FApp.tsx&account=bot3");
+    fireEvent.click(file);
+    expect(onOpenFile).toHaveBeenCalledWith("/Users/bot3/Dev/EdenMind/src/client/App.tsx");
+  });
+
+  it("opens a linked extensionless workspace file", () => {
+    render(<TranscriptItemView item={{ id: "dockerfile-link", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "[Open Dockerfile](Dockerfile)" } }} onOpenMarkdown={() => undefined} />);
+
+    expect(screen.getByRole("link", { name: "Open Dockerfile" })).toHaveAttribute("href", "/?file=Dockerfile&account=bot3");
   });
 
   it("shows the sent time before a control that copies the raw message source", async () => {

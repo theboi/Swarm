@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { markdownPath, parseAppRoute } from "./navigation.js";
+import { filePath, parseAppRoute } from "./navigation.js";
 
 describe("navigation", () => {
   it.each([
@@ -14,8 +14,19 @@ describe("navigation", () => {
     expect(parseAppRoute({ pathname, search })).toEqual(expect.objectContaining({ page }));
   });
 
-  it("retains a Chats Markdown path and encodes its canonical URL", () => {
-    expect(parseAppRoute({ pathname: "/chats", search: "?open=docs%2Frunbook.md" }).openMarkdownPath).toBe("docs/runbook.md");
-    expect(markdownPath("docs/runbook.md")).toBe("/chats?open=docs%2Frunbook.md");
+  it("canonicalizes a legacy Chats Markdown path as a file query", () => {
+    const route = parseAppRoute({ pathname: "/chats", search: "?open=docs%2Frunbook.md" });
+    expect(route.openFilePath).toBe("docs/runbook.md");
+    expect(route.canonicalPath).toBe("/?file=docs%2Frunbook.md");
+    expect(filePath("docs/runbook.md", "bot3")).toBe("/?file=docs%2Frunbook.md&account=bot3");
+  });
+
+  it("opens a file query on the root URL in Chats with its owning account intact", () => {
+    expect(parseAppRoute({ pathname: "/", search: "?file=src%2Fclient%2FApp.tsx&account=bot3" })).toEqual({
+      page: "chats",
+      openFilePath: "src/client/App.tsx",
+      fileAccountId: "bot3",
+      canonicalPath: "/?file=src%2Fclient%2FApp.tsx&account=bot3",
+    });
   });
 });

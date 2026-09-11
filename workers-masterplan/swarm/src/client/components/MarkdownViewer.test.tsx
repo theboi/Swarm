@@ -19,4 +19,12 @@ describe("MarkdownViewer", () => {
     await user.keyboard("{Escape}");
     expect(closed).toBe(true);
   });
+
+  it("shows a non-Markdown file as wrapped plain text instead of parsing it as Markdown", () => {
+    render(<MarkdownViewer document={{ filename: "app.ts", content: "const heading = '# not Markdown';" }} onClose={() => undefined} />);
+
+    const viewer = screen.getByRole("dialog", { name: "app.ts" });
+    expect(viewer.querySelector("pre")).toHaveTextContent("const heading = '# not Markdown';");
+    expect(viewer.querySelector("h1")).toBeNull();
+  });
 });

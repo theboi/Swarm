@@ -138,8 +138,8 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/home");
   });
 
-  it("opens a fresh Markdown deep link through the local account", async () => {
-    window.history.replaceState(null, "", "/chats?open=docs%2Frunbook.md");
+  it("opens a fresh file-query deep link through the local account", async () => {
+    window.history.replaceState(null, "", "/?file=docs%2Frunbook.md");
     const pushState = vi.spyOn(window.history, "pushState");
     const readMarkdown = vi.fn(async () => ({ data: { filename: "runbook.md", content: "# Runbook" } }));
     const localSnapshot = { ...snapshot, accounts: [{ ...snapshot.accounts[0], id: "claudiothe" as const }] };

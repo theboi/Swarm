@@ -10,19 +10,19 @@ import { LoginPage } from "./pages/LoginPage.js";
 import { CoordinatorStoreProvider, useCoordinatorStore } from "./store/coordinatorStore.js";
 import { LOCAL_ACCOUNT_ID, type AccountId } from "../shared/contracts.js";
 import { Toast } from "./components/Toast.js";
-import { markdownPath, pagePath, parseAppRoute, type AppRoute } from "./navigation.js";
+import { filePath, pagePath, parseAppRoute, type AppRoute } from "./navigation.js";
 
 type ChatSelection = { accountId: AccountId; threadId?: string };
 import "./styles.css";
 
-function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat, selectedChat, onNavigate, onOpenMarkdownPathChange }: { route: AppRoute; api: CoordinatorApi; onOpenAccountChat: (accountId: AccountId) => void; onOpenThread: (threadId: string) => void; onOpenLaunchedChat: (target: ChatTarget) => void; selectedChat: ChatSelection | null; onNavigate: (page: AppPage) => void; onOpenMarkdownPathChange: (path: string | null) => void }) {
+function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat, selectedChat, onNavigate, onOpenFilePathChange }: { route: AppRoute; api: CoordinatorApi; onOpenAccountChat: (accountId: AccountId) => void; onOpenThread: (threadId: string) => void; onOpenLaunchedChat: (target: ChatTarget) => void; selectedChat: ChatSelection | null; onNavigate: (page: AppPage) => void; onOpenFilePathChange: (path: string | null, accountId?: AccountId) => void }) {
   const { snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const { page } = route;
   const title = page === "home" ? "Home" : page === "flowchart" ? "Flowchart" : page === "chats" ? "Chats" : "Accounts";
   if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
   if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ connectAccount: api.connectAccount, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
   if (page === "flowchart" && snapshot) return <FlowchartPage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels, setAutoPilot: api.setAutoPilot }} onOpenChat={onOpenThread} onOpenLaunchedChat={onOpenLaunchedChat} />;
-  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={selectedChat?.accountId ?? (route.openMarkdownPath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openMarkdownPath} onOpenMarkdownPathChange={onOpenMarkdownPathChange} transcriptRevision={transcriptRevision} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
+  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={!route.openFilePath && selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={route.fileAccountId ?? selectedChat?.accountId ?? (route.openFilePath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openFilePath} onOpenMarkdownPathChange={onOpenFilePathChange} transcriptRevision={transcriptRevision} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
   return (
     <section className="page" aria-labelledby="page-title">
       <h1 id="page-title">{title}</h1>
@@ -52,8 +52,8 @@ function AuthenticatedApp({ api }: { api: CoordinatorApi }) {
     setRoute(parseAppRoute(window.location));
   }, []);
 
-  const updateOpenMarkdownPath = useCallback((path: string | null) => {
-    const nextPath = path ? markdownPath(path) : pagePath("chats");
+  const updateOpenFilePath = useCallback((path: string | null, accountId?: AccountId) => {
+    const nextPath = path ? filePath(path, accountId) : pagePath("chats");
     if (`${window.location.pathname}${window.location.search}` !== nextPath) window.history.pushState(null, "", nextPath);
     setRoute(parseAppRoute(window.location));
   }, []);
@@ -71,7 +71,7 @@ function AuthenticatedApp({ api }: { api: CoordinatorApi }) {
   };
   const openAccountChat = (accountId: AccountId) => { setSelectedChat({ accountId }); navigate("chats"); };
   const hasBreakingChangeNotification = snapshot?.accounts.some((account) => account.hasBreakingChange) ?? false;
-  return <AppShell activePage={route.page} hasBreakingChangeNotification={hasBreakingChangeNotification} onNavigate={navigate}><Page route={route} api={api} onOpenAccountChat={openAccountChat} onOpenThread={openThread} onOpenLaunchedChat={openLaunchedChat} selectedChat={selectedChat} onNavigate={navigate} onOpenMarkdownPathChange={updateOpenMarkdownPath} /></AppShell>;
+  return <AppShell activePage={route.page} hasBreakingChangeNotification={hasBreakingChangeNotification} onNavigate={navigate}><Page route={route} api={api} onOpenAccountChat={openAccountChat} onOpenThread={openThread} onOpenLaunchedChat={openLaunchedChat} selectedChat={selectedChat} onNavigate={navigate} onOpenFilePathChange={updateOpenFilePath} /></AppShell>;
 }
 
 export function App({ api }: { api: CoordinatorApi }) {

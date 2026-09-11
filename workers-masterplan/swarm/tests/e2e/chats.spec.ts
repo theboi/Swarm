@@ -107,6 +107,7 @@ test.describe("Chats", () => {
     await transcript.evaluate((element) => { element.scrollTop = 72; });
     const scrollBeforeViewer = await transcript.evaluate((element) => element.scrollTop);
     await page.getByRole("link", { name: "docs/runbook.md" }).click();
+    await expect(page).toHaveURL(/\/\?file=docs%2Frunbook\.md&account=bot3$/);
     const viewer = page.getByRole("dialog", { name: "runbook.md" });
     await expect(viewer).toBeVisible();
     await expect(viewer.locator("script")).toHaveCount(0);
@@ -114,6 +115,10 @@ test.describe("Chats", () => {
     await viewer.getByRole("button", { name: "Close" }).click();
     await expect(viewer).toHaveCount(0);
     await expect.poll(async () => Math.abs(await transcript.evaluate((element) => element.scrollTop) - scrollBeforeViewer)).toBeLessThanOrEqual(1);
+    await page.getByRole("link", { name: "src/client/App.tsx", exact: true }).click();
+    const sourceViewer = page.getByRole("dialog", { name: "App.tsx" });
+    await expect(sourceViewer.locator("pre")).toHaveText("export function App() { return null; }");
+    await sourceViewer.getByRole("button", { name: "Close" }).click();
 
     for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();

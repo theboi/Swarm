@@ -16,6 +16,7 @@ async function workspace() {
   const root = join(directory, "EdenMind");
   await mkdir(join(root, "docs"), { recursive: true });
   await writeFile(join(root, "docs", "guide.md"), "placeholder");
+  await writeFile(join(root, "src.ts"), "export const ready = true;\n");
   return root;
 }
 
@@ -33,19 +34,27 @@ describe("readWorkspaceMarkdown", () => {
     expect(readFile).toHaveBeenCalledWith(expectedPath);
   });
 
-  it("rejects traversal, another account home, symlink escapes, and non-Markdown extensions before app-server file access", async () => {
+  it("reads a non-Markdown workspace source file", async () => {
+    const root = await workspace();
+    const readFile = vi.fn(async () => ({ dataBase64: Buffer.from("export const ready = true;\n", "utf8").toString("base64") }));
+
+    await expect(readWorkspaceMarkdown({ account: "bot1", requestedPath: "src.ts", workspaceRoot: root, appServer: { readFile } })).resolves.toMatchObject({
+      filename: "src.ts",
+      text: "export const ready = true;\n",
+    });
+  });
+
+  it("rejects traversal, another account home, and symlink escapes before app-server file access", async () => {
     const root = await workspace();
     const outside = join(directory!, "outside.md");
     await writeFile(outside, "outside");
     await symlink(outside, join(root, "docs", "escape.md"));
-    await writeFile(join(root, "docs", "image.png"), "not markdown");
     const readFile = vi.fn(async () => ({ dataBase64: "" }));
     const input = { account: "bot1" as const, workspaceRoot: root, appServer: { readFile } };
 
     await expect(readWorkspaceMarkdown({ ...input, requestedPath: "../outside.md" })).rejects.toThrow(/outside workspace/i);
     await expect(readWorkspaceMarkdown({ ...input, requestedPath: "/Users/bot2/Dev/EdenMind/secret.md" })).rejects.toThrow(/outside workspace/i);
     await expect(readWorkspaceMarkdown({ ...input, requestedPath: "docs/escape.md" })).rejects.toThrow(/outside workspace/i);
-    await expect(readWorkspaceMarkdown({ ...input, requestedPath: "docs/image.png" })).rejects.toThrow(/Markdown/i);
     expect(readFile).not.toHaveBeenCalled();
   });
 
