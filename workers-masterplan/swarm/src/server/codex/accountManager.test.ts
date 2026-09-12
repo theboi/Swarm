@@ -5,7 +5,7 @@ import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 
 const account = "bot1" as const;
 
-function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void) {
+function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number) {
   const handle: LaunchHandle = { account: selectedAccount, endpoint: "ws://127.0.0.1:42001", capabilityToken: "transient", stop: vi.fn(async () => undefined) };
   const launch = vi.fn(async () => handle);
   const openTerminal = vi.fn(async () => undefined);
@@ -14,7 +14,7 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
   const client = { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
   const credentialVersion = vi.fn<() => Promise<string | undefined>>(async () => "credential-v1");
-  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion });
+  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion, now });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
 }
 
@@ -161,19 +161,6 @@ describe("AccountManager", () => {
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
   });
 
-  it("rechecks an unauthenticated account when credential metadata is unreadable", async () => {
-    const { manager, launch, client, credentialVersion } = fixture();
-    await manager.connect({ account, password: "bot-password" });
-    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
-    credentialVersion.mockResolvedValue(undefined);
-
-    await manager.recoverChangedCredentials({ account, password: "bot-password" });
-
-    expect(client.close).toHaveBeenCalledOnce();
-    expect(launch).toHaveBeenCalledTimes(2);
-    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
-  });
-
   it("forces an authentication recheck when the operator reloads unchanged credentials", async () => {
     const { manager, launch, client } = fixture();
     await manager.connect({ account, password: "bot-password" });
@@ -184,6 +171,55 @@ describe("AccountManager", () => {
     expect(client.close).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledTimes(2);
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("coalesces overlapping authentication recoveries into one replacement", async () => {
+    let releaseOldClose!: () => void;
+    const oldClose = new Promise<void>((resolve) => { releaseOldClose = resolve; });
+    const handles = [1, 2, 3].map((index) => ({ account, endpoint: `ws://127.0.0.1:${42_000 + index}`, capabilityToken: `token-${index}`, stop: vi.fn(async () => undefined) }));
+    const clients = [
+      { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn(async () => []), close: vi.fn(() => oldClose) },
+      { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn(async () => []), close: vi.fn(async () => undefined) },
+      { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn(async () => []), close: vi.fn(async () => undefined) },
+    ];
+    let launchIndex = 0;
+    const launch = vi.fn(async () => handles[launchIndex++]);
+    const launcher = { launch, openTerminal: vi.fn(), openLoginTerminal: vi.fn(), shutdown: vi.fn() } as unknown as SuLauncher;
+    let credential = "credential-v1";
+    const manager = new AccountManager({ launcher, createClient: () => clients[launchIndex - 1], codexBin: "/opt/homebrew/bin/codex", credentialVersion: async () => credential });
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+    credential = "credential-v2";
+
+    const first = manager.recoverChangedCredentials({ account, password: "bot-password" });
+    await vi.waitFor(() => expect(clients[0].close).toHaveBeenCalledOnce());
+    const second = manager.recoverChangedCredentials({ account, password: "bot-password" });
+    await Promise.resolve();
+
+    expect(launch).toHaveBeenCalledOnce();
+    releaseOldClose();
+    await Promise.all([first, second]);
+
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(clients[1].close).not.toHaveBeenCalled();
+  });
+
+  it("backs off repeated automatic rechecks when credential metadata is unavailable", async () => {
+    let clock = 1_000;
+    const { manager, launch, client, credentialVersion } = fixture(account, undefined, () => clock);
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+    credentialVersion.mockResolvedValue(undefined);
+    client.connect.mockRejectedValueOnce(new Error("ACCOUNT_AUTH_REQUIRED"));
+
+    clock += 30_000;
+    await expect(manager.recoverChangedCredentials({ account, password: "bot-password" })).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledTimes(2);
+
+    clock += 60_000;
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledTimes(3);
   });
 
   it("does not replace an active account process while a turn is still running", async () => {

@@ -40,6 +40,7 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
             onNavigate(id);
           }} style={{ minWidth: 44, minHeight: 44, textDecoration: "none" }}>
             <Icon aria-hidden="true" size={20} strokeWidth={1.75} />
+            {variant === "mobile" ? <span className="app-nav__label">{label}</span> : null}
             {id === "chats" && hasBreakingChangeNotification ? <span className="notification-dot" role="img" aria-label="Breaking change notification" /> : null}
           </a>
         ))}

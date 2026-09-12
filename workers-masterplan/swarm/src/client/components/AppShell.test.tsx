@@ -18,7 +18,7 @@ describe("AppShell", () => {
       expect(getComputedStyle(control).minWidth).toBe("44px");
       expect(getComputedStyle(control).minHeight).toBe("44px");
       expect(control).toHaveAttribute("title", label);
-      expect(control).toHaveTextContent("");
+      expect(control.textContent).toBe("");
     }
   });
 
@@ -38,6 +38,10 @@ describe("AppShell", () => {
     render(<AppShell activePage="home" onNavigate={() => undefined}><p>Content</p></AppShell>);
 
     expect(screen.getByRole("navigation", { name: "Primary navigation" })).toHaveAttribute("data-variant", "mobile");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveTextContent("Home");
+    expect(screen.getByRole("link", { name: "Accounts" })).toHaveTextContent("Accounts");
+    expect(screen.getByRole("link", { name: "Flowchart" })).toHaveTextContent("Flowchart");
+    expect(screen.getByRole("link", { name: "Chats" })).toHaveTextContent("Chats");
   });
 
   it("marks Accounts as the current primary destination", () => {

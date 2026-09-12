@@ -17,6 +17,7 @@ export interface AccountManagerOptions {
   codexBin: string;
   onRateLimitReadError?: (account: AccountId, error: unknown) => void;
   credentialVersion?: (account: AccountId) => Promise<string | undefined>;
+  now?: () => number;
 }
 
 export interface ConnectAccountInput {
@@ -41,6 +42,8 @@ export class AccountManager {
   private readonly snapshots = new Map<AccountId, AccountSnapshot>();
   private readonly inFlight = new Map<AccountId, Promise<AccountSnapshot>>();
   private readonly credentialVersions = new Map<AccountId, string | undefined>();
+  private readonly recoveryRetryAt = new Map<AccountId, number>();
+  private readonly recoveryRetryDelayMs = new Map<AccountId, number>();
   private readonly listeners = new Set<(snapshot: AccountSnapshot) => void>();
   private shuttingDown = false;
 
@@ -49,14 +52,16 @@ export class AccountManager {
   connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
     if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
-    const existing = this.connections.get(input.account);
-    if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
-    if (existing) return this.disconnect(input.account).then(() => this.connect(input));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
+    const existing = this.connections.get(input.account);
+    if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
 
     this.setSnapshot(input.account, { connection: "connecting", authentication: "unknown" });
-    const connecting = this.open(input).finally(() => this.inFlight.delete(input.account));
+    const connecting = (async () => {
+      if (existing) await this.disconnect(input.account);
+      return this.open(input);
+    })().finally(() => this.inFlight.delete(input.account));
     this.inFlight.set(input.account, connecting);
     return connecting;
   }
@@ -102,6 +107,9 @@ export class AccountManager {
   recordRateLimitReadFailure(account: AccountId, error: unknown): AccountSnapshot {
     this.options.onRateLimitReadError?.(account, error);
     if (!isExpiredAuthentication(error)) return this.setSnapshot(account, { errorCode: "USAGE_UNAVAILABLE" });
+    const delay = this.recoveryRetryDelayMs.get(account) ?? 30_000;
+    this.recoveryRetryAt.set(account, (this.options.now?.() ?? Date.now()) + delay);
+    this.recoveryRetryDelayMs.set(account, Math.min(delay * 2, 15 * 60_000));
     return this.setSnapshot(account, {
       connection: "action_required",
       authentication: "unauthenticated",
@@ -115,7 +123,14 @@ export class AccountManager {
     const snapshot = this.requireSnapshot(input.account);
     if (snapshot.authentication !== "unauthenticated" || snapshot.activeTurns > 0) return snapshot;
     const current = await this.readCredentialVersion(input.account);
-    if (!options.force && current !== undefined && current === this.credentialVersions.get(input.account)) return snapshot;
+    const changed = current !== undefined && current !== this.credentialVersions.get(input.account);
+    if (!options.force && !changed) {
+      const now = this.options.now?.() ?? Date.now();
+      if (now < (this.recoveryRetryAt.get(input.account) ?? 0)) return snapshot;
+      const delay = this.recoveryRetryDelayMs.get(input.account) ?? 30_000;
+      this.recoveryRetryAt.set(input.account, now + delay);
+      this.recoveryRetryDelayMs.set(input.account, Math.min(delay * 2, 15 * 60_000));
+    }
     return this.connect(input);
   }
 
@@ -155,7 +170,10 @@ export class AccountManager {
         this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined });
         return this.recordRateLimitReadFailure(input.account, rateLimitError);
       }
-      return this.recordRateLimitReadSuccess(input.account, rateLimits);
+      const snapshot = this.recordRateLimitReadSuccess(input.account, rateLimits);
+      this.recoveryRetryAt.delete(input.account);
+      this.recoveryRetryDelayMs.delete(input.account);
+      return snapshot;
     } catch (error) {
       await handle?.stop();
       this.setSnapshot(input.account, {

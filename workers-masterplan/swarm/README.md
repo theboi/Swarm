@@ -187,8 +187,9 @@ configured CLI is at its default path:
 /usr/bin/su - bot3 -c '/opt/homebrew/bin/codex login'
 ```
 
-After that command succeeds, retry the account connection. Do not add a CLI or
-desktop fallback to the coordinator.
+After that command succeeds, Swarm rechecks the account automatically with
+bounded retry backoff. **Refresh usage** on Home or Accounts forces an immediate
+recheck. Do not add a CLI or desktop fallback to the coordinator.
 
 **Open Terminal** is available to a signed-in dashboard opened through
 localhost or one of this Mac's local/Tailscale addresses. Its separate control
@@ -215,7 +216,7 @@ launchctl kickstart -k "gui/$UID/com.edenmind.swarm"
 
 On an open dashboard, Swarm refreshes authenticated account usage once a
 minute. The Accounts sidebar also offers **Refresh usage** for an immediate
-manual refresh.
+manual usage and authentication refresh.
 
 Contained approvals that can be positively proven to stay inside the assigned
 EdenMind clone auto-continue. Ambiguous, dangerous, destructive, or
