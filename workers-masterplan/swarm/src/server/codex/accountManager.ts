@@ -57,9 +57,9 @@ export class AccountManager {
     const existing = this.connections.get(input.account);
     if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
 
-    this.setSnapshot(input.account, { connection: "connecting", authentication: "unknown" });
     const connecting = (async () => {
-      if (existing) await this.disconnect(input.account);
+      if (existing) await this.closeConnection(input.account);
+      this.setSnapshot(input.account, { connection: "connecting", authentication: "unknown", terminalCommand: undefined, errorCode: undefined });
       return this.open(input);
     })().finally(() => this.inFlight.delete(input.account));
     this.inFlight.set(input.account, connecting);
@@ -135,13 +135,17 @@ export class AccountManager {
   }
 
   async disconnect(account: AccountId): Promise<void> {
+    await this.closeConnection(account);
+    this.setSnapshot(account, { connection: "disconnected", authentication: "unknown", terminalCommand: undefined, errorCode: undefined });
+  }
+
+  private async closeConnection(account: AccountId): Promise<void> {
     const connection = this.connections.get(account);
     this.connections.delete(account);
     if (connection) {
       await connection.client.close();
       await connection.handle.stop();
     }
-    this.setSnapshot(account, { connection: "disconnected", authentication: "unknown", terminalCommand: undefined, errorCode: undefined });
   }
 
   async shutdown(): Promise<void> {

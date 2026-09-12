@@ -222,6 +222,21 @@ describe("AccountManager", () => {
     expect(launch).toHaveBeenCalledTimes(3);
   });
 
+  it("moves an initial authentication failure onto the bounded recovery schedule", async () => {
+    let clock = 1_000;
+    const { manager, launch, client } = fixture(account, undefined, () => clock);
+    client.connect.mockRejectedValueOnce(new Error("ACCOUNT_AUTH_REQUIRED")).mockRejectedValueOnce(new Error("ACCOUNT_AUTH_REQUIRED"));
+
+    await expect(manager.connect({ account, password: "bot-password" })).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    await expect(manager.recoverChangedCredentials({ account, password: "bot-password" })).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledTimes(2);
+
+    clock += 30_000;
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledTimes(3);
+  });
+
   it("does not replace an active account process while a turn is still running", async () => {
     const { manager, launch, handle, credentialVersion } = fixture();
     await manager.connect({ account, password: "bot-password" });

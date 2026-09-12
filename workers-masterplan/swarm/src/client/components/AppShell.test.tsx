@@ -31,6 +31,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "Accounts" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Flowchart" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Chats" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Home" }).textContent).toBe("");
   });
 
   it("uses fixed bottom navigation on mobile", () => {

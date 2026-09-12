@@ -731,28 +731,18 @@ async function createRuntime(config: SwarmConfig) {
     intervalMs: 15_000,
     log: (error) => logger.warn("autoPilot", { event: "reconcile_failed", error: error.message }),
   });
-  const accountRetryTimers = new Map<AccountId, NodeJS.Timeout>();
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
   const credentialRefreshTimer = setInterval(() => {
     void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] })));
   }, 15_000);
   credentialRefreshTimer.unref();
-  const connectWithRetry = async (id: AccountId): Promise<void> => {
+  const connectInitialAccount = async (id: AccountId): Promise<void> => {
     if (shuttingDown) return;
     try {
       await services.connectAccount(id);
       await threads(id);
-      const timer = accountRetryTimers.get(id);
-      if (timer) clearTimeout(timer);
-      accountRetryTimers.delete(id);
-    } catch {
-      if (shuttingDown) return;
-      if (accountRetryTimers.has(id)) return;
-      const timer = setTimeout(() => { accountRetryTimers.delete(id); void connectWithRetry(id); }, 30_000);
-      timer.unref();
-      accountRetryTimers.set(id, timer);
-    }
+    } catch { /* AccountManager's credential recovery scheduler owns bounded retries. */ }
   };
   const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => {
     shuttingDown = true;
@@ -761,7 +751,6 @@ async function createRuntime(config: SwarmConfig) {
     clearTimeout(gitStartTimer);
     clearInterval(credentialRefreshTimer);
     gitSynchronizer.stop();
-    for (const timer of accountRetryTimers.values()) clearTimeout(timer);
     for (const id of rateWaitTimers.keys()) clearRateWait(id);
     for (const timer of limitResumeTimers.values()) clearTimeout(timer);
     await autoPilot.whenIdle();
@@ -781,7 +770,7 @@ async function createRuntime(config: SwarmConfig) {
   });
   void (async () => {
     for (let index = 0; index < accountIds.length; index += 2) {
-      await Promise.all(accountIds.slice(index, index + 2).map((id) => connectWithRetry(id)));
+      await Promise.all(accountIds.slice(index, index + 2).map((id) => connectInitialAccount(id)));
     }
     await snapshot().catch((error) => logger.warn("assignments", { event: "startup_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
     if (shuttingDown) return;
