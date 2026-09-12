@@ -41,7 +41,7 @@ test.describe("Home dashboard", () => {
       await page.keyboard.press("Escape");
 
       await page.getByRole("link", { name: "Flowchart" }).click();
-      await expect(page.getByRole("heading", { name: "Flowchart" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Flowchart" })).toBeVisible();
       await page.getByRole("link", { name: "Chats" }).click();
       await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
       await page.getByRole("link", { name: "Home" }).click();

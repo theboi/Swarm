@@ -7,7 +7,7 @@ import { setViewport } from "../test/fixtures";
 afterEach(cleanup);
 
 describe("AppShell", () => {
-  it("uses a labeled desktop rail with 44px navigation controls", () => {
+  it("uses an icon-only desktop rail with accessible 44px navigation controls", () => {
     setViewport(1440);
     render(<AppShell activePage="home" onNavigate={() => undefined}><p>Content</p></AppShell>);
 
@@ -17,6 +17,8 @@ describe("AppShell", () => {
       const control = screen.getByRole("link", { name: label });
       expect(getComputedStyle(control).minWidth).toBe("44px");
       expect(getComputedStyle(control).minHeight).toBe("44px");
+      expect(control).toHaveAttribute("title", label);
+      expect(control).toHaveTextContent("");
     }
   });
 

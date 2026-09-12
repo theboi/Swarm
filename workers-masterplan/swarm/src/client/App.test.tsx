@@ -53,7 +53,7 @@ describe("App", () => {
     await screen.findByRole("heading", { name: "Home" });
     screen.getByRole("link", { name: "Flowchart" }).focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("heading", { name: "Flowchart" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Flowchart" })).toBeVisible();
 
     screen.getByRole("link", { name: "Chats" }).focus();
     await user.keyboard("{Enter}");
@@ -102,7 +102,7 @@ describe("App", () => {
     expect(flowchart).toHaveAttribute("href", "/flowchart");
     await user.click(flowchart);
 
-    expect(screen.getByRole("heading", { name: "Flowchart" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Flowchart" })).toBeVisible();
     expect(window.location.pathname).toBe("/flowchart");
   });
 
@@ -120,7 +120,7 @@ describe("App", () => {
   it("uses popstate to restore a prior canonical page", async () => {
     window.history.replaceState(null, "", "/flowchart");
     render(<App api={api} />);
-    await screen.findByRole("heading", { name: "Flowchart" });
+    await screen.findByRole("region", { name: "Flowchart" });
 
     await act(async () => {
       window.history.replaceState(null, "", "/accounts");

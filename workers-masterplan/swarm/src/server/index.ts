@@ -15,7 +15,7 @@ import type { ApprovalJournalEntry } from "./codex/approvalRouter.js";
 import { ApprovalRouter } from "./codex/approvalRouter.js";
 import { AccountManager } from "./codex/accountManager.js";
 import { AppServerClient } from "./codex/appServerClient.js";
-import { AccountRateLimitRefresher } from "./codex/rateLimitRefresh.js";
+import { AccountRateLimitRefresher, refreshAllAccountRateLimits } from "./codex/rateLimitRefresh.js";
 import { JsonRpcClient } from "./codex/jsonRpcClient.js";
 import { LocalRolloutTranscriptReader } from "./codex/localRolloutReader.js";
 import { readWorkspaceMarkdown } from "./codex/safeFileReader.js";
@@ -348,7 +348,7 @@ async function createRuntime(config: SwarmConfig) {
   const rateLimitRefresher = new AccountRateLimitRefresher({
     prepare: async (id) => {
       if (accounts.snapshot(id).authentication !== "unauthenticated") return;
-      await accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+      await accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] }, { force: true });
     },
     read: async (id) => (await liveClient(id)).readRateLimitWindows(),
     current: (id) => accounts.snapshot(id),
@@ -373,10 +373,7 @@ async function createRuntime(config: SwarmConfig) {
     return cacheThreads(id, recovered);
   };
   const refreshAllRateLimits = async () => {
-    await Promise.allSettled(accountSnapshot().filter((account) =>
-      (account.connection === "connected" && account.authentication === "authenticated")
-      || (account.connection === "action_required" && Boolean(accounts.client(account.id)?.isConnected())),
-    ).map((account) => updateRateLimits(account.id)));
+    await refreshAllAccountRateLimits(accountSnapshot(), updateRateLimits);
     await Promise.allSettled(limitResumes.list().filter((record) => record.state === "waiting_for_limit").map((record) => scheduleLimitResume(record.accountId, record.threadId)));
     return accountSnapshot();
   };

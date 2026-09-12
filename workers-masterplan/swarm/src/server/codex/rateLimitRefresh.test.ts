@@ -1,8 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AccountSnapshot, RateLimitWindow } from "../../shared/contracts.js";
-import { AccountRateLimitRefresher } from "./rateLimitRefresh.js";
+import { AccountRateLimitRefresher, refreshAllAccountRateLimits } from "./rateLimitRefresh.js";
 
 describe("AccountRateLimitRefresher", () => {
+  it("rechecks accounts requiring authentication during a full reload", async () => {
+    const refresh = vi.fn(async () => undefined);
+    const accounts = [
+      { id: "bot1", connection: "action_required", authentication: "unauthenticated", activeTurns: 0, lastAssignedAt: null, rateLimits: [] },
+      { id: "bot2", connection: "disconnected", authentication: "unknown", activeTurns: 0, lastAssignedAt: null, rateLimits: [] },
+    ] as AccountSnapshot[];
+
+    await refreshAllAccountRateLimits(accounts, refresh);
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith("bot1");
+  });
+
   it("serializes overlapping probes so a newer success is applied after an older failure", async () => {
     let rejectFirst!: (error: Error) => void;
     const first = new Promise<RateLimitWindow[]>((_resolve, reject) => { rejectFirst = reject; });

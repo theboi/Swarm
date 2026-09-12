@@ -111,11 +111,11 @@ export class AccountManager {
   }
 
   /** Replaces a stale unauthenticated app-server after its account credentials change. */
-  async recoverChangedCredentials(input: ConnectAccountInput): Promise<AccountSnapshot> {
+  async recoverChangedCredentials(input: ConnectAccountInput, options: { force?: boolean } = {}): Promise<AccountSnapshot> {
     const snapshot = this.requireSnapshot(input.account);
     if (snapshot.authentication !== "unauthenticated" || snapshot.activeTurns > 0) return snapshot;
     const current = await this.readCredentialVersion(input.account);
-    if (current === undefined || current === this.credentialVersions.get(input.account)) return snapshot;
+    if (!options.force && current !== undefined && current === this.credentialVersions.get(input.account)) return snapshot;
     return this.connect(input);
   }
 

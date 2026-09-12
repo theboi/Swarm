@@ -1,5 +1,11 @@
 import type { AccountId, AccountSnapshot, RateLimitWindow } from "../../shared/contracts.js";
 
+export async function refreshAllAccountRateLimits(accounts: AccountSnapshot[], refresh: (accountId: AccountId) => Promise<unknown>): Promise<void> {
+  await Promise.allSettled(accounts
+    .filter((account) => (account.connection === "connected" && account.authentication === "authenticated") || account.connection === "action_required" || account.authentication === "unauthenticated")
+    .map((account) => refresh(account.id)));
+}
+
 /** Serializes account usage probes so stale failures cannot overwrite newer success. */
 export class AccountRateLimitRefresher {
   private readonly tails = new Map<AccountId, Promise<AccountSnapshot>>();

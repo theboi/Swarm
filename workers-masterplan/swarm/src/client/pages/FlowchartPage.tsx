@@ -2,7 +2,7 @@ import { Background, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlo
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AccountId, ChatExecutionSettings, CoordinatorSnapshot, ManifestPass, TaskNode, TaskState, WorkerAssignmentRecord } from "../../shared/contracts.js";
+import type { AccountId, ChatExecutionSettings, CoordinatorSnapshot, ManifestPass, TaskNode, WorkerAssignmentRecord } from "../../shared/contracts.js";
 import type { CoordinatorApi, LaunchPreview } from "../api.js";
 import { LaunchDialog, type ChatTarget } from "./HomePage.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
@@ -10,7 +10,6 @@ import { StatusBadge } from "../components/StatusBadge.js";
 import { Toast } from "../components/Toast.js";
 import { saveThreadExecutionSettings } from "../turnSettings.js";
 
-type Filter = "all" | "ready" | "blocked" | "running" | "complete";
 type TaskFlowNode = Node<{ task: TaskNode; assignment?: WorkerAssignmentRecord; onSelect: (task: TaskNode) => void }, "task">;
 
 function TaskGraphNode({ data }: NodeProps<TaskFlowNode>) {
@@ -121,7 +120,6 @@ type FlowLaunchApi = Pick<CoordinatorApi, "previewLaunch" | "launch"> & Partial<
 export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, initialViewport = { x: 0, y: 0, zoom: 1 } }: { snapshot: CoordinatorSnapshot; api?: FlowLaunchApi; onOpenChat: (threadId: string) => void; onOpenLaunchedChat?: (target: ChatTarget) => void; initialViewport?: Viewport }) {
   const [pass, setPass] = useState<ManifestPass>(() => snapshot.taskPasses?.execution?.length ? "execution" : "planning");
   const passSelectedByUser = useRef(false);
-  const [filter, setFilter] = useState<Filter>("all");
   const [selectedTask, setSelectedTask] = useState<TaskNode | null>(null);
   const [preview, setPreview] = useState<LaunchPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,11 +142,9 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
     if (!passSelectedByUser.current && snapshot.taskPasses?.execution?.length) setPass("execution");
   }, [snapshot.taskPasses?.execution?.length]);
   const passTasks = snapshot.taskPasses?.[pass] ?? (pass === "planning" ? snapshot.tasks : []);
-  const visibleTasks = useMemo(() => passTasks.filter((task) => filter === "all" || task.readiness.state === filter), [filter, passTasks]);
-  useEffect(() => { if (filter !== "all" && passTasks.length > 0 && visibleTasks.length === 0) setFilter("all"); }, [filter, passTasks.length, visibleTasks.length]);
   const passAssignments = snapshot.workerAssignments?.filter((assignment) => (assignment.pass ?? "planning") === pass);
-  const nodes = useMemo(() => taskNodes(visibleTasks, selectTask, passTasks, passAssignments), [passAssignments, passTasks, selectTask, visibleTasks]);
-  const edges = useMemo(() => taskEdges(visibleTasks), [visibleTasks]);
+  const nodes = useMemo(() => taskNodes(passTasks, selectTask, passTasks, passAssignments), [passAssignments, passTasks, selectTask]);
+  const edges = useMemo(() => taskEdges(passTasks), [passTasks]);
   const selectedAssignment = selectedTask ? passAssignments?.find((assignment) => assignment.taskId === selectedTask.id) : undefined;
   const selectedThread = selectedAssignment?.threadId ?? (selectedTask ? snapshot.dispatches.find((dispatch) => dispatch.taskId === selectedTask.id)?.threadId : undefined);
   const reviewLaunch = async (task: TaskNode, accountId?: AccountId) => {
@@ -193,15 +189,13 @@ export function FlowchartPage({ snapshot, api, onOpenChat, onOpenLaunchedChat, i
   };
 
   return (
-    <section className="flowchart-page" aria-labelledby="flowchart-title">
-      <header><p className="eyebrow">Dependency graph</p><h1 id="flowchart-title">Flowchart</h1></header>
+    <section className="flowchart-page" aria-label="Flowchart">
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
       <label className="auto-pilot-toggle">
         <span className="auto-pilot-toggle__copy"><strong>Auto-pilot</strong><small>Assign ready work to idle bot accounts</small></span>
         <input type="checkbox" role="switch" aria-label="Auto-pilot" checked={autoPilotEnabled} disabled={autoPilotPending || !api?.setAutoPilot} onChange={(event) => void changeAutoPilot(event.currentTarget.checked)} />
       </label>
-      <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "execution"} onClick={() => { passSelectedByUser.current = true; setPass("execution"); setFilter("all"); setSelectedTask(null); }}>Pass 2 · Execution</button><button role="tab" aria-selected={pass === "planning"} onClick={() => { passSelectedByUser.current = true; setPass("planning"); setFilter("all"); setSelectedTask(null); }}>Pass 1 · Planning</button></div>
-      <div className="flow-filters" aria-label="Task state filters">{(["all", "ready", "blocked", "running", "complete"] as Filter[]).map((state) => <button key={state} type="button" aria-pressed={filter === state} onClick={() => setFilter(state)}>Show {state} tasks</button>)}</div>
+      <div className="flow-pass-tabs" role="tablist" aria-label="Worker pass"><button role="tab" aria-selected={pass === "execution"} onClick={() => { passSelectedByUser.current = true; setPass("execution"); setSelectedTask(null); }}>Pass 2 · Execution</button><button role="tab" aria-selected={pass === "planning"} onClick={() => { passSelectedByUser.current = true; setPass("planning"); setSelectedTask(null); }}>Pass 1 · Planning</button></div>
       <div className="flow-layout">
         <div className="flowchart-surface" data-testid="flowchart-surface" data-viewport={`${viewport.x},${viewport.y},${viewport.zoom}`}>
           <ReactFlowProvider>

@@ -13,7 +13,7 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
   const launcher = { launch, openTerminal, openLoginTerminal, shutdown: vi.fn(async () => undefined) } as unknown as SuLauncher;
   const client = { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
-  const credentialVersion = vi.fn(async () => "credential-v1");
+  const credentialVersion = vi.fn<() => Promise<string | undefined>>(async () => "credential-v1");
   const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
 }
@@ -157,6 +157,31 @@ describe("AccountManager", () => {
 
     expect(client.close).toHaveBeenCalledOnce();
     expect(handle.stop).toHaveBeenCalledOnce();
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("rechecks an unauthenticated account when credential metadata is unreadable", async () => {
+    const { manager, launch, client, credentialVersion } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+    credentialVersion.mockResolvedValue(undefined);
+
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+
+    expect(client.close).toHaveBeenCalledOnce();
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("forces an authentication recheck when the operator reloads unchanged credentials", async () => {
+    const { manager, launch, client } = fixture();
+    await manager.connect({ account, password: "bot-password" });
+    manager.recordRateLimitReadFailure(account, new Error("401 Unauthorized; token_revoked"));
+
+    await manager.recoverChangedCredentials({ account, password: "bot-password" }, { force: true });
+
+    expect(client.close).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledTimes(2);
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
   });
