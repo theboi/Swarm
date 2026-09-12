@@ -20,7 +20,7 @@ const viewports = [
 
 test.describe("Flowchart", () => {
   for (const viewport of viewports) {
-    test(`filters and zooms the shared graph on ${viewport.name}`, async ({ page }) => {
+    test(`shows and zooms the unfiltered shared graph on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await signIn(page);
       await page.getByRole("link", { name: "Flowchart" }).click();
@@ -33,12 +33,9 @@ test.describe("Flowchart", () => {
       await expect(surface.locator(".react-flow__edge path[marker-end]")).not.toHaveCount(0);
       await page.locator(".react-flow__controls-zoomin").click();
       await expect(surface).not.toHaveAttribute("data-viewport", "0,0,1");
-
-      const blockedFilter = page.getByRole("button", { name: "Show blocked tasks" });
-      await blockedFilter.click();
-      await expect(blockedFilter).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("button", { name: "I0 Integration blocked" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "T0 Graph planning running" })).toHaveCount(0);
+      await expect(page.getByLabel("Task state filters")).toHaveCount(0);
+      await expect(page.getByText("Dependency graph", { exact: true })).toHaveCount(0);
     });
   }
 
@@ -46,7 +43,6 @@ test.describe("Flowchart", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     await page.getByRole("link", { name: "Flowchart" }).click();
-    await page.getByRole("button", { name: "Show blocked tasks" }).click();
     await page.getByRole("button", { name: "I0 Integration blocked" }).click();
 
     const surfaceBox = await page.getByTestId("flowchart-surface").boundingBox();
