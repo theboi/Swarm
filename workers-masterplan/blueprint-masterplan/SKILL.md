@@ -199,12 +199,14 @@ Every worker prompt includes this instruction exactly:
 
 Every worker prompt also includes this document lock exactly:
 
-> Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
+> Old MVP2 and earlier Markdown documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
 
 This hard lock overrides every authority-sync, propagation, status, acceptance,
-or recovery instruction. Locked documents may be consulted as historical
-evidence, but workers never propose or make changes to them without a new,
-explicit user instruction naming the exception.
+or recovery instruction. Locked Markdown documents may be consulted as
+historical evidence, but workers never propose or make changes to them without
+a new, explicit user instruction naming the exception. This lock does not
+restrict MVP2-and-earlier runtime code, tests, fixtures, or other non-Markdown
+artifacts.
 
 Present the blueprint, relevant authorities, brief, handoffs, specifications,
 plans, and receipts as an authority map. Tell the worker to start the bounded
@@ -657,7 +659,7 @@ Before freezing:
 - verify living-authority changes require downstream-impact assessment and all relevant downstream document updates;
 - verify every downstream worker launch contract requires direct takeover of a proven failed upstream prerequisite, bounded to the missing dependency, with no user question or retry handoff to the original worker;
 - verify every worker prompt contains the exact recommended-decision and blocking-worker recovery instruction;
-- verify every worker prompt contains the exact hard lock against modifying, or suggesting modifications to, old MVP2-and-earlier documents without explicit user authorization;
+- verify every worker prompt contains the exact hard lock against modifying, or suggesting modifications to, old MVP2-and-earlier Markdown documents without explicit user authorization;
 - verify every worker prompt supplies an authority map with just-in-time lookup instead of front-loaded complete document reads;
 - verify every planning/execution prompt requires direct pre-production replacement without legacy adapters, unnecessary compatibility/fallback paths, or duplicated old/new implementations;
 - scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
