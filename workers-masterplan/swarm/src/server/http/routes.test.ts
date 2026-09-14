@@ -192,6 +192,14 @@ describe("coordinator HTTP routes", () => {
       },
     });
 
+    (services.moveThreadToAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("LOCAL_HANDOFF_CLEANUP_FAILED: persistent cleanup failure"));
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot4" }).expect(503, {
+      error: {
+        code: "LOCAL_HANDOFF_CLEANUP_FAILED",
+        message: "Swarm copied the handoff but could not clean up its local staging data. Check local filesystem permissions before trying again.",
+      },
+    });
+
     expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2", settings);
   });
 

@@ -1,11 +1,15 @@
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
 import { LocalJsonlHandoffTransport } from "./localHandoffTransport.js";
 import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
+
+const run = promisify(execFile);
 
 function summary(accountId: AccountId, id: string): ThreadSummary {
   return {
@@ -127,13 +131,16 @@ describe("createJsonlContinuation", () => {
     const stagingRoot = join(root, "coordinator", ".data", "handoffs");
     const targetWorkspace = join(root, "bot5", "Dev", "EdenMind");
     await mkdir(targetWorkspace, { recursive: true });
+    await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
+    await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
     const targetError = new Error("target turn rejected");
     const transport = new LocalJsonlHandoffTransport({
       stagingRoot,
       workspaceFor: () => targetWorkspace,
       passwords: { bot5: "target-password" },
       copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
-      grantTargetRead: async () => undefined,
+      grantTargetAccess: async () => undefined,
+      revokeTargetAccess: async () => undefined,
     });
 
     try {
@@ -151,7 +158,7 @@ describe("createJsonlContinuation", () => {
       })).rejects.toBe(targetError);
 
       expect(await readdir(stagingRoot)).toEqual([]);
-      expect(await readdir(targetWorkspace)).toEqual([expect.stringMatching(/^swarm-handoff-bot3-[a-f0-9]{12}\.jsonl$/)]);
+      expect(await readdir(targetWorkspace)).toContainEqual(expect.stringMatching(/^swarm-handoff-bot3-[a-f0-9]{12}\.jsonl$/));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
