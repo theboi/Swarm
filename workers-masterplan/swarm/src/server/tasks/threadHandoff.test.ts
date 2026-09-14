@@ -100,6 +100,25 @@ describe("createJsonlContinuation", () => {
     }));
   });
 
+  it("keeps a profile ID in handoff attribution without placing its slash in the attachment filename", async () => {
+    const continuationTarget = target();
+
+    await createJsonlContinuation({
+      sourceAccountId: "bot1/acc2",
+      sourceThreadId: "source-thread",
+      sourceName: null,
+      targetAccountId: "bot1/acc1",
+      targetWorkspace: "/Users/bot1/Dev/EdenMind",
+      jsonl: "{\"type\":\"session_meta\"}\n",
+      clientUserMessageId: "handoff-message",
+      target: continuationTarget,
+      normalizeThread: (source) => summary("bot1/acc1", String(source.id)),
+    });
+
+    expect(continuationTarget.writeFile).toHaveBeenCalledWith(expect.stringMatching(/swarm-handoff-bot1-acc2-[a-f0-9]{12}\.jsonl$/), expect.any(String));
+    expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("source account bot1/acc2") }));
+  });
+
   it("propagates a target start-turn error", async () => {
     const targetError = new Error("target turn rejected");
     const continuationTarget = target(vi.fn(async () => { throw targetError; }));

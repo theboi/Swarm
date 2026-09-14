@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readWorkspaceMarkdown } from "./safeFileReader.js";
+import type { CodexAccountSlot } from "../../shared/contracts.js";
 
 let directory: string | undefined;
 
@@ -42,6 +43,16 @@ describe("readWorkspaceMarkdown", () => {
       filename: "src.ts",
       text: "export const ready = true;\n",
     });
+  });
+
+  it("uses the explicit profile checkout for bot1/acc2", async () => {
+    const root = await workspace();
+    const slot: CodexAccountSlot = { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: root };
+    const readFile = vi.fn(async () => ({ dataBase64: Buffer.from("# acc2\n", "utf8").toString("base64") }));
+
+    await readWorkspaceMarkdown({ account: slot.id, slot, requestedPath: "docs/guide.md", appServer: { readFile } });
+
+    expect(readFile).toHaveBeenCalledWith(await realpath(join(root, "docs", "guide.md")));
   });
 
   it("rejects traversal, another account home, and symlink escapes before app-server file access", async () => {

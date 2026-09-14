@@ -59,7 +59,7 @@ export interface MoveWithJsonlInput {
 
 function handoffFilename(sourceAccountId: AccountId, sourceThreadId: string): string {
   const suffix = createHash("sha256").update(`${sourceAccountId}\u0000${sourceThreadId}`).digest("hex").slice(0, 12);
-  return `swarm-handoff-${sourceAccountId}-${suffix}.jsonl`;
+  return `swarm-handoff-${sourceAccountId.replace(/[^A-Za-z0-9_-]/g, "-")}-${suffix}.jsonl`;
 }
 
 export async function createJsonlContinuation(input: JsonlContinuationInput): Promise<ThreadSummary> {

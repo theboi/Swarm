@@ -1,4 +1,4 @@
-import { LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CodexAccountSlot, type MacosBotId } from "../../shared/contracts.js";
 import { isAbsolute, resolve } from "node:path";
 
 /** The Codex app-server wire protocol deliberately omits a JSON-RPC version field. */
@@ -131,23 +131,32 @@ export interface SafeTurnSettings {
   serviceTier?: string;
 }
 
+function legacyWorkspaceRoot(macosUser: MacosBotId): string {
+  return `/Users/${macosUser}/Dev/EdenMind`;
+}
+
 export function clonePath(account: AccountId): string {
-  return `/Users/${account}/Dev/EdenMind`;
+  if (!isMacosBotId(account)) throw new Error("A logical profile requires an explicit workspace slot");
+  return legacyWorkspaceRoot(account);
 }
 
 /** The local account works in the coordinator checkout; bot accounts stay in their isolated clones. */
-export function workspaceRoot(account: AccountId, localWorkspaceRoot?: string): string {
+export function workspaceRoot(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): string {
+  if (typeof account === "object") {
+    if (!isAbsolute(account.workspaceRoot)) throw new Error("Workspace root must be absolute");
+    return resolve(account.workspaceRoot);
+  }
   if (account !== LOCAL_ACCOUNT_ID || !localWorkspaceRoot) return clonePath(account);
   if (!isAbsolute(localWorkspaceRoot)) throw new Error("Local workspace root must be absolute");
   return resolve(localWorkspaceRoot);
 }
 
-export function safeThreadSettings(account: AccountId, localWorkspaceRoot?: string): SafeThreadSettings {
+export function safeThreadSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): SafeThreadSettings {
   const cwd = workspaceRoot(account, localWorkspaceRoot);
   return { cwd, approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
 }
 
-export function safeTurnSettings(account: AccountId, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {
+export function safeTurnSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {
   const cwd = workspaceRoot(account, localWorkspaceRoot);
   const overrides = {
     ...(selected.model ? { model: selected.model } : {}),

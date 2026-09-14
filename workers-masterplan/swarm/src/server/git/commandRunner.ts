@@ -2,7 +2,7 @@ import { spawn as spawnChildProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
 import { fileURLToPath } from "node:url";
 
-import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type CodexAccountSlot } from "../../shared/contracts.js";
 import { GitMergeConflictError } from "./sync.js";
 
 function quote(value: string): string {
@@ -35,6 +35,15 @@ export interface BotPtyProcess {
 
 export type SpawnBotPty = (file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }) => BotPtyProcess;
 export type RunBotCommand = (account: BotAccountId, password: string, command: string) => Promise<number>;
+
+function legacyWorkspaceRoot(macosUser: BotAccountId): string {
+  return `/Users/${macosUser}/Dev/EdenMind`;
+}
+
+function botWorkspace(account: Exclude<AccountId, typeof LOCAL_ACCOUNT_ID> | CodexAccountSlot): { macosUser: BotAccountId; workspaceRoot: string } | undefined {
+  if (typeof account !== "string") return { macosUser: account.macosUser, workspaceRoot: account.workspaceRoot };
+  return isMacosBotId(account) ? { macosUser: account, workspaceRoot: legacyWorkspaceRoot(account) } : undefined;
+}
 
 const spawnManagedBotPty: SpawnBotPty = (file, args, options) => {
   const child = spawnPty(file, args, options);
@@ -144,21 +153,22 @@ export class GitCommandRunner {
     throw new Error("Git synchronization failed");
   }
 
-  async pullAccount(account: AccountId): Promise<void | "skipped"> {
+  async pullAccount(account: AccountId | CodexAccountSlot): Promise<void | "skipped"> {
     if (account === LOCAL_ACCOUNT_ID) return this.pullLocal();
-    if (!isMacosBotId(account)) return "skipped";
-    const password = this.passwords[account];
+    const target = botWorkspace(account);
+    if (!target) return "skipped";
+    const password = this.passwords[target.macosUser];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");
-    const root = quote(`/Users/${account}/Dev/EdenMind`);
+    const root = quote(target.workspaceRoot);
     const command = `${git} -C ${root} pull --no-rebase --no-edit origin main; pull_code=$?; if [ "$pull_code" -eq 0 ]; then exit 0; fi; ${git} -C ${root} diff --quiet --diff-filter=U; conflict_code=$?; if [ "$conflict_code" -eq 1 ]; then exit 86; fi; exit "$pull_code"`;
-    const exitCode = await this.runAsBotExitCode(account, password, command);
+    const exitCode = await this.runAsBotExitCode(target.macosUser, password, command);
     if (exitCode === 86) throw new GitMergeConflictError();
     if (exitCode !== 0) throw new Error("Git synchronization failed");
   }
 
   /** Checkpoints all workspace changes and pushes them before a limit stop or account handoff. */
-  async checkpointAndPush(account: AccountId): Promise<void | "skipped"> {
+  async checkpointAndPush(account: AccountId | CodexAccountSlot): Promise<void | "skipped"> {
     const message = "chore: checkpoint swarm handoff";
     if (account === LOCAL_ACCOUNT_ID) {
       await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "add", "-A"], { stdio: "ignore" }));
@@ -177,19 +187,20 @@ export class GitCommandRunner {
       await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "push", "origin", "HEAD:main"], { stdio: "ignore" }));
       return;
     }
-    if (!isMacosBotId(account)) return "skipped";
-    const password = this.passwords[account];
+    const target = botWorkspace(account);
+    if (!target) return "skipped";
+    const password = this.passwords[target.macosUser];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");
-    const root = quote(`/Users/${account}/Dev/EdenMind`);
+    const root = quote(target.workspaceRoot);
     const checkpoint = `${git} -C ${root} add -A && (${git} -C ${root} diff --cached --quiet || ${git} -C ${root} commit -m ${quote(message)})`;
     const rebase = `${git} -C ${root} fetch origin main && (${git} -C ${root} rebase origin/main || { ${git} -C ${root} rebase --abort >/dev/null 2>&1 || true; exit 86; })`;
-    await this.runAsBot(account, password, `${checkpoint} && ${rebase} && ${git} -C ${root} push origin HEAD:main`);
+    await this.runAsBot(target.macosUser, password, `${checkpoint} && ${rebase} && ${git} -C ${root} push origin HEAD:main`);
   }
 
   async pushBot(account: BotAccountId): Promise<void | "skipped"> {
     const password = this.passwords[account];
     if (!password) return "skipped";
-    await this.runAsBot(account, password, `${quote("/usr/bin/git")} -C ${quote(`/Users/${account}/Dev/EdenMind`)} push origin main`);
+    await this.runAsBot(account, password, `${quote("/usr/bin/git")} -C ${quote(legacyWorkspaceRoot(account))} push origin main`);
   }
 }

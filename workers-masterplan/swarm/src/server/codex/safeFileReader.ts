@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
-import type { AccountId } from "../../shared/contracts.js";
+import type { AccountId, CodexAccountSlot } from "../../shared/contracts.js";
 import { clonePath } from "./protocol.js";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -13,6 +13,8 @@ export interface ReadWorkspaceMarkdownInput {
   account: AccountId;
   requestedPath: string;
   appServer: MarkdownFileClient;
+  /** Validated profile metadata required whenever the account is a logical profile. */
+  slot?: CodexAccountSlot;
   /** Coordinator-owned root for the direct local account; bots use their assigned clone. */
   workspaceRoot?: string;
 }
@@ -31,7 +33,8 @@ function decodeBase64(value: string): Buffer {
 
 /** Reads only a realpath-proven workspace file through the owning app-server. */
 export async function readWorkspaceMarkdown(input: ReadWorkspaceMarkdownInput): Promise<{ path: string; filename: string; text: string }> {
-  const configuredRoot = input.workspaceRoot ?? clonePath(input.account);
+  if (input.slot && input.slot.id !== input.account) throw new Error("Profile slot does not match requested account");
+  const configuredRoot = input.slot?.workspaceRoot ?? input.workspaceRoot ?? clonePath(input.account);
   const root = await realpath(configuredRoot);
   const requested = resolve(root, input.requestedPath);
   if (!contained(root, requested)) throw new Error("FILE_OUTSIDE_WORKSPACE: requested path is outside workspace");

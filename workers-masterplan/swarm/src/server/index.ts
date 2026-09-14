@@ -120,6 +120,12 @@ async function createRuntime(config: SwarmConfig) {
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
   const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
   const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
+  const legacyCodexHome = (macosUser: import("../shared/contracts.js").MacosBotId): string => `/Users/${macosUser}/.codex`;
+  const codexHomeForAccount = (account: AccountId): string => {
+    if (account === LOCAL_ACCOUNT_ID) return process.env.CODEX_HOME ?? `/Users/${config.localAccount}/.codex`;
+    if (isMacosBotId(account)) return legacyCodexHome(account);
+    throw new Error("A logical profile requires an explicit Codex home slot");
+  };
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
   let requestAutoPilot = () => undefined;
@@ -150,7 +156,7 @@ async function createRuntime(config: SwarmConfig) {
     openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
-  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(`/Users/${account}/.codex`)]));
+  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   const autoPilotRecoveryGuard = new AutoPilotRecoveryGuard();
@@ -207,7 +213,7 @@ async function createRuntime(config: SwarmConfig) {
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     credentialVersion: async (account) => {
       try {
-        const value = await stat(`/Users/${account}/.codex/auth.json`);
+        const value = await stat(resolve(codexHomeForAccount(account), "auth.json"));
         return `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}`;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
