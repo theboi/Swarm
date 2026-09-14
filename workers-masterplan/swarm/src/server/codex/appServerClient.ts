@@ -63,6 +63,16 @@ function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
+function isHttpsVerificationUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 function turnLimitExhausted(value: unknown): boolean {
   const error = object(object(value)?.error);
   if (error?.codexErrorInfo === "sessionBudgetExceeded" || error?.codexErrorInfo === "usageLimitExceeded") return true;
@@ -383,7 +393,7 @@ export class AppServerClient {
       ? response.verificationUrl
       : typeof response?.url === "string" ? response.url : undefined;
     const userCode = typeof response?.userCode === "string" ? response.userCode : undefined;
-    if (!loginId || !verificationUrl || (method === "device_code" && !userCode)) throw new Error("DEVICE_AUTH_UNAVAILABLE");
+    if (!loginId || !isHttpsVerificationUrl(verificationUrl) || (method === "device_code" && !userCode)) throw new Error("DEVICE_AUTH_UNAVAILABLE");
     const accountId = isBotProfileAccountId(this.account)
       ? this.account
       : isMacosBotId(this.account) ? `${this.account}/acc1` as BotProfileAccountId : undefined;

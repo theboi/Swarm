@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; loginVerificationUrl?: string; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -53,6 +53,7 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
     if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
+    if (message.method === "account/login/start") reply({ loginId: "login-1", verificationUrl: options.loginVerificationUrl ?? "https://auth.example.test/device", userCode: "ABCD-EFGH" });
     if (message.method === "thread/resume" && options.threadResumeError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadResumeError } }));
     else if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
     if (message.method === "turn/start" && options.turnStartErrorOnce && !turnStartFailed) {
@@ -168,6 +169,13 @@ describe("AppServerClient", () => {
     expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgptDeviceCode" });
     expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgpt" });
     expect(rpc.request).toHaveBeenCalledWith("account/login/cancel", { loginId: "login-1" });
+  });
+
+  it("rejects a non-HTTPS verification URL before it reaches the dashboard", async () => {
+    const client = await readyClient({ loginVerificationUrl: "javascript:alert(1)" });
+
+    await expect(client.startDeviceLogin()).rejects.toThrow("DEVICE_AUTH_UNAVAILABLE");
+    await client.close();
   });
 
   it("installs the approval router before work and keeps a human-required v2 request within that policy boundary", async () => {
