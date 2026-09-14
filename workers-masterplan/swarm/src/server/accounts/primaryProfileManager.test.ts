@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { CodexAccountSlot } from "../../shared/contracts.js";
 import { PrimaryProfileManager } from "./primaryProfileManager.js";
+import { restorePrimaryProfileState } from "./primaryProfileState.js";
 
 let directory: string | undefined;
 
@@ -42,6 +43,16 @@ describe("PrimaryProfileManager", () => {
 
     await expect(manager.makePrimary("bot1/acc2")).resolves.toEqual({ macosUser: "bot1", primaryAccountId: "bot1/acc2", mode: "managed" });
     expect(await readlink(join(home, ".codex"))).toBe(acc2);
+  });
+
+  it("restores the managed acc2 primary state after a coordinator restart", async () => {
+    const { home, acc2, registry, slots } = await fixture();
+    await symlink(acc2, join(home, ".codex"));
+    const restartedManager = new PrimaryProfileManager({ registry, homeDirectory: () => home, desktopRunning: async () => false });
+
+    const restored = await restorePrimaryProfileState(restartedManager, slots);
+
+    expect(restored).toEqual(new Map([["bot1", "bot1/acc2"]]));
   });
 
   it("refuses Desktop-running and unmanaged primary paths without replacing them", async () => {

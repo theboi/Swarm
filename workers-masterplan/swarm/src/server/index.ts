@@ -11,6 +11,7 @@ import { spawn as spawnPty } from "node-pty";
 import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type MacosBotId, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { LoginCoordinator } from "./accounts/loginCoordinator.js";
 import { PrimaryProfileManager } from "./accounts/primaryProfileManager.js";
+import { restorePrimaryProfileState } from "./accounts/primaryProfileState.js";
 import { ProfileProvisioner } from "./accounts/profileProvisioner.js";
 import { ProfileRegistry } from "./accounts/profileRegistry.js";
 import { createPasswordHash } from "./auth/password.js";
@@ -117,8 +118,8 @@ async function createRuntime(config: SwarmConfig) {
   let profileSlots = registry.list();
   let accountIds: AccountId[] = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
   const slotFor = (account: AccountId): CodexAccountSlot | undefined => profileSlots.find((slot) => slot.id === account);
-  const primaryByBot = new Map<MacosBotId, BotProfileAccountId>(profileSlots.filter((slot) => slot.accountNumber === 1).map((slot) => [slot.macosUser, slot.id]));
   const primaryProfiles = new PrimaryProfileManager({ registry, desktopRunning: desktopRunningFor });
+  const primaryByBot = await restorePrimaryProfileState(primaryProfiles, profileSlots);
   const logger = createLogger({ secrets: [config.loginPasswordHash, config.totpSecret, config.sessionSecret, ...Object.values(config.accountPasswords)].filter((value): value is string => Boolean(value)) });
   const store = createCoordinatorStateStore<DurableState>(resolve(process.cwd(), ".data", "state.json"), config);
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
@@ -187,7 +188,6 @@ async function createRuntime(config: SwarmConfig) {
     accountIds = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
     for (const slot of profileSlots) {
       if (!rolloutReaders.has(slot.id)) rolloutReaders.set(slot.id, new LocalRolloutTranscriptReader(slot.codexHome));
-      if (!primaryByBot.has(slot.macosUser)) primaryByBot.set(slot.macosUser, `${slot.macosUser}/acc1` as BotProfileAccountId);
     }
   };
   const completedLaunchThreads = new Set<string>();
