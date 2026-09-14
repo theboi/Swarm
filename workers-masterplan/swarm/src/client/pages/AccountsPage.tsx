@@ -56,7 +56,7 @@ function AccountCard({ account, assignments, tasks, headingLevel, onOpenTerminal
     <RateLimitBar label="Five-hour" window={primary} forceEmpty={weeklyExhausted} />
     <RateLimitBar label="Weekly" window={secondary} />
     {assignments.length ? <div className="account-card__work"><strong>Current work</strong>{assignments.map((assignment) => <p key={assignment.taskId}>{assignment.taskId} · {tasks.find((task) => task.id === assignment.taskId)?.title ?? "Worker task"}{assignment.state === "waiting_for_limit" ? " · waiting for limit" : ""}</p>)}</div> : <p>No assigned worker tasks.</p>}
-    {actionRequired ? <><p>Action required: sign in to this account.</p>{account.terminalCommand ? <code>{account.terminalCommand}</code> : null}</> : null}
+    {actionRequired ? <><p role="alert">{profileError(account.errorCode, "Action required: sign in to this account.")}</p>{account.terminalCommand ? <code>{account.terminalCommand}</code> : null}</> : null}
     <div className="account-card__actions">
       <button className="account-card__action" type="button" onClick={() => onOpenTerminal(account)}>Open terminal for {account.id}</button>
       {actionRequired ? <button className="account-card__action" type="button" onClick={() => onReconnect(account)}>Reconnect {account.id}</button> : null}

@@ -76,4 +76,13 @@ describe("AccountsPage", () => {
     await user.click(screen.getByRole("button", { name: "Refresh usage" }));
     expect(refreshAllRateLimits).toHaveBeenCalledOnce();
   });
+
+  it("shows an identity collision on the affected profile card", () => {
+    const accounts = profileDashboardSnapshot.accounts.map((account) => account.id === "bot1/acc2"
+      ? { ...account, connection: "action_required" as const, authentication: "unauthenticated" as const, errorCode: "IDENTITY_ALREADY_CONNECTED" }
+      : account);
+    render(<AccountsPage snapshot={{ ...profileDashboardSnapshot, accounts }} api={{ openTerminal: vi.fn(async () => ({ data: {} })), connectAccount: vi.fn(async () => ({ data: {} })), refreshAllRateLimits: vi.fn(async () => ({ data: {} })), makePrimary: vi.fn(async () => ({ data: [] })), addAccount: vi.fn(async () => ({ data: accounts[0]! })), startAccountLogin: vi.fn(async () => ({ data: { accountId: "bot1/acc2" as const, method: "device_code" as const, verificationUrl: "https://auth.example.test", expiresAt: Date.now() + 60_000 } })), cancelAccountLogin: vi.fn(async () => ({ data: {} })) }} onRefresh={vi.fn(async () => undefined)} onBack={() => undefined} />);
+
+    expect(screen.getByText("That ChatGPT identity is already connected to another profile.")).toBeVisible();
+  });
 });
