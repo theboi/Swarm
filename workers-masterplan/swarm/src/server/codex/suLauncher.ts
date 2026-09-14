@@ -1,9 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId } from "../../shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type CodexAccountSlot, type MacosBotId } from "../../shared/contracts.js";
 import { codexLoginCommand, tmuxAttachCommand, tmuxServerCommand } from "./terminalConsole.js";
-
-const ALLOWED_ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
-const BOT_ACCOUNTS = new Set<string>(BOT_ACCOUNT_IDS);
 
 export interface SpawnedPty {
   pid: number;
@@ -21,6 +18,7 @@ export interface PortLease {
 
 export interface LaunchHandle {
   account: AccountId;
+  slot?: CodexAccountSlot;
   endpoint: string;
   readonly capabilityToken: string;
   stop(): Promise<void>;
@@ -39,9 +37,34 @@ export interface SuLauncherDependencies {
 }
 
 export interface LaunchAccountOptions {
-  account: AccountId;
+  account?: AccountId;
+  slot?: CodexAccountSlot;
   password?: string;
   codexBin: string;
+}
+
+interface LaunchTarget {
+  account: AccountId;
+  macosUser?: MacosBotId;
+  codexHome: string;
+  slot?: CodexAccountSlot;
+}
+
+function legacyCodexHome(macosUser: MacosBotId): string {
+  return `/Users/${macosUser}/.codex`;
+}
+
+function launchTarget(options: LaunchAccountOptions): LaunchTarget {
+  if (options.slot) {
+    const slot = options.slot;
+    if (options.account !== undefined && options.account !== slot.id) throw new Error("Profile slot does not match requested account");
+    if (!isBotProfileAccountId(slot.id) || slot.id.split("/")[0] !== slot.macosUser || slot.accountNumber < 1) throw new Error("Only allowlisted Swarm accounts may be launched");
+    return { account: slot.id, macosUser: slot.macosUser, codexHome: slot.codexHome, slot };
+  }
+  const account = options.account;
+  if (account === LOCAL_ACCOUNT_ID) return { account, codexHome: process.env.CODEX_HOME ?? `/Users/${process.env.USER ?? "claudiothe"}/.codex` };
+  if (!isMacosBotId(account)) throw new Error("Only allowlisted Swarm accounts may be launched");
+  return { account, macosUser: account, codexHome: legacyCodexHome(account) };
 }
 
 function posixQuote(value: string): string {
@@ -68,12 +91,12 @@ export class SuLauncher {
   constructor(private readonly dependencies: SuLauncherDependencies) {}
 
   async launch(options: LaunchAccountOptions): Promise<LaunchHandle> {
-    if (!ALLOWED_ACCOUNTS.has(options.account)) throw new Error("Only allowlisted Swarm accounts may be launched");
-    const isBot = BOT_ACCOUNTS.has(options.account);
+    const target = launchTarget(options);
+    const isBot = target.macosUser !== undefined;
     let credential = options.password ?? "";
     if (isBot && !credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
     if (!options.codexBin.startsWith("/")) throw new Error("Configured Codex binary must be an absolute path");
-    const codexHome = `/Users/${options.account}/.codex`;
+    const codexHome = target.codexHome;
     if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
       throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
@@ -92,16 +115,17 @@ export class SuLauncher {
     let token: string | undefined = randomBytes(32).toString("base64url");
     const digest = createHash("sha256").update(token).digest("hex");
     const endpoint = `ws://127.0.0.1:${lease.port}`;
-    const command = tmuxServerCommand(options.account, `${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`);
+    const appServer = `/usr/bin/env CODEX_HOME=${posixQuote(codexHome)} ${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`;
+    const command = tmuxServerCommand(target.account, appServer);
     let child: SpawnedPty;
     try {
       // Codex owns this listener, so the short-lived reservation must be released
       // before its app-server command attempts to bind the selected port.
       await releaseLease();
       const ptyOptions = { name: "xterm-256color", cols: 120, rows: 40, cwd: process.cwd(), env: ptyEnvironment() };
-      child = options.account === LOCAL_ACCOUNT_ID
+      child = target.account === LOCAL_ACCOUNT_ID
         ? this.dependencies.spawnPty("/bin/zsh", ["-lc", command], ptyOptions)
-        : this.dependencies.spawnPty("/usr/bin/su", ["-", options.account, "-c", command], ptyOptions);
+        : this.dependencies.spawnPty("/usr/bin/su", ["-", target.macosUser!, "-c", command], ptyOptions);
     } catch {
       token = undefined;
       await releaseLease();
@@ -143,7 +167,7 @@ export class SuLauncher {
       if (settled) return;
       settled = true;
       void cleanup(true);
-      this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason });
+      this.dependencies.log({ component: "suLauncher", account: target.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason });
       rejectLaunch!(new Error("ACCOUNT_AUTH_REQUIRED"));
     };
     const stop = async () => {
@@ -156,7 +180,8 @@ export class SuLauncher {
       await cleanup(true);
     };
     handle = {
-      account: options.account,
+      account: target.account,
+      ...(target.slot ? { slot: target.slot } : {}),
       endpoint,
       get capabilityToken() {
         if (!token) throw new Error("Capability token is no longer available");
@@ -169,7 +194,7 @@ export class SuLauncher {
     exitSubscription = child.onExit(() => {
       if (!settled) {
         settled = true;
-        this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason: "child_exit" });
+        this.dependencies.log({ component: "suLauncher", account: target.account, event: "app_server_launch_failed", outcome: "ACCOUNT_AUTH_REQUIRED", reason: "child_exit" });
         rejectLaunch!(new Error("ACCOUNT_AUTH_REQUIRED"));
       }
       void cleanup(false);
@@ -180,7 +205,7 @@ export class SuLauncher {
         settled = true;
         if (startupTimer) clearTimeout(startupTimer);
         startupTimer = undefined;
-        this.dependencies.log({ component: "suLauncher", account: options.account, event: "app_server_ready", outcome: "ok" });
+        this.dependencies.log({ component: "suLauncher", account: target.account, event: "app_server_ready", outcome: "ok" });
         resolveLaunch!(handle);
       }).catch(() => {
         if (settled || cleaned) return;
@@ -207,7 +232,7 @@ export class SuLauncher {
     };
     startupTimer = setTimeout(() => fail("startup_timeout"), this.dependencies.startupTimeoutMs ?? 30_000);
     startupTimer.unref();
-    if (options.account === LOCAL_ACCOUNT_ID) {
+    if (target.account === LOCAL_ACCOUNT_ID) {
       const currentToken = token;
       if (!currentToken) fail("missing_token");
       else waitForAppServer(currentToken);
@@ -218,12 +243,13 @@ export class SuLauncher {
   }
 
   async openTerminal(account: AccountId): Promise<void> {
-    if (!ALLOWED_ACCOUNTS.has(account) || ![...this.active].some((handle) => handle.account === account)) throw new Error("ACCOUNT_OFFLINE");
-    await this.dependencies.openTerminal(tmuxAttachCommand(account));
+    const handle = [...this.active].find((candidate) => candidate.account === account);
+    if (!handle) throw new Error("ACCOUNT_OFFLINE");
+    await this.dependencies.openTerminal(tmuxAttachCommand(handle.slot ?? account));
   }
 
-  async openLoginTerminal(account: AccountId, codexBin: string): Promise<void> {
-    if (!ALLOWED_ACCOUNTS.has(account)) throw new Error("ACCOUNT_OFFLINE");
+  async openLoginTerminal(account: AccountId | CodexAccountSlot, codexBin: string): Promise<void> {
+    if (typeof account === "object" ? !isBotProfileAccountId(account.id) : account !== LOCAL_ACCOUNT_ID && !isMacosBotId(account)) throw new Error("ACCOUNT_OFFLINE");
     await this.dependencies.openTerminal(codexLoginCommand(account, codexBin));
   }
 

@@ -1,30 +1,51 @@
-import { LOCAL_ACCOUNT_ID, type AccountId } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type CodexAccountSlot, type MacosBotId } from "../../shared/contracts.js";
 
 const TMUX_BINARY = "/opt/homebrew/bin/tmux";
 
 function shellQuote(value: string): string {
+  if (!value || value.includes("\0") || value.includes("\n") || value.includes("\r")) throw new Error("Invalid terminal command value");
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function tmuxSessionName(account: AccountId): string {
-  return `swarm-${account}`;
+type TerminalAccount = AccountId | CodexAccountSlot;
+
+function accountId(account: TerminalAccount): AccountId {
+  return typeof account === "object" ? account.id : account;
 }
 
-export function tmuxServerCommand(account: AccountId, appServerCommand: string): string {
+function macosUser(account: TerminalAccount): MacosBotId | undefined {
+  if (typeof account === "object") return account.macosUser;
+  return isMacosBotId(account) ? account : undefined;
+}
+
+export function tmuxSessionName(account: TerminalAccount): string {
+  return `swarm-${accountId(account).replace(/[^A-Za-z0-9_-]/g, "-")}`;
+}
+
+export function tmuxServerCommand(account: TerminalAccount, appServerCommand: string): string {
   const tmux = shellQuote(TMUX_BINARY);
   const session = tmuxSessionName(account);
   return `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true; exec ${tmux} new-session -s ${session} ${appServerCommand}`;
 }
 
-export function tmuxAttachCommand(account: AccountId): string {
+export function tmuxAttachCommand(account: TerminalAccount): string {
   const command = `exec ${shellQuote(TMUX_BINARY)} attach-session -t ${tmuxSessionName(account)}`;
-  return account === LOCAL_ACCOUNT_ID ? command : `exec /usr/bin/su - ${account} -c ${shellQuote(command)}`;
+  if (accountId(account) === LOCAL_ACCOUNT_ID) return command;
+  const owner = macosUser(account);
+  if (!owner) throw new Error("A logical profile requires its owning macOS slot");
+  return `exec /usr/bin/su - ${owner} -c ${shellQuote(command)}`;
 }
 
-export function codexLoginCommand(account: AccountId, codexBin: string): string {
+export function codexLoginCommand(account: TerminalAccount, codexBin: string): string {
   if (!codexBin.startsWith("/") || codexBin.includes("\0")) throw new Error("Configured Codex binary must be an absolute path");
-  const command = `exec ${shellQuote(codexBin)} login`;
-  return account === LOCAL_ACCOUNT_ID ? command : `exec /usr/bin/su - ${account} -c ${shellQuote(command)}`;
+  const login = typeof account === "object"
+    ? `/usr/bin/env CODEX_HOME=${shellQuote(account.codexHome)} ${shellQuote(codexBin)} login`
+    : `${shellQuote(codexBin)} login`;
+  const command = `exec ${login}`;
+  if (accountId(account) === LOCAL_ACCOUNT_ID) return command;
+  const owner = macosUser(account);
+  if (!owner) throw new Error("A logical profile requires its owning macOS slot");
+  return `exec /usr/bin/su - ${owner} -c ${shellQuote(command)}`;
 }
 
 const APPLESCRIPT = `on run argv

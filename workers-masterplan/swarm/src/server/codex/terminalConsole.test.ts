@@ -21,6 +21,16 @@ describe("terminal console commands", () => {
     expect(command).not.toMatch(/password|token/i);
   });
 
+  it("opens profile login as the owning bot with the profile's explicit CODEX_HOME", () => {
+    const command = codexLoginCommand({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" }, "/opt/homebrew/bin/codex");
+
+    expect(command).toContain("/usr/bin/su - bot1 -c");
+    expect(command).toContain("CODEX_HOME=");
+    expect(command).toContain("/Users/bot1/.swarm/codex-profiles/acc2");
+    expect(command).toContain(" login");
+    expect(command).not.toMatch(/password|token/i);
+  });
+
   it("uses direct local tmux and Codex login commands for claudiothe", () => {
     expect(tmuxAttachCommand("claudiothe")).toBe("exec '/opt/homebrew/bin/tmux' attach-session -t swarm-claudiothe");
     expect(codexLoginCommand("claudiothe", "/opt/homebrew/bin/codex")).toBe("exec '/opt/homebrew/bin/codex' login");
