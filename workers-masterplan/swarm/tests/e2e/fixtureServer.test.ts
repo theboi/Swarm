@@ -37,10 +37,10 @@ function call(socket: WebSocket, id: number, method: string, params?: unknown): 
 }
 
 describe("E2E fixture app servers", () => {
-  it("runs deterministic fake app-server endpoints for all nine accounts and rejects missing tokens", async () => {
+  it("runs deterministic fake app-server endpoints for logical profile accounts and rejects missing tokens", async () => {
     fixture = await startE2eFixtureServer({ manifest: "ready" });
 
-    expect(Object.keys(fixture.accounts)).toEqual(["claudiothe", "bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
+    expect(Object.keys(fixture.accounts)).toEqual(["claudiothe", "bot1/acc1", "bot1/acc2", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"]);
     await expect(rejectedHandshake(fixture.accounts.bot3.endpoint)).resolves.toBe(401);
 
     const account = fixture.accounts.bot3;

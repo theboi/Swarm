@@ -7,7 +7,7 @@ import { evaluateTaskReadiness, loadBlueprintEvidence } from "../../src/server/t
 import { loadManifest } from "../../src/server/tasks/manifestLoader.js";
 import { hashPassword } from "../../scripts/hash-password.js";
 import { createTotpProvisioningUri, generateTotpSecret } from "../../scripts/generate-totp-secret.js";
-import { redactSmokeOutput, repositoryIsUnchanged, resolveSmokeEnvironment } from "../../scripts/smoke-app-server.js";
+import { manualLoginCommand, redactSmokeOutput, repositoryIsUnchanged, resolveSmokeEnvironment } from "../../scripts/smoke-app-server.js";
 
 describe("operator tools", () => {
   it("creates a scrypt value that the coordinator can verify", async () => {
@@ -36,7 +36,7 @@ describe("operator tools", () => {
     expect(resolveSmokeEnvironment({})).toMatchObject({
       kind: "skip",
       code: "SWARM_SMOKE_SKIPPED",
-      message: "Set SWARM_SMOKE_ACCOUNT to claudiothe or bot1 through bot8.",
+      message: "Set SWARM_SMOKE_ACCOUNT to claudiothe, bot1 through bot8, or a registered botN/accX profile.",
     });
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3" })).toMatchObject({
       kind: "skip",
@@ -56,6 +56,8 @@ describe("operator tools", () => {
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot3", SWARM_USER3: "bot3:test-local-password", SWARM_SMOKE_START_TURN: "true" })).toMatchObject({ kind: "run", startTurn: true });
     expect(redactSmokeOutput("Authorization: Bearer test-local-password", ["test-local-password"])).toBe("Authorization: Bearer [REDACTED]");
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "claudiothe" })).toMatchObject({ kind: "run", account: "claudiothe", password: undefined });
+    expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot1/acc2", SWARM_USER1: "bot1:test-local-password" })).toMatchObject({ kind: "run", account: "bot1/acc2", password: "test-local-password" });
+    expect(manualLoginCommand({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" }, "/opt/homebrew/bin/codex")).toContain("CODEX_HOME");
   });
 
   it("requires the opt-in smoke turn to preserve the bot clone status", () => {

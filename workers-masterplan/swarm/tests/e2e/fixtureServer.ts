@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import express, { type Express, type Request, type Response } from "express";
 import WebSocket, { WebSocketServer } from "ws";
 
-import type { AccountId, AccountSnapshot, ThreadSummary } from "../../src/shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, type AccountId, type AccountSnapshot, type BotProfileAccountId, type MacosBotId, type ThreadSummary } from "../../src/shared/contracts.js";
 import { createFixtureState, type FixtureManifest, type FixtureState } from "./fixtureData.js";
 
 export interface FixtureAppServerEndpoint {
@@ -187,9 +187,34 @@ function launchAccounts(state: FixtureState) {
     || left.id.localeCompare(right.id));
 }
 
+function profileAccount(state: FixtureState, value: string): AccountSnapshot | undefined {
+  return isBotProfileAccountId(value) ? state.snapshot.accounts.find((account) => account.id === value) : undefined;
+}
+
+function nextProfileId(state: FixtureState, bot: MacosBotId, reserved: ReadonlySet<BotProfileAccountId>): BotProfileAccountId {
+  const used = state.snapshot.accounts
+    .filter((account) => account.macosUser === bot)
+    .map((account) => account.accountNumber ?? 0);
+  let number = 2;
+  while (used.includes(number) || reserved.has(`${bot}/acc${number}` as BotProfileAccountId)) number += 1;
+  return `${bot}/acc${number}`;
+}
+
+function fixtureLoginChallenge(accountId: BotProfileAccountId, method: "device_code" | "same_mac_browser") {
+  const number = Number(accountId.split("/acc")[1]);
+  return {
+    accountId,
+    method,
+    verificationUrl: `https://auth.fixture.test/verify/${encodeURIComponent(accountId)}`,
+    ...(method === "device_code" ? { userCode: number === 4 ? "EXPIRED-ACC4" : `FIXTURE-ACC${number}` } : {}),
+    expiresAt: number === 4 ? Date.now() - 1 : Date.now() + 10 * 60_000,
+  };
+}
+
 function attachFixtureApi(app: Express, state: FixtureState): void {
   app.use(express.json());
   const challengeId = "fixture-login-challenge";
+  const createdProfiles = new Set<BotProfileAccountId>();
 
   app.get("/api/v1/auth/session", (request, response) => sendData(response, { authenticated: fixtureSession(request) }));
   app.post("/api/v1/auth/challenge", (request, response) => {
@@ -207,6 +232,45 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
   app.use("/api/v1", (request, response, next) => requireFixtureSession(request, response) ? next() : undefined);
   app.get("/api/v1/snapshot", (_request, response) => sendData(response, state.snapshot));
   app.post("/api/v1/accounts/rate-limits/refresh", (_request, response) => sendData(response, state.snapshot.accounts));
+  app.post("/api/v1/accounts/:accountId/primary", (request, response) => {
+    const selected = profileAccount(state, request.params.accountId);
+    if (!selected?.macosUser) return sendError(response, 400, "INVALID_REQUEST");
+    for (const account of state.snapshot.accounts) {
+      if (account.macosUser === selected.macosUser) account.isPrimary = account.id === selected.id;
+    }
+    sendData(response, state.snapshot.accounts.filter((account) => account.macosUser === selected.macosUser));
+  });
+  app.post("/api/v1/bots/:bot/accounts", (request, response) => {
+    const bot = request.params.bot;
+    if (!isMacosBotId(bot)) return sendError(response, 400, "INVALID_REQUEST");
+    const id = nextProfileId(state, bot, createdProfiles);
+    const number = Number(id.split("/acc")[1]);
+    const created: AccountSnapshot = {
+      id,
+      macosUser: bot,
+      accountNumber: number,
+      workspaceRoot: `/fixture/${bot}/EdenMind-acc${number}`,
+      isPrimary: false,
+      connection: "action_required",
+      authentication: "unauthenticated",
+      rateLimits: [],
+      activeTurns: 0,
+      lastAssignedAt: null,
+    };
+    createdProfiles.add(id);
+    sendData(response, created);
+  });
+  app.post("/api/v1/accounts/:accountId/login", (request, response) => {
+    const accountId = request.params.accountId;
+    const selected = profileAccount(state, accountId);
+    const method = request.body?.method;
+    if ((!selected && (!isBotProfileAccountId(accountId) || !createdProfiles.has(accountId))) || (method !== "device_code" && method !== "same_mac_browser")) return sendError(response, 400, "INVALID_REQUEST");
+    sendData(response, fixtureLoginChallenge((selected?.id ?? accountId) as BotProfileAccountId, method));
+  });
+  app.post("/api/v1/accounts/:accountId/login/cancel", (request, response) => {
+    if (!profileAccount(state, request.params.accountId) && !createdProfiles.has(request.params.accountId as BotProfileAccountId)) return sendError(response, 400, "INVALID_REQUEST");
+    sendData(response, {});
+  });
   app.post("/api/v1/tasks/:taskId/preview", (request, response) => {
     const task = state.snapshot.tasks.find((candidate) => candidate.id === request.params.taskId);
     if (!task || task.readiness.state !== "ready") return sendError(response, 409, task?.readiness.blockingCodes[0] ?? "MASTERPLAN_NOT_READY");
