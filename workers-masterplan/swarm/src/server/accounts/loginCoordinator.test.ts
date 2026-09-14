@@ -94,4 +94,21 @@ describe("LoginCoordinator", () => {
     expect(coordinator.connectedAccount("bot1/acc2")).toBe(false);
     stop();
   });
+
+  it("publishes a successful non-pending account update after registering its identity", async () => {
+    const onCompletion = vi.fn();
+    const { start, cancel } = fixture();
+    const coordinator = new LoginCoordinator({ start, cancel, fingerprintSalt: "test-only-salt", onCompletion });
+    const metadata = { id: "account-123", email: "person@example.test", workspace: "Personal", planType: "Pro" };
+    const listeners = new Set<(event: { type: "account"; state?: string }) => void>();
+    const stop = coordinator.bindAppServer("bot1/acc2", {
+      onEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+      readAccount: async () => ({ account: metadata }),
+    });
+
+    for (const listener of listeners) listener({ type: "account", state: "updated" });
+
+    await vi.waitFor(() => expect(onCompletion).toHaveBeenCalledWith("bot1/acc2", { email: "person@example.test", workspace: "Personal", planType: "Pro" }));
+    stop();
+  });
 });

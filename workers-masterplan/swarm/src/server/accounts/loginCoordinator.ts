@@ -118,7 +118,10 @@ export class LoginCoordinator {
         if (!result.account) return;
         try {
           if (this.pending.has(accountId)) this.complete(accountId, result.account);
-          else this.registerConnectedIdentity(accountId, result.account);
+          else {
+            const identity = this.registerConnectedIdentity(accountId, result.account);
+            this.options.onCompletion?.(accountId, identity);
+          }
         } catch (error) {
           if (error instanceof LoginCoordinatorError) this.options.onFailure?.(accountId, error);
         }
