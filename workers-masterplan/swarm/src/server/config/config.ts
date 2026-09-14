@@ -13,6 +13,7 @@ export interface SwarmConfig {
   totpSecret: string;
   sessionSecret: string;
   codexBin: string;
+  repositoryUrl: string;
   trustManagedProxy: boolean;
   masterplanPath: string | undefined;
   coordinationRoot: string | undefined;
@@ -67,6 +68,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     totpSecret: required(env, "SWARM_TOTP_SECRET"),
     sessionSecret: required(env, "SWARM_SESSION_SECRET"),
     codexBin: env.SWARM_CODEX_BIN ?? "/Applications/ChatGPT.app/Contents/Resources/codex",
+    repositoryUrl: env.SWARM_REPOSITORY_URL ?? "https://github.com/theboi/EdenMind.git",
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
     coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),
@@ -76,6 +78,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("SWARM_PORT must be a valid port");
   if (!Number.isInteger(config.terminalPort) || config.terminalPort < 1 || config.terminalPort > 65535) throw new Error("SWARM_PORT must leave a valid adjacent loopback terminal port");
   if (!config.codexBin.startsWith("/")) throw new Error("SWARM_CODEX_BIN must be an absolute path");
+  if (!/^https:\/\//.test(config.repositoryUrl)) throw new Error("SWARM_REPOSITORY_URL must be an HTTPS URL");
   return config;
 }
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
-import { GitCommandRunner, absorbStdinPipeErrors, runBotPtyCommand, type BotPtyProcess } from "./commandRunner.js";
+import { GitCommandRunner, absorbStdinPipeErrors, runBotPtyCommand, runBotPtyJsonWorker, type BotPtyProcess } from "./commandRunner.js";
 
 const run = promisify(execFile);
 
@@ -53,10 +53,11 @@ describe("GitCommandRunner", () => {
     let dataListener: ((data: string) => void) | undefined;
     let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
     const dispose = vi.fn();
+    const write = vi.fn();
     const process = {
       onData: vi.fn((listener) => { dataListener = listener; return { dispose: vi.fn() }; }),
       onExit: vi.fn((listener) => { exitListener = listener; return { dispose: vi.fn() }; }),
-      write: vi.fn(),
+      write,
       kill: vi.fn(),
       dispose,
     } as BotPtyProcess & { dispose: typeof dispose };
@@ -72,6 +73,32 @@ describe("GitCommandRunner", () => {
     await expect(pull).resolves.toBeUndefined();
     expect(spawnBotPty).toHaveBeenCalledWith("/usr/bin/su", expect.arrayContaining(["bot6"]), expect.any(Object));
     expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("sends profile worker input after the PTY password prompt without placing the password in worker JSON", async () => {
+    let dataListener: ((data: string) => void) | undefined;
+    let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
+    const write = vi.fn();
+    const process = {
+      onData: vi.fn((listener) => { dataListener = listener; return { dispose: vi.fn() }; }),
+      onExit: vi.fn((listener) => { exitListener = listener; return { dispose: vi.fn() }; }),
+      write,
+      kill: vi.fn(),
+      dispose: vi.fn(),
+    } as BotPtyProcess;
+    const runWorker = runBotPtyJsonWorker("bot1", "correct horse", "/opt/swarm/profile-worker.js", {
+      codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+      repositoryUrl: "https://example.test/EdenMind.git",
+    }, vi.fn(() => process));
+
+    dataListener?.("Password:");
+    expect(write).toHaveBeenCalledWith("correct horse\r");
+    const workerInput = write.mock.calls.flat().find((value) => value.includes('"codexHome"'));
+    expect(workerInput).toContain('"codexHome"');
+    expect(workerInput).not.toContain("correct horse");
+    exitListener?.({ exitCode: 0 });
+    await expect(runWorker).resolves.toBeUndefined();
   });
 
   it("delegates bot Git pulls to the isolated runner", async () => {

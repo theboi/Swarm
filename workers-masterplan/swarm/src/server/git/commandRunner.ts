@@ -105,6 +105,56 @@ export function runBotPtyCommand(account: BotAccountId, password: string, comman
   });
 }
 
+/**
+ * Starts a fixed worker as the bot user. The password is sent only to su's PTY
+ * prompt; worker input is a separate JSON line and must not contain the password.
+ */
+export function runBotPtyJsonWorker(account: BotAccountId, password: string, workerPath: string, payload: { codexHome: string; workspaceRoot: string; repositoryUrl: string }, spawnBotPty: SpawnBotPty = spawnManagedBotPty): Promise<void> {
+  if (!workerPath.startsWith("/") || !password) return Promise.reject(new Error("Profile setup could not start"));
+  const input = JSON.stringify(payload);
+  if (input.includes(password)) return Promise.reject(new Error("Profile setup input must not contain a password"));
+  const command = `${quote(process.execPath)} ${quote(workerPath)}`;
+  return new Promise((resolve, reject) => {
+    let prompted = false;
+    let settled = false;
+    let tail = "";
+    let timer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const child = spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: "/tmp",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      try { child.dispose(); } catch { /* descriptor already closed */ }
+      if (error) reject(error);
+      else resolve();
+    };
+    timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } finally { finish(new Error("Profile setup timed out")); }
+    }, 120_000);
+    timer.unref();
+    dataSubscription = child.onData((data) => {
+      if (prompted) return;
+      tail = `${tail}${data}`.slice(-256);
+      if (!/Password:/i.test(tail)) return;
+      prompted = true;
+      tail = "";
+      child.write(`${password}\r`);
+      child.write(`${input}\n`);
+    });
+    exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 ? undefined : new Error(exitCode === 65 ? "PROFILE_AUTH_ISOLATION_UNAVAILABLE" : "Profile setup failed")));
+  });
+}
+
 const runBotCommandInIsolatedProcess: RunBotCommand = (account, password, command) => new Promise((resolve, reject) => {
   const worker = spawnChildProcess(process.execPath, [fileURLToPath(new URL("./botGitWorker.js", import.meta.url))], { stdio: ["pipe", "ignore", "ignore"] });
   let settled = false;
