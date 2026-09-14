@@ -2,7 +2,7 @@ import { spawn as spawnChildProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
 import { fileURLToPath } from "node:url";
 
-import { LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId } from "../../shared/contracts.js";
 import { GitMergeConflictError } from "./sync.js";
 
 function quote(value: string): string {
@@ -146,6 +146,7 @@ export class GitCommandRunner {
 
   async pullAccount(account: AccountId): Promise<void | "skipped"> {
     if (account === LOCAL_ACCOUNT_ID) return this.pullLocal();
+    if (!isMacosBotId(account)) return "skipped";
     const password = this.passwords[account];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");
@@ -176,6 +177,7 @@ export class GitCommandRunner {
       await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "push", "origin", "HEAD:main"], { stdio: "ignore" }));
       return;
     }
+    if (!isMacosBotId(account)) return "skipped";
     const password = this.passwords[account];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");

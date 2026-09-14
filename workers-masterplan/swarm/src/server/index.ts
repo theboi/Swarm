@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -336,10 +336,11 @@ async function createRuntime(config: SwarmConfig) {
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
   await refreshTasks();
+  const passwordFor = (id: AccountId): string | undefined => isMacosBotId(id) ? config.accountPasswords[id] : undefined;
   const liveClient = async (id: AccountId): Promise<AppServerClient> => {
     const client = accounts.client(id);
     if (client instanceof AppServerClient && client.isConnected()) return client;
-    await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+    await accounts.connect({ account: id, password: passwordFor(id) });
     const recovered = accounts.client(id);
     if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("ACCOUNT_OFFLINE");
     return recovered;
@@ -348,7 +349,7 @@ async function createRuntime(config: SwarmConfig) {
   const rateLimitRefresher = new AccountRateLimitRefresher({
     prepare: async (id) => {
       if (accounts.snapshot(id).authentication !== "unauthenticated") return;
-      await accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] }, { force: true });
+      await accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) }, { force: true });
     },
     read: async (id) => (await liveClient(id)).readRateLimitWindows(),
     current: (id) => accounts.snapshot(id),
@@ -500,7 +501,7 @@ async function createRuntime(config: SwarmConfig) {
       return { enabled };
     },
     connectAccount: async (id) => {
-      const connected = await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+      const connected = await accounts.connect({ account: id, password: passwordFor(id) });
       await outbox.recover({ readThread: async (record) => {
         const result = await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true });
         const turns = Array.isArray(object(result).thread && object(object(result).thread).turns) ? object(object(result).thread).turns as Array<Record<string, unknown>> : [];
@@ -734,7 +735,7 @@ async function createRuntime(config: SwarmConfig) {
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
   const credentialRefreshTimer = setInterval(() => {
-    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] })));
+    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) })));
   }, 15_000);
   credentialRefreshTimer.unref();
   const connectInitialAccount = async (id: AccountId): Promise<void> => {
