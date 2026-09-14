@@ -135,6 +135,41 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("retains an unauthenticated transport for login while rejecting all work methods", async () => {
+    const rpc = {
+      connect: vi.fn(async () => undefined),
+      initializeAndReadAccount: vi.fn(async () => ({ account: null, requiresOpenaiAuth: true })),
+      request: vi.fn(async (method: string) => {
+        if (method === "account/login/start") return { loginId: "login-1", verificationUrl: "https://auth.example.test/device", userCode: "ABCD-EFGH" };
+        if (method === "account/login/cancel") return {};
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+      close: vi.fn(async () => undefined),
+      isConnected: vi.fn(() => true),
+      installApprovalHandler: vi.fn(),
+      onDisconnect: vi.fn(),
+      onNotification: vi.fn(),
+    };
+    const router = new ApprovalRouter({
+      context: createApprovalContext(account),
+      journal: { append: async () => undefined, waitForDecision: async () => ({ kind: "cancel" as const }) },
+      filesystem: approvalFilesystem,
+    });
+    const client = new AppServerClient({ account, rpc: rpc as unknown as JsonRpcClient, approvalRouter: router });
+
+    await expect(client.connect()).resolves.toEqual({ account: null, requiresOpenaiAuth: true });
+    await expect(client.startDeviceLogin()).resolves.toMatchObject({ accountId: "bot1/acc1", loginId: "login-1", method: "device_code", userCode: "ABCD-EFGH" });
+    await expect(client.startBrowserLogin()).resolves.toMatchObject({ accountId: "bot1/acc1", loginId: "login-1", method: "same_mac_browser" });
+    await client.cancelLogin("login-1");
+    await expect(client.listModels()).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    await expect(client.startThread()).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    expect(() => client.readRateLimits()).toThrow("ACCOUNT_AUTH_REQUIRED");
+    expect(rpc.close).not.toHaveBeenCalled();
+    expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgptDeviceCode" });
+    expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgpt" });
+    expect(rpc.request).toHaveBeenCalledWith("account/login/cancel", { loginId: "login-1" });
+  });
+
   it("installs the approval router before work and keeps a human-required v2 request within that policy boundary", async () => {
     const client = await readyClient();
     server!.send({

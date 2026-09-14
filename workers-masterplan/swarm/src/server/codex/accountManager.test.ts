@@ -11,7 +11,7 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
   const openTerminal = vi.fn(async () => undefined);
   const openLoginTerminal = vi.fn(async () => undefined);
   const launcher = { launch, openTerminal, openLoginTerminal, shutdown: vi.fn(async () => undefined) } as unknown as SuLauncher;
-  const client = { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
+  const client = { connect: vi.fn<() => Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>>(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
   const credentialVersion = vi.fn<() => Promise<string | undefined>>(async () => "credential-v1");
   const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion, now });
@@ -117,6 +117,22 @@ describe("AccountManager", () => {
     await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({ connection: "connected", authentication: "authenticated", errorCode: "USAGE_UNAVAILABLE" });
     expect(client.readRateLimitWindows).toHaveBeenCalledOnce();
     expect(handle.stop).not.toHaveBeenCalled();
+  });
+
+  it("retains an unauthenticated app-server for managed login instead of relaunching it", async () => {
+    const { manager, client, handle, launch } = fixture();
+    client.connect.mockResolvedValueOnce({ account: null, requiresOpenaiAuth: true });
+
+    await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({
+      connection: "action_required",
+      authentication: "unauthenticated",
+      errorCode: "ACCOUNT_AUTH_REQUIRED",
+    });
+    await manager.connect({ account, password: "bot-password" });
+
+    expect(handle.stop).not.toHaveBeenCalled();
+    expect(launch).toHaveBeenCalledOnce();
+    expect(client.connect).toHaveBeenCalledOnce();
   });
 
   it("updates stale authentication after later usage failures and recovers after a successful probe", async () => {

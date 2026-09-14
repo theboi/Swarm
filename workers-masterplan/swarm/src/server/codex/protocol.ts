@@ -39,6 +39,8 @@ export interface ProtocolDiagnostic {
 export const APP_SERVER_METHODS = [
   "initialize",
   "account/read",
+  "account/login/start",
+  "account/login/cancel",
   "account/rateLimits/read",
   "thread/list",
   "thread/read",

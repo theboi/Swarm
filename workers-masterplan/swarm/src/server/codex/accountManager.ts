@@ -25,7 +25,7 @@ export interface ConnectAccountInput {
   password?: string;
 }
 
-type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient };
+type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient; preAuth: boolean };
 
 function isExpiredAuthentication(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -55,7 +55,7 @@ export class AccountManager {
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
     const existing = this.connections.get(input.account);
-    if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing?.client.isConnected() && (this.requireSnapshot(input.account).authentication === "authenticated" || existing.preAuth)) return Promise.resolve(this.requireSnapshot(input.account));
 
     const connecting = (async () => {
       if (existing) await this.closeConnection(input.account);
@@ -161,7 +161,15 @@ export class AccountManager {
       handle = await this.options.launcher.launch({ account: input.account, password: input.password, codexBin: this.options.codexBin });
       const client = this.options.createClient(handle);
       const account = await client.connect();
-      if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      if (!account.account) {
+        this.connections.set(input.account, { handle, client, preAuth: true });
+        return this.setSnapshot(input.account, {
+          connection: "action_required",
+          authentication: "unauthenticated",
+          errorCode: "ACCOUNT_AUTH_REQUIRED",
+          terminalCommand: this.manualLoginCommand(input.account),
+        });
+      }
       let rateLimits = this.requireSnapshot(input.account).rateLimits;
       let rateLimitError: unknown;
       try {
@@ -169,7 +177,7 @@ export class AccountManager {
       } catch (error) {
         rateLimitError = error;
       }
-      this.connections.set(input.account, { handle, client });
+      this.connections.set(input.account, { handle, client, preAuth: false });
       if (rateLimitError !== undefined) {
         this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined });
         return this.recordRateLimitReadFailure(input.account, rateLimitError);
