@@ -5,7 +5,7 @@ import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 
 const account = "bot1" as const;
 
-function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot) {
+function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot, onAuthenticated?: (account: AccountId, metadata: Record<string, unknown>) => Record<string, string> | undefined) {
   const handle: LaunchHandle = { account: selectedAccount, endpoint: "ws://127.0.0.1:42001", capabilityToken: "transient", stop: vi.fn(async () => undefined) };
   const launch = vi.fn(async () => handle);
   const openTerminal = vi.fn(async () => undefined);
@@ -21,6 +21,7 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
     onRateLimitReadError,
     credentialVersion,
     now,
+    onAuthenticated,
     ...(profileSlot ? { accountIds: () => [profileSlot.id], resolveSlot: (candidate: AccountId) => candidate === profileSlot.id ? profileSlot : undefined } : {}),
   });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
@@ -362,6 +363,17 @@ describe("AccountManager", () => {
     expect(openLoginTerminal).toHaveBeenCalledWith(profile, "/opt/homebrew/bin/codex");
     expect(launch).toHaveBeenCalledWith({ account: profile.id, slot: profile, password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
     expect(openTerminal).toHaveBeenCalledWith(profile.id);
+  });
+
+  it("closes a newly connected profile and exposes an identity collision", async () => {
+    const collision = Object.assign(new Error("That ChatGPT identity is already connected"), { code: "IDENTITY_ALREADY_CONNECTED" });
+    const { manager, client, handle } = fixture(account, undefined, undefined, undefined, () => { throw collision; });
+
+    await expect(manager.connect({ account, password: "bot-password" })).rejects.toMatchObject({ code: "IDENTITY_ALREADY_CONNECTED" });
+
+    expect(client.close).toHaveBeenCalledOnce();
+    expect(handle.stop).toHaveBeenCalledOnce();
+    expect(manager.snapshot(account)).toMatchObject({ connection: "action_required", authentication: "unauthenticated", errorCode: "IDENTITY_ALREADY_CONNECTED" });
   });
 
   it("allows the coordinator to merge normalized non-secret account status", () => {

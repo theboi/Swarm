@@ -35,6 +35,7 @@ export class LoginCoordinator {
     now?: () => number;
     fingerprintSalt: string;
     onCompletion?: (accountId: BotProfileAccountId, identity: AccountIdentityDisplay) => void;
+    onFailure?: (accountId: BotProfileAccountId, error: LoginCoordinatorError) => void;
   }) {}
 
   async start(accountId: BotProfileAccountId, method: LoginMethod): Promise<ProfileLoginChallenge> {
@@ -68,6 +69,13 @@ export class LoginCoordinator {
     const challenge = this.pending.get(accountId);
     if (!challenge) throw new LoginCoordinatorError("LOGIN_EXPIRED");
     this.pending.delete(accountId);
+    const identity = this.registerConnectedIdentity(accountId, metadata);
+    this.options.onCompletion?.(accountId, identity);
+    return identity;
+  }
+
+  /** Rebuilds the in-memory duplicate-identity guard after a process restart or reconnect. */
+  registerConnectedIdentity(accountId: BotProfileAccountId, metadata: Record<string, unknown>): AccountIdentityDisplay {
     const identity = displayIdentity(metadata);
     const fingerprint = fingerprintIdentity(metadata, this.options.fingerprintSalt);
     const connectedAccount = this.accountByFingerprint.get(fingerprint);
@@ -75,7 +83,6 @@ export class LoginCoordinator {
     this.disconnect(accountId);
     this.fingerprintByAccount.set(accountId, fingerprint);
     this.accountByFingerprint.set(fingerprint, accountId);
-    this.options.onCompletion?.(accountId, identity);
     return identity;
   }
 
@@ -106,11 +113,15 @@ export class LoginCoordinator {
   /** Completion notifications carry no trusted identity data, so always re-read it. */
   bindAppServer(accountId: BotProfileAccountId, client: LoginCompletionAppServer): () => void {
     return client.onEvent((event) => {
-      if (event.type !== "account" || (event.state !== "login_completed" && event.state !== "updated") || !this.pending.has(accountId)) return;
+      if (event.type !== "account" || (event.state !== "login_completed" && event.state !== "updated")) return;
       void client.readAccount().then((result) => {
-        if (!result.account || !this.pending.has(accountId)) return;
-        try { this.complete(accountId, result.account); }
-        catch { /* the caller observes unresolved auth or duplicate identity through its next snapshot */ }
+        if (!result.account) return;
+        try {
+          if (this.pending.has(accountId)) this.complete(accountId, result.account);
+          else this.registerConnectedIdentity(accountId, result.account);
+        } catch (error) {
+          if (error instanceof LoginCoordinatorError) this.options.onFailure?.(accountId, error);
+        }
       }).catch(() => undefined);
     });
   }

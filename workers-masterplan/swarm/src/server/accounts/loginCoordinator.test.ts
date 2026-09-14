@@ -61,4 +61,37 @@ describe("LoginCoordinator", () => {
     expect(readAccount).toHaveBeenCalledOnce();
     stop();
   });
+
+  it("re-registers authenticated profiles after restart and rejects a duplicate identity on reconnect", () => {
+    const metadata = { id: "account-123", email: "person@example.test", workspace: "Personal", planType: "Pro" };
+    const firstRuntime = fixture().coordinator;
+    firstRuntime.registerConnectedIdentity("bot1/acc1", metadata);
+
+    const restartedRuntime = fixture().coordinator;
+    restartedRuntime.registerConnectedIdentity("bot1/acc1", metadata);
+
+    expect(() => restartedRuntime.registerConnectedIdentity("bot1/acc2", metadata))
+      .toThrow(expect.objectContaining({ code: "IDENTITY_ALREADY_CONNECTED" }));
+    expect(restartedRuntime.connectedAccount("bot1/acc1")).toBe(true);
+    expect(restartedRuntime.connectedAccount("bot1/acc2")).toBe(false);
+  });
+
+  it("reports a duplicate identity observed through an account update instead of swallowing it", async () => {
+    const onFailure = vi.fn();
+    const { start, cancel } = fixture();
+    const coordinator = new LoginCoordinator({ start, cancel, fingerprintSalt: "test-only-salt", onFailure });
+    const metadata = { id: "account-123", email: "person@example.test", workspace: "Personal", planType: "Pro" };
+    coordinator.registerConnectedIdentity("bot1/acc1", metadata);
+    const listeners = new Set<(event: { type: "account"; state?: string }) => void>();
+    const stop = coordinator.bindAppServer("bot1/acc2", {
+      onEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+      readAccount: async () => ({ account: metadata }),
+    });
+
+    for (const listener of listeners) listener({ type: "account", state: "updated" });
+
+    await vi.waitFor(() => expect(onFailure).toHaveBeenCalledWith("bot1/acc2", expect.objectContaining({ code: "IDENTITY_ALREADY_CONNECTED" })));
+    expect(coordinator.connectedAccount("bot1/acc2")).toBe(false);
+    stop();
+  });
 });

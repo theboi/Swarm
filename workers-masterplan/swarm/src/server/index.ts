@@ -256,6 +256,14 @@ async function createRuntime(config: SwarmConfig) {
     },
     accountIds: () => accountIds,
     resolveSlot: slotFor,
+    onAuthenticated: (account, metadata) => {
+      if (!isBotProfileAccountId(account)) return undefined;
+      if (!loginCoordinator) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      return loginCoordinator.registerConnectedIdentity(account, metadata);
+    },
+    onDisconnected: (account) => {
+      if (isBotProfileAccountId(account)) loginCoordinator?.disconnect(account);
+    },
     createClient: (handle) => {
       const localWorkspaceRoot = handle.slot?.workspaceRoot ?? workspaceFor(handle.account);
       const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
@@ -580,6 +588,11 @@ async function createRuntime(config: SwarmConfig) {
       clearLoginExpiry(accountId);
       accounts.markAuthenticated(accountId, identity);
       void updateRateLimits(accountId).catch((error) => logger.warn("accounts", { event: "profile_login_rate_limits_failed", account: accountId, error: error instanceof Error ? error.message : "failed" }));
+    },
+    onFailure: (accountId, error) => {
+      clearLoginExpiry(accountId);
+      void accounts.rejectAuthentication(accountId, error.code)
+        .catch((closeError) => logger.warn("accounts", { event: "profile_login_rejected_close_failed", account: accountId, error: closeError instanceof Error ? closeError.message : "failed" }));
     },
   });
   const services: CoordinatorRouteServices = {
