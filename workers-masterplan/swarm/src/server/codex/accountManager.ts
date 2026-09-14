@@ -88,8 +88,9 @@ export class AccountManager {
   }
 
   async openTerminal(account: AccountId): Promise<void> {
+    const target = this.terminalTarget(account);
     if (this.connections.has(account) && this.requireSnapshot(account).authentication === "authenticated") await this.options.launcher.openTerminal(account);
-    else await this.options.launcher.openLoginTerminal(account, this.options.codexBin);
+    else await this.options.launcher.openLoginTerminal(target, this.options.codexBin);
   }
 
   onChange(listener: (snapshot: AccountSnapshot) => void): () => void {
@@ -217,7 +218,11 @@ export class AccountManager {
   }
 
   private manualLoginCommand(account: AccountId): string {
-    return codexLoginCommand(account, this.options.codexBin);
+    return codexLoginCommand(this.terminalTarget(account), this.options.codexBin);
+  }
+
+  private terminalTarget(account: AccountId): AccountId | CodexAccountSlot {
+    return this.options.resolveSlot?.(account) ?? account;
   }
 
   private async readCredentialVersion(account: AccountId): Promise<string | undefined> {

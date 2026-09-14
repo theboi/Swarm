@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AccountId, RateLimitWindow } from "../../shared/contracts.js";
+import type { AccountId, CodexAccountSlot, RateLimitWindow } from "../../shared/contracts.js";
 import { AccountManager } from "./accountManager.js";
 import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 
 const account = "bot1" as const;
 
-function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number) {
+function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot) {
   const handle: LaunchHandle = { account: selectedAccount, endpoint: "ws://127.0.0.1:42001", capabilityToken: "transient", stop: vi.fn(async () => undefined) };
   const launch = vi.fn(async () => handle);
   const openTerminal = vi.fn(async () => undefined);
@@ -14,7 +14,15 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
   const client = { connect: vi.fn<() => Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>>(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
   const credentialVersion = vi.fn<() => Promise<string | undefined>>(async () => "credential-v1");
-  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion, now });
+  const manager = new AccountManager({
+    launcher,
+    createClient,
+    codexBin: "/opt/homebrew/bin/codex",
+    onRateLimitReadError,
+    credentialVersion,
+    now,
+    ...(profileSlot ? { accountIds: () => [profileSlot.id], resolveSlot: (candidate: AccountId) => candidate === profileSlot.id ? profileSlot : undefined } : {}),
+  });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
 }
 
@@ -335,6 +343,25 @@ describe("AccountManager", () => {
 
     expect(openLoginTerminal).toHaveBeenCalledWith(account, "/opt/homebrew/bin/codex");
     expect(openTerminal).not.toHaveBeenCalled();
+  });
+
+  it("uses the resolved secondary profile slot for terminal login and attachment", async () => {
+    const profile: CodexAccountSlot = {
+      id: "bot1/acc2",
+      macosUser: "bot1",
+      accountNumber: 2,
+      codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+    };
+    const { manager, openTerminal, openLoginTerminal, launch } = fixture(profile.id, undefined, undefined, profile);
+
+    await manager.openTerminal(profile.id);
+    await manager.connect({ account: profile.id, password: "bot-password" });
+    await manager.openTerminal(profile.id);
+
+    expect(openLoginTerminal).toHaveBeenCalledWith(profile, "/opt/homebrew/bin/codex");
+    expect(launch).toHaveBeenCalledWith({ account: profile.id, slot: profile, password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    expect(openTerminal).toHaveBeenCalledWith(profile.id);
   });
 
   it("allows the coordinator to merge normalized non-secret account status", () => {

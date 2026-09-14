@@ -1,14 +1,7 @@
 import express, { type Request, type Response } from "express";
 
-import { ACCOUNT_IDS, type AccountId } from "../../shared/contracts.js";
 import { apiError, requireSession } from "./authMiddleware.js";
 import type { CoordinatorRouteServices } from "./routes.js";
-
-const accounts = new Set<AccountId>(ACCOUNT_IDS);
-
-function account(value: unknown): AccountId | undefined {
-  return typeof value === "string" && accounts.has(value as AccountId) ? value as AccountId : undefined;
-}
 
 function asyncRoute(handler: (request: Request, response: Response) => Promise<void>) {
   return (request: Request, response: Response): void => {
@@ -20,7 +13,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<v
  * This router is mounted on a separate port and accepts only the coordinator's
  * explicit local-machine origins, including its Tailscale interface.
  */
-export function createTerminalControlApp(services: Pick<CoordinatorRouteServices, "config" | "sessions" | "openTerminal" | "allowedOrigins">): express.Express {
+export function createTerminalControlApp(services: Pick<CoordinatorRouteServices, "config" | "sessions" | "resolveAccountId" | "openTerminal" | "allowedOrigins">): express.Express {
   const app = express();
   app.disable("x-powered-by");
   const allowedOrigins = services.allowedOrigins();
@@ -39,7 +32,7 @@ export function createTerminalControlApp(services: Pick<CoordinatorRouteServices
   });
   app.use(express.json({ limit: "64kb", type: "application/json" }));
   app.post("/api/v1/accounts/:account/terminal", requireSession(services.sessions), asyncRoute(async (request, response) => {
-    const id = account(request.params.account);
+    const id = typeof request.params.account === "string" ? services.resolveAccountId(request.params.account) : undefined;
     if (!id) {
       apiError(response, 400, "INVALID_REQUEST", "Unknown account");
       return;
