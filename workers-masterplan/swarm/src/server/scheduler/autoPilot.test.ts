@@ -69,6 +69,14 @@ describe("selectAutoPilotLaunches", () => {
     })).toEqual([{ taskId: "T0", accountId: "bot1" }]);
   });
 
+  it("treats independent logical profile slots as independent eligible workers", () => {
+    expect(selectAutoPilotLaunches({
+      tasks: [task("T0", "ready"), task("T1", "ready"), task("T2", "ready")],
+      accounts: [account("claudiothe"), account("bot1/acc1"), account("bot1/acc2"), account("bot2/acc1", "action_required", "unauthenticated")],
+      threads: [],
+    })).toEqual([{ taskId: "T0", accountId: "bot1/acc1" }, { taskId: "T1", accountId: "bot1/acc2" }]);
+  });
+
   it("does not let an archived chat occupy a bot", () => {
     expect(selectAutoPilotLaunches({
       tasks: [task("T0", "ready")],

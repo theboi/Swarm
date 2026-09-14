@@ -148,8 +148,8 @@ export function workspaceRoot(account: AccountId | CodexAccountSlot | { id: type
     if (!isAbsolute(account.workspaceRoot)) throw new Error("Workspace root must be absolute");
     return resolve(account.workspaceRoot);
   }
-  if (account !== LOCAL_ACCOUNT_ID || !localWorkspaceRoot) return clonePath(account);
-  if (!isAbsolute(localWorkspaceRoot)) throw new Error("Local workspace root must be absolute");
+  if (!localWorkspaceRoot) return clonePath(account);
+  if (!isAbsolute(localWorkspaceRoot)) throw new Error("Explicit workspace root must be absolute");
   return resolve(localWorkspaceRoot);
 }
 

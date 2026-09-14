@@ -6,7 +6,8 @@ import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { ProfileRegistry } from "./accounts/profileRegistry.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
@@ -63,8 +64,6 @@ type DurableState = {
   accountRateLimits?: Partial<Record<AccountId, RateLimitWindow[]>>;
 };
 
-const accountIds = ACCOUNT_IDS;
-function accountId(value: string): AccountId { if (!(accountIds as readonly string[]).includes(value)) throw new Error("ACCOUNT_OFFLINE"); return value as AccountId; }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringAt(value: unknown, field: string): string | undefined { const result = object(value)[field]; return typeof result === "string" && result ? result : undefined; }
 function isWorkspaceThread(cwd: unknown, workspace: string | undefined): boolean {
@@ -97,6 +96,10 @@ function taskNode(manifest: TaskManifest, readiness: TaskReadiness[]): TaskNode[
 }
 
 async function createRuntime(config: SwarmConfig) {
+  const registry = await ProfileRegistry.load(resolve(process.cwd(), ".data", "account-profiles.json"));
+  const profileSlots = registry.list();
+  const accountIds: AccountId[] = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
+  const slotFor = (account: AccountId): CodexAccountSlot | undefined => profileSlots.find((slot) => slot.id === account);
   const logger = createLogger({ secrets: [config.loginPasswordHash, config.totpSecret, config.sessionSecret, ...Object.values(config.accountPasswords)].filter((value): value is string => Boolean(value)) });
   const store = createCoordinatorStateStore<DurableState>(resolve(process.cwd(), ".data", "state.json"), config);
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
@@ -118,12 +121,14 @@ async function createRuntime(config: SwarmConfig) {
   const completedTaskIds = new Set(root.completedTaskIds ?? []);
   let completedTaskPass = root.completedTaskPass;
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
-  const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
-  const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
+  const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : slotFor(account)?.workspaceRoot;
+  const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(slotFor(account) ?? account, workspaceFor(account));
   const legacyCodexHome = (macosUser: import("../shared/contracts.js").MacosBotId): string => `/Users/${macosUser}/.codex`;
   const codexHomeForAccount = (account: AccountId): string => {
     if (account === LOCAL_ACCOUNT_ID) return process.env.CODEX_HOME ?? `/Users/${config.localAccount}/.codex`;
     if (isMacosBotId(account)) return legacyCodexHome(account);
+    const slot = slotFor(account);
+    if (slot) return slot.codexHome;
     throw new Error("A logical profile requires an explicit Codex home slot");
   };
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
@@ -156,7 +161,7 @@ async function createRuntime(config: SwarmConfig) {
     openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
-  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
+  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(accountIds.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   const autoPilotRecoveryGuard = new AutoPilotRecoveryGuard();
@@ -220,8 +225,10 @@ async function createRuntime(config: SwarmConfig) {
         throw error;
       }
     },
+    accountIds: () => accountIds,
+    resolveSlot: slotFor,
     createClient: (handle) => {
-      const localWorkspaceRoot = workspaceFor(handle.account);
+      const localWorkspaceRoot = handle.slot?.workspaceRoot ?? workspaceFor(handle.account);
       const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
       client.onEvent((event) => {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
@@ -694,15 +701,15 @@ async function createRuntime(config: SwarmConfig) {
       refresh: async () => {
         await refreshTasks(true);
         pass = manifest?.lifecycle?.activePass ?? "planning";
-        const refreshedAccounts = new Set<(typeof BOT_ACCOUNT_IDS)[number]>();
-        const refreshCandidates = accountSnapshot().filter((account) => (BOT_ACCOUNT_IDS as readonly AccountId[]).includes(account.id) && account.connection === "connected" && account.authentication === "authenticated");
+        const refreshedAccounts = new Set<AccountId>();
+        const refreshCandidates = accountSnapshot().filter((account) => account.id !== LOCAL_ACCOUNT_ID && account.connection === "connected" && account.authentication === "authenticated");
         await Promise.allSettled(refreshCandidates.map(async (account) => {
           try { await threads(account.id); }
           catch (error) {
             logger.warn("autoPilot", { event: "threads_refresh_failed", account: account.id, error: error instanceof Error ? error.message : "failed" });
             return;
           }
-          refreshedAccounts.add(account.id as (typeof BOT_ACCOUNT_IDS)[number]);
+          refreshedAccounts.add(account.id);
         }));
         if (shuttingDown) return refreshedAccounts;
         await recoverAcceptedAutoPilotDispatches({

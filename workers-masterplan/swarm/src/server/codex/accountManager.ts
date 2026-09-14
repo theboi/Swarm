@@ -1,8 +1,6 @@
-import { ACCOUNT_IDS, type AccountId, type AccountSnapshot, type RateLimitWindow } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type AccountSnapshot, type CodexAccountSlot, type RateLimitWindow } from "../../shared/contracts.js";
 import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 import { codexLoginCommand } from "./terminalConsole.js";
-
-const ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
 
 export interface ManagedAppServerClient {
   connect(): Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>;
@@ -18,6 +16,9 @@ export interface AccountManagerOptions {
   onRateLimitReadError?: (account: AccountId, error: unknown) => void;
   credentialVersion?: (account: AccountId) => Promise<string | undefined>;
   now?: () => number;
+  /** Immutable registry-derived list for this runtime; defaults only for legacy bootstraps. */
+  accountIds?: () => AccountId[];
+  resolveSlot?: (account: AccountId) => CodexAccountSlot | undefined;
 }
 
 export interface ConnectAccountInput {
@@ -51,7 +52,7 @@ export class AccountManager {
 
   connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
-    if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
+    if (!this.accountIds().includes(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
     const existing = this.connections.get(input.account);
@@ -71,7 +72,7 @@ export class AccountManager {
   }
 
   snapshotsList(): AccountSnapshot[] {
-    return ACCOUNT_IDS.map((account) => this.requireSnapshot(account));
+    return this.accountIds().map((account) => this.requireSnapshot(account));
   }
 
   /** Returns a live app-server client only after account authentication completed. */
@@ -158,7 +159,8 @@ export class AccountManager {
     let handle: LaunchHandle | undefined;
     try {
       this.credentialVersions.set(input.account, await this.readCredentialVersion(input.account));
-      handle = await this.options.launcher.launch({ account: input.account, password: input.password, codexBin: this.options.codexBin });
+      const slot = this.options.resolveSlot?.(input.account);
+      handle = await this.options.launcher.launch({ account: input.account, ...(slot ? { slot } : {}), password: input.password, codexBin: this.options.codexBin });
       const client = this.options.createClient(handle);
       const account = await client.connect();
       if (!account.account) {
@@ -205,6 +207,10 @@ export class AccountManager {
   private async readCredentialVersion(account: AccountId): Promise<string | undefined> {
     try { return await this.options.credentialVersion?.(account); }
     catch { return undefined; }
+  }
+
+  private accountIds(): AccountId[] {
+    return [...(this.options.accountIds?.() ?? ACCOUNT_IDS)];
   }
 
   private requireSnapshot(account: AccountId): AccountSnapshot {
