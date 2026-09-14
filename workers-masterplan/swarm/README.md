@@ -168,9 +168,10 @@ Swarm verifies that every target clone ignores `swarm-handoff-*.jsonl` before
 it stages the rollout under its Git-ignored `.data/handoffs/` directory. It
 then installs the file into the target account's EdenMind workspace through
 that account's authenticated `su` session. It never sends rollout contents
-through Codex app-server file APIs or Git. Temporary staging ACL access and
-data are removed after every attempt; the target-owned, Git-ignored handoff
-file remains for the continuation attachment.
+through Codex app-server file APIs or Git. Each attempt receives a distinct,
+Git-ignored handoff filename, so a failed target startup can safely retry.
+Temporary staging ACL access and data are removed after every attempt; the
+target-owned handoff file remains for the continuation attachment.
 
 Each account runs one loopback-only Codex app-server. `claudiothe` starts the
 CLI directly with its existing local Codex profile; each bot starts through

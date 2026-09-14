@@ -6,37 +6,38 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
-import { LocalJsonlHandoffTransport } from "./localHandoffTransport.js";
+import type { AccountId } from "../../shared/contracts.js";
+import { LocalJsonlHandoffTransport, type TargetOwnedCopyInput } from "./localHandoffTransport.js";
 
 type CopyAsTarget = (input: { sourcePath: string; targetPath: string }) => Promise<void>;
 const run = promisify(execFile);
 
-function handoffFilename(sourceAccountId: string, sourceThreadId: string): string {
-  return `swarm-handoff-${sourceAccountId}-${createHash("sha256").update(`${sourceAccountId}\u0000${sourceThreadId}`).digest("hex").slice(0, 12)}.jsonl`;
-}
-
 async function fixture(copyAsTarget: CopyAsTarget = async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath)) {
   const root = await mkdtemp(join(tmpdir(), "swarm-local-handoff-"));
-  const stagingRoot = join(root, "coordinator", ".data", "handoffs");
+  const localWorkspace = join(root, "coordinator");
+  const stagingRoot = join(localWorkspace, ".data", "handoffs");
   const targetWorkspace = join(root, "bot1", "Dev", "EdenMind");
+  await mkdir(localWorkspace, { recursive: true });
   await mkdir(targetWorkspace, { recursive: true });
+  await run("/usr/bin/git", ["init", "-q", localWorkspace]);
+  await writeFile(join(localWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
   await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
   await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
   const copy = vi.fn(copyAsTarget);
   const transport = new LocalJsonlHandoffTransport({
     stagingRoot,
-    workspaceFor: () => targetWorkspace,
+    workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
     passwords: { bot1: "target-password" },
     copyAsTarget: copy,
   });
-  return { root, stagingRoot, targetWorkspace, copyAsTarget: copy, transport };
+  return { root, localWorkspace, stagingRoot, targetWorkspace, copyAsTarget: copy, transport };
 }
 
 describe("LocalJsonlHandoffTransport", () => {
-  it("grants target-only ACL traversal during the copy and revokes the staging-root grant during cleanup", async () => {
+  it("grants target-only ACL traversal through an auto-created .data ancestor and revokes it during cleanup", async () => {
     let accessSnapshot = "";
-    const { root, stagingRoot, targetWorkspace, transport } = await fixture(async ({ sourcePath, targetPath }) => {
-      accessSnapshot = (await run("/bin/ls", ["-lde", stagingRoot, dirname(sourcePath), sourcePath])).stdout;
+    const { root, localWorkspace, stagingRoot, targetWorkspace, transport } = await fixture(async ({ sourcePath, targetPath }) => {
+      accessSnapshot = (await run("/bin/ls", ["-lde", join(localWorkspace, ".data"), stagingRoot, dirname(sourcePath), sourcePath])).stdout;
       await copyFile(sourcePath, targetPath);
     });
 
@@ -45,6 +46,8 @@ describe("LocalJsonlHandoffTransport", () => {
 
       expect(accessSnapshot).toContain("user:bot1 allow search");
       expect(accessSnapshot).toContain("user:bot1 allow read");
+      expect((accessSnapshot.match(/user:bot1 allow search/g) ?? [])).toHaveLength(3);
+      expect((await run("/bin/ls", ["-lde", join(localWorkspace, ".data"), stagingRoot])).stdout).not.toContain("user:bot1 allow search");
       expect((await run("/bin/ls", ["-lde", stagingRoot])).stdout).not.toContain("user:bot1 allow search");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -52,11 +55,11 @@ describe("LocalJsonlHandoffTransport", () => {
   });
 
   it("revokes a partially granted staging-root ACL when the remaining target access grant fails", async () => {
-    const { root, stagingRoot, targetWorkspace } = await fixture();
+    const { root, localWorkspace, stagingRoot, targetWorkspace } = await fixture();
     let revoked = false;
     const transport = new LocalJsonlHandoffTransport({
       stagingRoot,
-      workspaceFor: () => targetWorkspace,
+      workspaceFor: (account: AccountId) => account === "claudiothe" ? localWorkspace : targetWorkspace,
       passwords: { bot1: "target-password" },
       copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
       grantTargetAccess: async () => { throw new Error("directory ACL failed after root ACL grant"); },
@@ -81,7 +84,7 @@ describe("LocalJsonlHandoffTransport", () => {
       const handoff = await transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: rollout });
 
       expect(createHash("sha256").update(await readFile(handoff.path)).digest("hex")).toBe(createHash("sha256").update(rollout).digest("hex"));
-      expect(handoff.path).toMatch(new RegExp(`^${targetWorkspace}/swarm-handoff-bot7-[a-f0-9]{12}\\.jsonl$`));
+      expect(handoff.path).toMatch(new RegExp(`^${targetWorkspace}/swarm-handoff-bot7-[a-f0-9]{12}-[a-f0-9-]{36}\\.jsonl$`));
       expect(copyAsTarget).toHaveBeenCalledWith(expect.objectContaining({ account: "bot1" }));
       expect(await readdir(stagingRoot)).toEqual([]);
     } finally {
@@ -129,12 +132,12 @@ describe("LocalJsonlHandoffTransport", () => {
   });
 
   it("normalizes staging initialization failures as local handoff copy failures", async () => {
-    const { root, targetWorkspace } = await fixture();
-    const blockedParent = join(root, "blocked-parent");
+    const { root, localWorkspace, targetWorkspace } = await fixture();
+    const blockedParent = join(localWorkspace, "blocked-parent");
     await writeFile(blockedParent, "not a directory");
     const transport = new LocalJsonlHandoffTransport({
       stagingRoot: join(blockedParent, "handoffs"),
-      workspaceFor: () => targetWorkspace,
+      workspaceFor: (account: AccountId) => account === "claudiothe" ? localWorkspace : targetWorkspace,
       passwords: { bot1: "target-password" },
       copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
       grantTargetAccess: async () => undefined,
@@ -163,17 +166,108 @@ describe("LocalJsonlHandoffTransport", () => {
     }
   });
 
-  it("rejects a symlinked target handoff before it can overwrite an outside file", async () => {
-    const { root, targetWorkspace, transport } = await fixture();
-    const outside = join(root, "outside.jsonl");
-    const destination = join(targetWorkspace, handoffFilename("bot7", "source-thread"));
-    await writeFile(outside, "outside\n");
-    await symlink(outside, destination);
+  it("rejects a staging root whose .data ancestor resolves outside the coordinator workspace", async () => {
+    const { root, localWorkspace, stagingRoot, targetWorkspace, transport } = await fixture();
+    const outside = join(root, "outside");
+    await mkdir(join(outside, "handoffs"), { recursive: true });
+    await symlink(outside, join(localWorkspace, ".data"));
 
     try {
       await expect(transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{}\n") })).rejects.toThrow("LOCAL_HANDOFF_INVALID");
+      expect(await readdir(join(outside, "handoffs"))).toEqual([]);
+      expect(resolve(stagingRoot)).toContain(`${localWorkspace}/.data/handoffs`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a destination symlink introduced after validation without writing outside the target workspace", async () => {
+    const { root, localWorkspace, targetWorkspace } = await fixture();
+    const outside = join(root, "outside.jsonl");
+    await writeFile(outside, "outside\n");
+    const transport = new LocalJsonlHandoffTransport({
+      stagingRoot: join(localWorkspace, ".data", "handoffs"),
+      workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
+      passwords: {},
+      beforeDestinationCreate: async (destination: string) => { await symlink(outside, destination); },
+    });
+
+    try {
+      await expect(transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "claudiothe", targetWorkspace: localWorkspace, jsonl: Buffer.from("{}\n") })).rejects.toThrow("LOCAL_HANDOFF_COPY_FAILED");
       await expect(readFile(outside, "utf8")).resolves.toBe("outside\n");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("creates distinct ignored destinations for repeated transfers of the same source rollout", async () => {
+    const { root, targetWorkspace, transport } = await fixture();
+
+    try {
+      const first = await transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{\"attempt\":1}\n") });
+      const second = await transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{\"attempt\":2}\n") });
+
+      expect(first.path).not.toBe(second.path);
+      await expect(readFile(first.path, "utf8")).resolves.toBe("{\"attempt\":1}\n");
+      await expect(readFile(second.path, "utf8")).resolves.toBe("{\"attempt\":2}\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps parent traversal ACLs until overlapping target copies have both released their leases", async () => {
+    let releaseFirstGrant: (() => void) | undefined;
+    const firstGrantAllowed = new Promise<void>((resolveGrant) => { releaseFirstGrant = resolveGrant; });
+    let firstGrantEntered: (() => void) | undefined;
+    const firstGrantStarted = new Promise<void>((resolveGrant) => { firstGrantEntered = resolveGrant; });
+    let releaseSecondCopy: (() => void) | undefined;
+    const secondCopyHeld = new Promise<void>((resolveCopy) => { releaseSecondCopy = resolveCopy; });
+    let secondCopyStarted: (() => void) | undefined;
+    const secondCopyReady = new Promise<void>((resolveCopy) => { secondCopyStarted = resolveCopy; });
+    let grants = 0;
+    let revokes = 0;
+    const { root, stagingRoot, targetWorkspace } = await fixture();
+    const transport = new LocalJsonlHandoffTransport({
+      stagingRoot,
+      workspaceFor: (account: AccountId) => account === "claudiothe" ? join(root, "coordinator") : targetWorkspace,
+      passwords: { bot1: "target-password" },
+      grantTargetAccess: async () => {
+        grants += 1;
+        if (grants === 1) {
+          firstGrantEntered?.();
+          await firstGrantAllowed;
+        }
+      },
+      grantTargetStageAccess: async () => undefined,
+      revokeTargetAccess: async () => { revokes += 1; },
+      copyAsTarget: async ({ sourcePath, targetPath }: TargetOwnedCopyInput) => {
+        await copyFile(sourcePath, targetPath);
+        if ((await readFile(sourcePath, "utf8")).includes("\"attempt\":1")) await secondCopyReady;
+        else {
+          secondCopyStarted?.();
+          await secondCopyHeld;
+        }
+      },
+    });
+
+    try {
+      const first = transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{\"attempt\":1}\n") });
+      await firstGrantStarted;
+      const second = transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "other-source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{\"attempt\":2}\n") });
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+      expect(grants).toBe(1);
+      releaseFirstGrant?.();
+      await secondCopyReady;
+      await first;
+
+      expect(revokes).toBe(0);
+      releaseSecondCopy?.();
+      await second;
+      expect(grants).toBe(1);
+      expect(revokes).toBe(1);
+    } finally {
+      releaseFirstGrant?.();
+      releaseSecondCopy?.();
       await rm(root, { recursive: true, force: true });
     }
   });

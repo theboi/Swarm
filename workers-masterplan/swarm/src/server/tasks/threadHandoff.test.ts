@@ -128,15 +128,17 @@ describe("createJsonlContinuation", () => {
 
   it("removes local staging but retains the target handoff when target startup fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "swarm-continuation-"));
-    const stagingRoot = join(root, "coordinator", ".data", "handoffs");
+    const localWorkspace = join(root, "coordinator");
+    const stagingRoot = join(localWorkspace, ".data", "handoffs");
     const targetWorkspace = join(root, "bot5", "Dev", "EdenMind");
+    await mkdir(localWorkspace, { recursive: true });
     await mkdir(targetWorkspace, { recursive: true });
     await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
     await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
     const targetError = new Error("target turn rejected");
     const transport = new LocalJsonlHandoffTransport({
       stagingRoot,
-      workspaceFor: () => targetWorkspace,
+      workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
       passwords: { bot5: "target-password" },
       copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
       grantTargetAccess: async () => undefined,
@@ -158,7 +160,50 @@ describe("createJsonlContinuation", () => {
       })).rejects.toBe(targetError);
 
       expect(await readdir(stagingRoot)).toEqual([]);
-      expect(await readdir(targetWorkspace)).toContainEqual(expect.stringMatching(/^swarm-handoff-bot3-[a-f0-9]{12}\.jsonl$/));
+      expect(await readdir(targetWorkspace)).toContainEqual(expect.stringMatching(/^swarm-handoff-bot3-[a-f0-9]{12}-[a-f0-9-]{36}\.jsonl$/));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a continuation after target startup failure with a fresh target-owned handoff", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-continuation-retry-"));
+    const localWorkspace = join(root, "coordinator");
+    const stagingRoot = join(localWorkspace, ".data", "handoffs");
+    const targetWorkspace = join(root, "bot5", "Dev", "EdenMind");
+    await mkdir(localWorkspace, { recursive: true });
+    await mkdir(targetWorkspace, { recursive: true });
+    await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
+    await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
+    const transport = new LocalJsonlHandoffTransport({
+      stagingRoot,
+      workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
+      passwords: { bot5: "target-password" },
+      copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
+      grantTargetAccess: async () => undefined,
+      revokeTargetAccess: async () => undefined,
+    });
+
+    const continuationInput = (continuationTarget: JsonlContinuationTarget) => ({
+      sourceAccountId: "bot3" as const,
+      sourceThreadId: "source-thread",
+      sourceName: "Build the release",
+      targetAccountId: "bot5" as const,
+      targetWorkspace,
+      jsonl: Buffer.from("{\"type\":\"session_meta\"}\n"),
+      clientUserMessageId: "handoff-message",
+      copyJsonl: (input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }) => transport.copyJsonl(input),
+      target: continuationTarget,
+      normalizeThread: (source: Record<string, unknown>) => summary("bot5", String(source.id)),
+    });
+
+    try {
+      await expect(createJsonlContinuation(continuationInput(target(vi.fn(async () => { throw new Error("target turn rejected"); }))))).rejects.toThrow("target turn rejected");
+      await expect(createJsonlContinuation(continuationInput(target()))).resolves.toEqual(expect.objectContaining({ accountId: "bot5" }));
+
+      const handoffs = (await readdir(targetWorkspace)).filter((filename) => filename.startsWith("swarm-handoff-bot3-"));
+      expect(handoffs).toHaveLength(2);
+      expect(handoffs[0]).not.toBe(handoffs[1]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
