@@ -67,6 +67,15 @@ export const dashboardSnapshot: CoordinatorSnapshot = {
   ],
 };
 
+/** Isolated logical profile fixture used by account-management UI tests. */
+export const profileDashboardSnapshot: CoordinatorSnapshot = {
+  ...dashboardSnapshot,
+  accounts: [
+    { id: "bot1/acc1", macosUser: "bot1", accountNumber: 1, workspaceRoot: "/Users/bot1/Dev/EdenMind", isPrimary: true, connection: "connected", authentication: "authenticated", rateLimits: [], activeTurns: 0, lastAssignedAt: null },
+    { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2", isPrimary: false, connection: "action_required", authentication: "unauthenticated", rateLimits: [], activeTurns: 0, lastAssignedAt: null },
+  ],
+};
+
 export const chatSnapshot: CoordinatorSnapshot = {
   ...dashboardSnapshot,
   accounts: dashboardSnapshot.accounts.map((account) => account.id === "bot3" ? { ...account, terminalCommand: "open -a Codex /Users/bot3/Dev/EdenMind" } : account),
