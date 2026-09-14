@@ -81,6 +81,12 @@ export class AccountManager {
     return this.connections.get(account)?.client;
   }
 
+  /** Keeps the profile-scoped transport available while interactive login is pending. */
+  preAuthClient(account: AccountId): ManagedAppServerClient | undefined {
+    const connection = this.connections.get(account);
+    return connection?.client.isConnected() ? connection.client : undefined;
+  }
+
   async openTerminal(account: AccountId): Promise<void> {
     if (this.connections.has(account) && this.requireSnapshot(account).authentication === "authenticated") await this.options.launcher.openTerminal(account);
     else await this.options.launcher.openLoginTerminal(account, this.options.codexBin);
@@ -91,7 +97,7 @@ export class AccountManager {
     return () => this.listeners.delete(listener);
   }
 
-  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange">): AccountSnapshot {
+  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange" | "identityDisplay">): AccountSnapshot {
     return this.setSnapshot(account, patch);
   }
 
@@ -100,6 +106,16 @@ export class AccountManager {
       connection: "connected",
       authentication: "authenticated",
       rateLimits,
+      terminalCommand: undefined,
+      errorCode: undefined,
+    });
+  }
+
+  markAuthenticated(account: AccountId, identityDisplay: AccountSnapshot["identityDisplay"]): AccountSnapshot {
+    return this.setSnapshot(account, {
+      connection: "connected",
+      authentication: "authenticated",
+      identityDisplay,
       terminalCommand: undefined,
       errorCode: undefined,
     });

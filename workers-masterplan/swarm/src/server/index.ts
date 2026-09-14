@@ -1,12 +1,17 @@
 import { access, realpath, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type MacosBotId, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { LoginCoordinator } from "./accounts/loginCoordinator.js";
+import { PrimaryProfileManager } from "./accounts/primaryProfileManager.js";
+import { ProfileProvisioner } from "./accounts/profileProvisioner.js";
 import { ProfileRegistry } from "./accounts/profileRegistry.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
@@ -51,6 +56,8 @@ import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/lau
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
 import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
 
+const execFileAsync = promisify(execFile);
+
 type DurableState = {
   auth?: { challenges?: Record<string, unknown>; sessions?: Record<string, unknown>; loginThrottle?: Record<string, { failures: number; retryAt: number }>; usedTotp?: Record<string, true> };
   autoPilot?: AutoPilotState;
@@ -83,6 +90,16 @@ function asThread(account: AccountId, source: Record<string, unknown>, workspace
 }
 function responseThread(value: unknown): Record<string, unknown> { const response = object(value); return response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? object(response.thread) : response; }
 
+/** Fails closed: an indeterminate Desktop process state must never permit a primary symlink swap. */
+async function desktopRunningFor(bot: MacosBotId): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/pgrep", ["-u", bot, "-fl", "/Applications/(ChatGPT|Codex)\\.app/"]);
+    return stdout.trim().length > 0;
+  } catch (error) {
+    return Number((error as NodeJS.ErrnoException).code) === 1 ? false : true;
+  }
+}
+
 async function leasePort(): Promise<PortLease> {
   const listener = createNetServer();
   await new Promise<void>((resolveListen, rejectListen) => { listener.once("error", rejectListen); listener.listen(0, "127.0.0.1", () => resolveListen()); });
@@ -97,9 +114,11 @@ function taskNode(manifest: TaskManifest, readiness: TaskReadiness[]): TaskNode[
 
 async function createRuntime(config: SwarmConfig) {
   const registry = await ProfileRegistry.load(resolve(process.cwd(), ".data", "account-profiles.json"));
-  const profileSlots = registry.list();
-  const accountIds: AccountId[] = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
+  let profileSlots = registry.list();
+  let accountIds: AccountId[] = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
   const slotFor = (account: AccountId): CodexAccountSlot | undefined => profileSlots.find((slot) => slot.id === account);
+  const primaryByBot = new Map<MacosBotId, BotProfileAccountId>(profileSlots.filter((slot) => slot.accountNumber === 1).map((slot) => [slot.macosUser, slot.id]));
+  const primaryProfiles = new PrimaryProfileManager({ registry, desktopRunning: desktopRunningFor });
   const logger = createLogger({ secrets: [config.loginPasswordHash, config.totpSecret, config.sessionSecret, ...Object.values(config.accountPasswords)].filter((value): value is string => Boolean(value)) });
   const store = createCoordinatorStateStore<DurableState>(resolve(process.cwd(), ".data", "state.json"), config);
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
@@ -133,6 +152,7 @@ async function createRuntime(config: SwarmConfig) {
   };
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
+  let publishAccountSnapshots: (accounts: import("../shared/contracts.js").AccountSnapshot[]) => void = () => undefined;
   let requestAutoPilot = () => undefined;
   let shuttingDown = false;
   const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
@@ -162,10 +182,19 @@ async function createRuntime(config: SwarmConfig) {
     log: (entry) => logger.info("suLauncher", entry),
   });
   const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(accountIds.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
+  const refreshProfileRuntime = (): void => {
+    profileSlots = registry.list();
+    accountIds = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
+    for (const slot of profileSlots) {
+      if (!rolloutReaders.has(slot.id)) rolloutReaders.set(slot.id, new LocalRolloutTranscriptReader(slot.codexHome));
+      if (!primaryByBot.has(slot.macosUser)) primaryByBot.set(slot.macosUser, `${slot.macosUser}/acc1` as BotProfileAccountId);
+    }
+  };
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   const autoPilotRecoveryGuard = new AutoPilotRecoveryGuard();
   let accounts: AccountManager;
+  let loginCoordinator: LoginCoordinator | undefined;
   const breakingChangeAccounts = new Set<AccountId>(root.notifications.breakingChangeAccounts);
   const recordBreakingChange = (account: AccountId) => {
     accounts.updateSnapshot(account, { hasBreakingChange: true });
@@ -268,6 +297,7 @@ async function createRuntime(config: SwarmConfig) {
         if (event.type === "turn" && event.threadId && (event.state === "failed" || event.state === "interrupted")) activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
         publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}), ...(event.historical ? { historical: true } : {}) });
       });
+      if (isBotProfileAccountId(handle.account) && loginCoordinator) loginCoordinator.bindAppServer(handle.account, client);
       return client;
     },
   });
@@ -349,7 +379,11 @@ async function createRuntime(config: SwarmConfig) {
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
   await refreshTasks();
-  const passwordFor = (id: AccountId): string | undefined => isMacosBotId(id) ? config.accountPasswords[id] : undefined;
+  const passwordFor = (id: AccountId): string | undefined => {
+    if (isMacosBotId(id)) return config.accountPasswords[id];
+    const slot = slotFor(id);
+    return slot ? config.accountPasswords[slot.macosUser] : undefined;
+  };
   const liveClient = async (id: AccountId): Promise<AppServerClient> => {
     const client = accounts.client(id);
     if (client instanceof AppServerClient && client.isConnected()) return client;
@@ -358,7 +392,12 @@ async function createRuntime(config: SwarmConfig) {
     if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("ACCOUNT_OFFLINE");
     return recovered;
   };
-  const accountSnapshot = () => accounts.snapshotsList();
+  const accountSnapshot = () => accounts.snapshotsList().map((snapshot) => {
+    const slot = slotFor(snapshot.id);
+    return slot
+      ? { ...snapshot, macosUser: slot.macosUser, accountNumber: slot.accountNumber, workspaceRoot: slot.workspaceRoot, isPrimary: primaryByBot.get(slot.macosUser) === slot.id }
+      : snapshot;
+  });
   const rateLimitRefresher = new AccountRateLimitRefresher({
     prepare: async (id) => {
       if (accounts.snapshot(id).authentication !== "unauthenticated") return;
@@ -504,6 +543,44 @@ async function createRuntime(config: SwarmConfig) {
     timer.unref();
     limitResumeTimers.set(key, timer);
   };
+  const profileClient = async (accountId: BotProfileAccountId): Promise<AppServerClient> => {
+    const current = accounts.preAuthClient(accountId);
+    if (current instanceof AppServerClient && current.isConnected()) return current;
+    await accounts.connect({ account: accountId, password: passwordFor(accountId) }).catch((error) => {
+      const recovered = accounts.preAuthClient(accountId);
+      if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw error;
+    });
+    const recovered = accounts.preAuthClient(accountId);
+    if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("DEVICE_AUTH_UNAVAILABLE");
+    return recovered;
+  };
+  const profileProvisioner = new ProfileProvisioner({
+    registry,
+    repositoryUrl: config.repositoryUrl,
+    passwordFor: (bot) => config.accountPasswords[bot],
+  });
+  const loginExpiryTimers = new Map<BotProfileAccountId, NodeJS.Timeout>();
+  const clearLoginExpiry = (accountId: BotProfileAccountId): void => {
+    const timer = loginExpiryTimers.get(accountId);
+    if (timer) clearTimeout(timer);
+    loginExpiryTimers.delete(accountId);
+  };
+  loginCoordinator = new LoginCoordinator({
+    fingerprintSalt: config.sessionSecret,
+    start: async (accountId, method) => {
+      const client = await profileClient(accountId);
+      return method === "device_code" ? client.startDeviceLogin() : client.startBrowserLogin();
+    },
+    cancel: async (accountId, loginId) => {
+      const client = accounts.preAuthClient(accountId);
+      if (client instanceof AppServerClient && client.isConnected()) await client.cancelLogin(loginId);
+    },
+    onCompletion: (accountId, identity) => {
+      clearLoginExpiry(accountId);
+      accounts.markAuthenticated(accountId, identity);
+      void updateRateLimits(accountId).catch((error) => logger.warn("accounts", { event: "profile_login_rate_limits_failed", account: accountId, error: error instanceof Error ? error.message : "failed" }));
+    },
+  });
   const services: CoordinatorRouteServices = {
     config: { ...config, secureCookies: false }, sessions, throttle, verifyTotp,
     snapshot, health,
@@ -512,6 +589,44 @@ async function createRuntime(config: SwarmConfig) {
       requestAutoPilot();
       publishRuntimeEvent("auto_pilot", { enabled });
       return { enabled };
+    },
+    resolveAccountId: (value) => {
+      if (value === LOCAL_ACCOUNT_ID) return value;
+      if (isBotProfileAccountId(value)) return slotFor(value) ? value : undefined;
+      if (isMacosBotId(value)) return slotFor(`${value}/acc1` as BotProfileAccountId)?.id;
+      return undefined;
+    },
+    makePrimary: async (accountId) => {
+      const state = await primaryProfiles.makePrimary(accountId);
+      if (!state.primaryAccountId) throw new Error("PRIMARY_SWITCH_FAILED");
+      primaryByBot.set(state.macosUser, state.primaryAccountId);
+      const changed = accountSnapshot().filter((snapshot) => snapshot.macosUser === state.macosUser);
+      publishAccountSnapshots(changed);
+      return changed;
+    },
+    addAccount: async (bot) => {
+      const slot = await profileProvisioner.create(bot);
+      refreshProfileRuntime();
+      const snapshot = accountSnapshot().find((item) => item.id === slot.id);
+      if (!snapshot) throw new Error("PROFILE_SETUP_FAILED");
+      publishAccountSnapshots([snapshot]);
+      return snapshot;
+    },
+    startAccountLogin: async (accountId, method) => {
+      clearLoginExpiry(accountId);
+      const challenge = await loginCoordinator!.start(accountId, method);
+      const delay = Math.max(0, challenge.expiresAt - Date.now());
+      const timer = setTimeout(() => {
+        loginExpiryTimers.delete(accountId);
+        void loginCoordinator?.cancel(accountId).catch(() => undefined);
+      }, delay);
+      timer.unref();
+      loginExpiryTimers.set(accountId, timer);
+      return challenge;
+    },
+    cancelAccountLogin: async (accountId) => {
+      clearLoginExpiry(accountId);
+      await loginCoordinator!.cancel(accountId);
     },
     connectAccount: async (id) => {
       const connected = await accounts.connect({ account: id, password: passwordFor(id) });
@@ -767,10 +882,12 @@ async function createRuntime(config: SwarmConfig) {
     gitSynchronizer.stop();
     for (const id of rateWaitTimers.keys()) clearRateWait(id);
     for (const timer of limitResumeTimers.values()) clearTimeout(timer);
+    for (const timer of loginExpiryTimers.values()) clearTimeout(timer);
     await autoPilot.whenIdle();
     await accounts.shutdown();
   } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
+  publishAccountSnapshots = (snapshots) => { coordinator.hub.publishAccountSnapshots(snapshots); };
   accounts.onChange((snapshot) => {
     coordinator.hub.publish("account", {} as Record<string, unknown>);
     if (snapshot.connection === "connected" && snapshot.authentication === "authenticated") requestAutoPilot();

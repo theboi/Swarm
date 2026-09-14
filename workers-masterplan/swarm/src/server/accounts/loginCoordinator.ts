@@ -34,6 +34,7 @@ export class LoginCoordinator {
     cancel(accountId: BotProfileAccountId, loginId: string): Promise<void>;
     now?: () => number;
     fingerprintSalt: string;
+    onCompletion?: (accountId: BotProfileAccountId, identity: AccountIdentityDisplay) => void;
   }) {}
 
   async start(accountId: BotProfileAccountId, method: LoginMethod): Promise<ProfileLoginChallenge> {
@@ -74,6 +75,7 @@ export class LoginCoordinator {
     this.disconnect(accountId);
     this.fingerprintByAccount.set(accountId, fingerprint);
     this.accountByFingerprint.set(fingerprint, accountId);
+    this.options.onCompletion?.(accountId, identity);
     return identity;
   }
 

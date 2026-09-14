@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 
-import { ACCOUNT_IDS, type AccountId, type AutoPilotState, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type DispatchOrigin, type HealthSnapshot, type ManifestPass, type PendingApproval } from "../../shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, type AccountId, type AccountSnapshot, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type DispatchOrigin, type HealthSnapshot, type MacosBotId, type ManifestPass, type PendingApproval, type ProfileLoginChallenge } from "../../shared/contracts.js";
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
@@ -14,6 +14,12 @@ export interface CoordinatorRouteServices {
   snapshot(): Promise<CoordinatorSnapshot>;
   health(): Promise<HealthSnapshot>;
   setAutoPilot(enabled: boolean): Promise<AutoPilotState>;
+  /** Resolves the current registry-backed logical account set at the HTTP boundary. */
+  resolveAccountId(value: string): AccountId | undefined;
+  makePrimary(accountId: BotProfileAccountId): Promise<AccountSnapshot[]>;
+  addAccount(bot: MacosBotId): Promise<AccountSnapshot>;
+  startAccountLogin(accountId: BotProfileAccountId, method: "device_code" | "same_mac_browser"): Promise<ProfileLoginChallenge>;
+  cancelAccountLogin(accountId: BotProfileAccountId): Promise<void>;
   connectAccount(accountId: AccountId): Promise<unknown>;
   disconnectAccount(accountId: AccountId): Promise<void>;
   openTerminal(accountId: AccountId): Promise<void>;
@@ -36,9 +42,7 @@ export interface CoordinatorRouteServices {
   allowedOrigins(): ReadonlySet<string>;
 }
 
-const accounts = new Set<AccountId>(ACCOUNT_IDS);
 function manifestPass(value: unknown): ManifestPass | undefined { return value === "planning" || value === "execution" ? value : undefined; }
-function account(value: unknown): AccountId | undefined { return typeof value === "string" && accounts.has(value as AccountId) ? value as AccountId : undefined; }
 function record(value: unknown): Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function text(value: unknown, field: string): string | undefined { return typeof value === "string" && value.trim() ? value : undefined; }
 function settingText(value: unknown): string | undefined | null { return value === undefined ? undefined : typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : null; }
@@ -55,8 +59,47 @@ function executionSettings(value: unknown): ChatExecutionSettings | undefined | 
   return { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(serviceTier ? { serviceTier } : {}), ...(permissionMode ? { permissionMode } : {}) };
 }
 function param(value: string | string[] | undefined): string { return typeof value === "string" ? value : ""; }
+function publicLoginChallenge(challenge: ProfileLoginChallenge): Omit<ProfileLoginChallenge, "loginId"> {
+  return {
+    accountId: challenge.accountId,
+    method: challenge.method,
+    verificationUrl: challenge.verificationUrl,
+    ...(challenge.userCode ? { userCode: challenge.userCode } : {}),
+    expiresAt: challenge.expiresAt,
+  };
+}
+function isLoopbackName(value: string): boolean {
+  const host = value.toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+function isLoopbackAddress(value: string | undefined): boolean {
+  if (!value) return false;
+  const address = value.toLowerCase();
+  return address === "::1" || address === "127.0.0.1" || address.startsWith("::ffff:127.0.0.1");
+}
+/** Browser OAuth can only be initiated by a direct loopback dashboard request. */
+function isSameMacBrowserRequest(request: Request): boolean {
+  if (!isLoopbackAddress(request.socket.remoteAddress)) return false;
+  const host = request.headers.host;
+  if (typeof host !== "string") return false;
+  let hostname: string;
+  try { hostname = new URL(`http://${host}`).hostname; } catch { return false; }
+  if (!isLoopbackName(hostname)) return false;
+  const origin = request.headers.origin;
+  if (typeof origin !== "string") return false;
+  try { return isLoopbackName(new URL(origin).hostname); } catch { return false; }
+}
 function codeFor(error: unknown): { status: number; code: string; message: string } {
   const message = error instanceof Error ? error.message : "Codex request did not complete";
+  const explicitCode = error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+  if (explicitCode && ["DESKTOP_APP_RUNNING", "PRIMARY_PROFILE_CONFLICT", "PRIMARY_SWITCH_FAILED", "IDENTITY_ALREADY_CONNECTED"].includes(explicitCode)) {
+    return { status: 409, code: explicitCode, message };
+  }
+  if (explicitCode && ["PROFILE_SETUP_FAILED", "PROFILE_AUTH_ISOLATION_UNAVAILABLE", "DEVICE_AUTH_UNAVAILABLE", "LOGIN_EXPIRED", "LOGIN_CANCELLED"].includes(explicitCode)) {
+    return { status: explicitCode === "DEVICE_AUTH_UNAVAILABLE" ? 503 : 400, code: explicitCode, message };
+  }
   if (/turn.*(?:already|is).*(?:active|in progress|running)|(?:active|in progress|running).*turn|active writer/i.test(message)) {
     return { status: 409, code: "TURN_ACTIVE", message: "This chat is already working. Use Steer to guide it." };
   }
@@ -67,8 +110,11 @@ function codeFor(error: unknown): { status: number; code: string; message: strin
     return { status: 503, code: "ACCOUNT_UNAVAILABLE", message: "This account's Codex connection was interrupted. Try again in a moment." };
   }
   if (message.includes("GIT_HANDOFF_PUSH_FAILED")) return { status: 409, code: "GIT_HANDOFF_PUSH_FAILED", message: message.replace(/^GIT_HANDOFF_PUSH_FAILED:\s*/, "") };
-  const code = /MASTERPLAN_NOT_READY|TASK_NOT_READY|RATE_LIMIT_WAIT|ACCOUNT_AUTH_REQUIRED|ACCOUNT_OFFLINE|FILE_OUTSIDE_WORKSPACE|DANGEROUS_APPROVAL_REQUIRED|HUMAN_APPROVAL_REQUIRED/.exec(message)?.[0] ?? "OPERATION_FAILED";
-  const status = code === "FILE_OUTSIDE_WORKSPACE" ? 403 : code === "ACCOUNT_OFFLINE" ? 409 : code === "TASK_NOT_READY" || code === "MASTERPLAN_NOT_READY" || code === "RATE_LIMIT_WAIT" ? 409 : 400;
+  const code = /MASTERPLAN_NOT_READY|TASK_NOT_READY|RATE_LIMIT_WAIT|ACCOUNT_AUTH_REQUIRED|ACCOUNT_OFFLINE|FILE_OUTSIDE_WORKSPACE|DANGEROUS_APPROVAL_REQUIRED|HUMAN_APPROVAL_REQUIRED|DESKTOP_APP_RUNNING|PRIMARY_PROFILE_CONFLICT|PRIMARY_SWITCH_FAILED|PROFILE_SETUP_FAILED|PROFILE_AUTH_ISOLATION_UNAVAILABLE|DEVICE_AUTH_UNAVAILABLE|LOGIN_EXPIRED|LOGIN_CANCELLED|IDENTITY_ALREADY_CONNECTED/.exec(message)?.[0] ?? "OPERATION_FAILED";
+  const status = code === "FILE_OUTSIDE_WORKSPACE" ? 403
+    : code === "ACCOUNT_OFFLINE" || code === "DESKTOP_APP_RUNNING" || code === "PRIMARY_PROFILE_CONFLICT" || code === "PRIMARY_SWITCH_FAILED" || code === "IDENTITY_ALREADY_CONNECTED" ? 409
+      : code === "TASK_NOT_READY" || code === "MASTERPLAN_NOT_READY" || code === "RATE_LIMIT_WAIT" ? 409
+        : code === "DEVICE_AUTH_UNAVAILABLE" ? 503 : 400;
   return { status, code, message: code === "OPERATION_FAILED" ? "Codex could not complete this request. Try again, or check that the selected account is connected." : message };
 }
 
@@ -88,6 +134,7 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   const router = express.Router();
   const mutation = [requireAllowedOrigin(services.allowedOrigins), requireJson] as const;
   const securedMutation = [requireSession(services.sessions), ...mutation] as const;
+  const account = (value: unknown): AccountId | undefined => typeof value === "string" ? services.resolveAccountId(value) : undefined;
   const sendThrottled = (response: express.Response) => apiError(response, 429, "AUTH_THROTTLED", "Too many sign-in attempts");
   const sendInvalid = async (response: express.Response, email: string, source: string) => {
     await services.throttle.recordFailure(email, source);
@@ -159,6 +206,35 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   }));
 
   router.post("/accounts/rate-limits/refresh", ...securedMutation, asyncRoute(async (_request, response) => sendData(response, await services.refreshAllRateLimits())));
+  router.post("/accounts/:account/primary", ...securedMutation, asyncRoute(async (request, response) => {
+    const id = account(request.params.account);
+    if (!id || !isBotProfileAccountId(id)) { apiError(response, 400, "INVALID_REQUEST", "Unknown profile account"); return; }
+    sendData(response, await services.makePrimary(id));
+  }));
+  router.post("/bots/:bot/accounts", ...securedMutation, asyncRoute(async (request, response) => {
+    const bot = param(request.params.bot);
+    if (!isMacosBotId(bot)) { apiError(response, 400, "INVALID_REQUEST", "Unknown macOS bot account"); return; }
+    sendData(response, await services.addAccount(bot));
+  }));
+  router.post("/accounts/:account/login", ...securedMutation, asyncRoute(async (request, response) => {
+    const id = account(request.params.account);
+    const method = record(request.body).method;
+    if (!id || !isBotProfileAccountId(id) || (method !== "device_code" && method !== "same_mac_browser")) {
+      apiError(response, 400, "INVALID_REQUEST", "A known profile account and supported login method are required");
+      return;
+    }
+    if (method === "same_mac_browser" && !isSameMacBrowserRequest(request)) {
+      apiError(response, 403, "AUTH_INVALID", "Browser login must be started from the local Swarm dashboard");
+      return;
+    }
+    sendData(response, publicLoginChallenge(await services.startAccountLogin(id, method)));
+  }));
+  router.post("/accounts/:account/login/cancel", ...securedMutation, asyncRoute(async (request, response) => {
+    const id = account(request.params.account);
+    if (!id || !isBotProfileAccountId(id)) { apiError(response, 400, "INVALID_REQUEST", "Unknown profile account"); return; }
+    await services.cancelAccountLogin(id);
+    sendData(response, {});
+  }));
   router.post("/accounts/:account/connect", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.connectAccount(id)); }));
   router.post("/accounts/:account/disconnect", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } await services.disconnectAccount(id); sendData(response, {}); }));
   router.post("/accounts/:account/rate-limits/refresh", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.refreshRateLimits(id)); }));

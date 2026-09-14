@@ -27,6 +27,22 @@ describe("HTTP coordinator API", () => {
     }));
   });
 
+  it("uses encoded profile routes and sends only the chosen login method", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    const api = createHttpCoordinatorApi();
+
+    await api.makePrimary("bot1/acc2");
+    await api.addAccount("bot1");
+    await api.startAccountLogin("bot1/acc2", "device_code");
+    await api.cancelAccountLogin("bot1/acc2");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot1%2Facc2/primary", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/bots/bot1/accounts", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot1%2Facc2/login", expect.objectContaining({ method: "POST", body: JSON.stringify({ method: "device_code" }) }));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot1%2Facc2/login/cancel", expect.objectContaining({ method: "POST" }));
+  });
+
   it("returns only the displayed requested permissions for an explicit grant", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ data: {} }), { headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
