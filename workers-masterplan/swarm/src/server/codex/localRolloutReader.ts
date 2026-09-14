@@ -81,8 +81,8 @@ export class LocalRolloutTranscriptReader {
     return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.status ? { status: turn.status } : {}), ...(turn.error ? { error: turn.error } : {}), ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
   }
 
-  async readJsonl(threadId: string): Promise<string> {
-    return readFile(await this.rolloutPath(threadId), "utf8");
+  async readJsonl(threadId: string): Promise<Buffer> {
+    return readFile(await this.rolloutPath(threadId));
   }
 
   async readRecentActivity(threadId: string, now = Date.now()): Promise<{ activity: "active" | "idle"; turnId?: string } | undefined> {

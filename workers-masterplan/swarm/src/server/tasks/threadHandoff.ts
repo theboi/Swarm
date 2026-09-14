@@ -1,12 +1,9 @@
-import { createHash } from "node:crypto";
-import { resolve } from "node:path";
-
 import type { AccountId, ChatExecutionSettings, ThreadSummary } from "../../shared/contracts.js";
+import type { LocalHandoffFile } from "./localHandoffTransport.js";
 import { handoffThreadName } from "./handoff.js";
 
 export interface JsonlContinuationTarget {
   startThread(): Promise<Record<string, unknown>>;
-  writeFile(path: string, contents: string): Promise<unknown>;
   setThreadName(threadId: string, name: string): Promise<unknown>;
   startTurn(input: {
     threadId: string;
@@ -23,7 +20,8 @@ export interface JsonlContinuationInput {
   sourceName: string | null;
   targetAccountId: AccountId;
   targetWorkspace: string;
-  jsonl: string;
+  jsonl: Buffer;
+  copyJsonl(input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }): Promise<LocalHandoffFile>;
   clientUserMessageId: string;
   target: JsonlContinuationTarget;
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
@@ -43,7 +41,8 @@ export interface MoveWithJsonlInput {
   targetAccountId: AccountId;
   targetWorkspace: string;
   clientUserMessageId: string;
-  readJsonl(accountId: AccountId, threadId: string): Promise<string>;
+  readJsonl(accountId: AccountId, threadId: string): Promise<Buffer>;
+  copyJsonl(input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }): Promise<LocalHandoffFile>;
   target(): Promise<JsonlContinuationTarget>;
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
   claimResume(): Promise<void>;
@@ -57,31 +56,30 @@ export interface MoveWithJsonlInput {
   queuedMessages?: string;
 }
 
-function handoffFilename(sourceAccountId: AccountId, sourceThreadId: string): string {
-  const suffix = createHash("sha256").update(`${sourceAccountId}\u0000${sourceThreadId}`).digest("hex").slice(0, 12);
-  return `swarm-handoff-${sourceAccountId}-${suffix}.jsonl`;
-}
-
 export async function createJsonlContinuation(input: JsonlContinuationInput): Promise<ThreadSummary> {
+  const handoff = await input.copyJsonl({
+    sourceAccountId: input.sourceAccountId,
+    sourceThreadId: input.sourceThreadId,
+    targetAccountId: input.targetAccountId,
+    targetWorkspace: input.targetWorkspace,
+    jsonl: input.jsonl,
+  });
   const rawThread = await input.target.startThread();
   const thread = input.normalizeThread(rawThread);
-  const filename = handoffFilename(input.sourceAccountId, input.sourceThreadId);
-  const path = resolve(input.targetWorkspace, filename);
-  await input.target.writeFile(path, input.jsonl);
 
   const threadName = handoffThreadName(input.sourceName);
   await input.target.setThreadName(thread.id, threadName);
   const queuedMessages = input.queuedMessages ?? "";
   const prompt = [
     `Continue the previous chat from source account ${input.sourceAccountId} and source thread ${input.sourceThreadId}.`,
-    `The attached ${filename} contains the exact source rollout JSONL. Continue from where the source session left off on target account ${input.targetAccountId}.`,
+    `The attached ${handoff.filename} contains the exact source rollout JSONL. Continue from where the source session left off on target account ${input.targetAccountId}.`,
     ...(queuedMessages ? ["", queuedMessages] : []),
   ].join("\n");
   await input.target.startTurn({
     threadId: thread.id,
     clientUserMessageId: input.clientUserMessageId,
     text: prompt,
-    attachments: [{ name: filename, path }],
+    attachments: [{ name: handoff.filename, path: handoff.path }],
     ...(input.settings ? { settings: input.settings } : {}),
   });
 
@@ -103,6 +101,7 @@ export async function moveWithJsonl(input: MoveWithJsonlInput): Promise<ThreadSu
       targetWorkspace: input.targetWorkspace,
       jsonl,
       clientUserMessageId: input.clientUserMessageId,
+      copyJsonl: input.copyJsonl,
       target: await input.target(),
       normalizeThread: input.normalizeThread,
       ...(input.settings ? { settings: input.settings } : {}),

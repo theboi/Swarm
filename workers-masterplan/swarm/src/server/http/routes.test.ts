@@ -184,6 +184,14 @@ describe("coordinator HTTP routes", () => {
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot2", settings }).expect(200);
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot1" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Choose a different known account" } });
 
+    (services.moveThreadToAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("LOCAL_HANDOFF_COPY_FAILED: target install failed"));
+    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot3" }).expect(503, {
+      error: {
+        code: "LOCAL_HANDOFF_COPY_FAILED",
+        message: "Swarm could not copy the rollout into the target account workspace. Confirm the target account is connected and its local credential is configured, then try again.",
+      },
+    });
+
     expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2", settings);
   });
 

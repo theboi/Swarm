@@ -66,6 +66,12 @@ function codeFor(error: unknown): { status: number; code: string; message: strin
   if (/app-server.*(?:not connected|disconnected|timed out)|connection.*(?:closed|lost)/i.test(message)) {
     return { status: 503, code: "ACCOUNT_UNAVAILABLE", message: "This account's Codex connection was interrupted. Try again in a moment." };
   }
+  if (message.includes("LOCAL_HANDOFF_COPY_FAILED")) {
+    return { status: 503, code: "LOCAL_HANDOFF_COPY_FAILED", message: "Swarm could not copy the rollout into the target account workspace. Confirm the target account is connected and its local credential is configured, then try again." };
+  }
+  if (message.includes("LOCAL_HANDOFF_INVALID")) {
+    return { status: 400, code: "LOCAL_HANDOFF_INVALID", message: "Swarm rejected an unsafe local handoff path or account." };
+  }
   if (message.includes("GIT_HANDOFF_PUSH_FAILED")) return { status: 409, code: "GIT_HANDOFF_PUSH_FAILED", message: message.replace(/^GIT_HANDOFF_PUSH_FAILED:\s*/, "") };
   const code = /MASTERPLAN_NOT_READY|TASK_NOT_READY|RATE_LIMIT_WAIT|ACCOUNT_AUTH_REQUIRED|ACCOUNT_OFFLINE|FILE_OUTSIDE_WORKSPACE|DANGEROUS_APPROVAL_REQUIRED|HUMAN_APPROVAL_REQUIRED/.exec(message)?.[0] ?? "OPERATION_FAILED";
   const status = code === "FILE_OUTSIDE_WORKSPACE" ? 403 : code === "ACCOUNT_OFFLINE" ? 409 : code === "TASK_NOT_READY" || code === "MASTERPLAN_NOT_READY" || code === "RATE_LIMIT_WAIT" ? 409 : 400;

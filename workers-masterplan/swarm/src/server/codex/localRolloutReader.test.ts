@@ -44,7 +44,7 @@ describe("LocalRolloutTranscriptReader", () => {
     const source = `${JSON.stringify({ type: "session_meta", payload: { id: threadId } })}\n${JSON.stringify({ type: "event_msg", payload: { type: "item_completed", turn_id: "turn-1" } })}\n`;
     await writeFile(path, source);
 
-    await expect(new LocalRolloutTranscriptReader(root).readJsonl(threadId)).resolves.toBe(source);
+    await expect(new LocalRolloutTranscriptReader(root).readJsonl(threadId)).resolves.toEqual(Buffer.from(source));
   });
 
   it("preserves usage-limit failures from a completed desktop-owned rollout", async () => {

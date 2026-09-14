@@ -1,6 +1,6 @@
 import { access, realpath, stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import dotenv from "dotenv";
@@ -45,6 +45,7 @@ import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifes
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
 import { moveWithJsonl } from "./tasks/threadHandoff.js";
+import { LocalJsonlHandoffTransport } from "./tasks/localHandoffTransport.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -120,6 +121,11 @@ async function createRuntime(config: SwarmConfig) {
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
   const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
   const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
+  const localHandoffTransport = new LocalJsonlHandoffTransport({
+    stagingRoot: join(coordinationWorkspaceRoot, ".data", "handoffs"),
+    localWorkspaceRoot: coordinationWorkspaceRoot,
+    passwords: config.accountPasswords,
+  });
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
   let requestAutoPilot = () => undefined;
@@ -608,6 +614,7 @@ async function createRuntime(config: SwarmConfig) {
         targetWorkspace: projectWorkspaceFor(targetAccountId),
         clientUserMessageId,
         readJsonl: (accountId, sourceThreadId) => rolloutReaders.get(accountId)!.readJsonl(sourceThreadId),
+        copyJsonl: (input) => localHandoffTransport.copyJsonl(input),
         target: () => liveClient(targetAccountId),
         normalizeThread: (rawThread) => asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId)),
         claimResume: async () => {
