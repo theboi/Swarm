@@ -1,4 +1,4 @@
-import { ACCOUNT_IDS, type PromptTemplate, type TaskKind, type TaskManifest, type TaskManifestTask } from "./contracts.js";
+import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type PromptTemplate, type TaskKind, type TaskManifest, type TaskManifestTask } from "./contracts.js";
 
 export type ManifestValidationError =
   | { code: "MANIFEST_INVALID"; field: string; reason: "required" | "type" | "value" | "duplicate" }
@@ -115,7 +115,7 @@ function validateTask(value: unknown, index: number): ManifestValidationError | 
     if (typeof value.preferredAccount !== "string") {
       return { code: "MANIFEST_INVALID", field: `${prefix}.preferredAccount`, reason: "type" };
     }
-    if (!(ACCOUNT_IDS as readonly string[]).includes(value.preferredAccount)) {
+    if (value.preferredAccount !== LOCAL_ACCOUNT_ID && !isMacosBotId(value.preferredAccount) && !isBotProfileAccountId(value.preferredAccount)) {
       return { code: "MANIFEST_INVALID", field: `${prefix}.preferredAccount`, reason: "value" };
     }
   }

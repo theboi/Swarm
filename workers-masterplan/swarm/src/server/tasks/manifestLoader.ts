@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { validateTaskManifest, type TaskManifest } from "../../shared/contracts.js";
+import { normalizePersistedAccountIds } from "../accounts/legacyAccountMigration.js";
 
 function inside(root: string, candidate: string): boolean { const value = relative(root, candidate); return value === "" || (!value.startsWith("..") && !isAbsolute(value)); }
 
@@ -55,7 +56,7 @@ export async function loadManifest(path: string, repositoryRoot: string): Promis
     }
   }
   if (result.data.lifecycle) await validateRepositoryPath(root, result.data.lifecycle.planningGatePath, false);
-  return result.data;
+  return normalizePersistedAccountIds(result.data);
 }
 
 export function manifestRepositoryRoot(path: string): string { return dirname(resolve(path)); }
