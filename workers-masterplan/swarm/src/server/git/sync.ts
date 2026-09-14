@@ -1,17 +1,17 @@
-import { BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type GitSyncStatus } from "../../shared/contracts.js";
+import { BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type BotProfileAccountId, type CodexAccountSlot, type GitSyncStatus } from "../../shared/contracts.js";
 
-export type GitSyncTarget = "local" | BotAccountId;
+export type GitSyncTarget = "local" | BotAccountId | BotProfileAccountId;
 type GitAction = GitSyncStatus["action"];
 
 export interface GitSynchronizerDependencies {
   pullLocal(): Promise<void | "skipped">;
-  pullBot(account: BotAccountId): Promise<void | "skipped">;
+  pullBot(account: BotAccountId | CodexAccountSlot): Promise<void | "skipped">;
+  /** The current immutable profile registry. Omit only for legacy physical-bot deployments. */
+  profileSlots?(): readonly CodexAccountSlot[];
   now?: () => number;
   everyMs?: number;
   schedule?: (operation: () => void, everyMs: number) => NodeJS.Timeout;
 }
-
-const botAccounts = BOT_ACCOUNT_IDS;
 
 export class GitMergeConflictError extends Error {
   constructor() {
@@ -46,12 +46,13 @@ function initial(action: GitAction): GitSyncStatus {
 /** Deterministic one-minute origin pull for every macOS profile; failures wait for the next interval. */
 export class GitSynchronizer {
   private readonly now: () => number;
-  private readonly statuses = new Map<GitSyncTarget, GitSyncStatus>([["local", initial("pull")], ...botAccounts.map((account) => [account, initial("pull")] as const)]);
+  private readonly statuses = new Map<GitSyncTarget, GitSyncStatus>([["local", initial("pull")]]);
   private readonly listeners = new Set<(target: GitSyncTarget, status: GitSyncStatus) => void>();
   private timer: NodeJS.Timeout | undefined;
 
   constructor(private readonly dependencies: GitSynchronizerDependencies) {
     this.now = dependencies.now ?? Date.now;
+    this.refreshTargets();
   }
 
   onChange(listener: (target: GitSyncTarget, status: GitSyncStatus) => void): () => void {
@@ -65,9 +66,21 @@ export class GitSynchronizer {
     return { ...value };
   }
 
+  /** Adds newly provisioned registry slots before their next scheduled pull. */
+  refreshTargets(): void {
+    for (const target of this.botTargets()) {
+      const id = this.targetId(target);
+      if (!this.statuses.has(id)) this.statuses.set(id, initial("pull"));
+    }
+  }
+
   async syncNow(): Promise<void> {
+    this.refreshTargets();
     await this.run("local", "pull", () => this.dependencies.pullLocal());
-    for (const account of botAccounts) await this.run(account, "pull", () => this.dependencies.pullBot(account));
+    for (const target of this.botTargets()) {
+      const id = this.targetId(target);
+      await this.run(id, "pull", () => this.dependencies.pullBot(target));
+    }
   }
 
   start(): void {
@@ -102,5 +115,14 @@ export class GitSynchronizer {
   private publish(target: GitSyncTarget, status: GitSyncStatus): void {
     this.statuses.set(target, status);
     for (const listener of this.listeners) listener(target, { ...status });
+  }
+
+  private botTargets(): Array<BotAccountId | CodexAccountSlot> {
+    const slots = this.dependencies.profileSlots?.();
+    return slots ? [...slots] : [...BOT_ACCOUNT_IDS];
+  }
+
+  private targetId(target: BotAccountId | CodexAccountSlot): GitSyncTarget {
+    return typeof target === "string" ? target : target.id;
   }
 }

@@ -272,7 +272,7 @@ async function createRuntime(config: SwarmConfig) {
             await limitResumes.markWaiting(event.accountId, exhaustedThreadId, Date.now(), client.turnSettings(exhaustedThreadId));
             if (limitResumes.forThread(event.accountId, exhaustedThreadId)?.state !== "waiting_for_limit") return;
             await assignments.markWaitingForLimit(event.accountId, exhaustedThreadId);
-            try { await gitRunner.checkpointAndPush(event.accountId); }
+            try { await gitRunner.checkpointAndPush(slotFor(event.accountId) ?? event.accountId); }
             catch {
               const status = { state: "warning" as const, action: "push" as const, lastAttemptAt: Date.now(), message: "Git push failed. Push manually before transferring this worker." };
               if (event.accountId === LOCAL_ACCOUNT_ID) localWorkspace.gitSync = status;
@@ -309,6 +309,7 @@ async function createRuntime(config: SwarmConfig) {
   const gitSynchronizer = new GitSynchronizer({
     pullLocal: () => gitRunner.pullLocal(),
     pullBot: (account) => gitRunner.pullAccount(account),
+    profileSlots: () => profileSlots,
   });
   const mergeConflictSteerGate = new MergeConflictSteerGate();
   gitSynchronizer.onChange((target, status) => {
@@ -607,6 +608,7 @@ async function createRuntime(config: SwarmConfig) {
     addAccount: async (bot) => {
       const slot = await profileProvisioner.create(bot);
       refreshProfileRuntime();
+      gitSynchronizer.refreshTargets();
       const snapshot = accountSnapshot().find((item) => item.id === slot.id);
       if (!snapshot) throw new Error("PROFILE_SETUP_FAILED");
       publishAccountSnapshots([snapshot]);

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BotAccountId, CodexAccountSlot } from "../../shared/contracts.js";
 
 import { accountForGitSyncTarget, GitMergeConflictError, GitSynchronizer, MergeConflictSteerGate } from "./sync.js";
 
@@ -17,9 +18,44 @@ describe("GitSynchronizer", () => {
     expect(synchronizer.snapshot("bot8")).toMatchObject({ state: "ok", action: "pull" });
   });
 
+  it("pulls only the registry-backed profile checkouts and refreshes them after provisioning", async () => {
+    const acc2 = {
+      id: "bot1/acc2" as const,
+      macosUser: "bot1" as const,
+      accountNumber: 2,
+      codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+    };
+    const acc3 = {
+      ...acc2,
+      id: "bot1/acc3" as const,
+      accountNumber: 3,
+      codexHome: "/Users/bot1/.swarm/codex-profiles/acc3",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc3",
+    };
+    const profiles: CodexAccountSlot[] = [acc2];
+    const pullBot = vi.fn(async (_account: BotAccountId | CodexAccountSlot) => undefined);
+    const synchronizer = new GitSynchronizer({
+      pullLocal: async () => undefined,
+      pullBot,
+      profileSlots: () => profiles,
+    });
+
+    await synchronizer.syncNow();
+    profiles.push(acc3);
+    synchronizer.refreshTargets();
+    await synchronizer.syncNow();
+
+    expect(pullBot).toHaveBeenNthCalledWith(1, acc2);
+    expect(pullBot).toHaveBeenNthCalledWith(2, acc2);
+    expect(pullBot).toHaveBeenNthCalledWith(3, acc3);
+    expect(synchronizer.snapshot("bot1/acc2")).toMatchObject({ state: "ok", action: "pull" });
+    expect(synchronizer.snapshot("bot1/acc3")).toMatchObject({ state: "ok", action: "pull" });
+  });
+
   it("records a warning on only the failed pull or push target and waits for the next scheduled run", async () => {
     const pullLocal = vi.fn(async () => { throw new Error("not fast-forward"); });
-    const pullBot = vi.fn(async (account: string) => { if (account === "bot4") throw new Error("rejected"); });
+    const pullBot = vi.fn(async (account: BotAccountId | CodexAccountSlot) => { if (account === "bot4") throw new Error("rejected"); });
     const synchronizer = new GitSynchronizer({ pullLocal, pullBot });
 
     await synchronizer.syncNow();

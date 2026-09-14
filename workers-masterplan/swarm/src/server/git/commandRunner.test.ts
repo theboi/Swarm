@@ -102,7 +102,7 @@ describe("GitCommandRunner", () => {
   });
 
   it("delegates bot Git pulls to the isolated runner", async () => {
-    const runBotCommand = vi.fn(async () => 0);
+    const runBotCommand = vi.fn(async (_account: string, _password: string, _command: string) => 0);
     const runner = new GitCommandRunner("/workspace", { bot6: "correct horse" }, runBotCommand as never);
 
     await expect(runner.pullAccount("bot6")).resolves.toBeUndefined();
@@ -122,6 +122,7 @@ describe("GitCommandRunner", () => {
     await expect(runner.pullAccount(slot)).resolves.toBeUndefined();
 
     expect(runBotCommand).toHaveBeenCalledWith("bot1", "correct horse", expect.stringContaining("/Users/bot1/Dev/EdenMind-acc2"));
+    expect(runBotCommand).toHaveBeenCalledWith("bot1", "correct horse", expect.not.stringContaining("-C '/Users/bot1/Dev/EdenMind' "));
   });
 
   it("commits local changes, rebases a newer origin/main, and pushes the checkpoint", async () => {
