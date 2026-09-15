@@ -50,6 +50,8 @@ export interface LocalJsonlHandoffTransportOptions {
   grantTargetAccess?: TargetAccessGrant;
   grantTargetStageAccess?: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   revokeTargetAccess?: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
+  /** Internal test seam for a concurrent creator of a staging-root component. */
+  createStagingDirectory?: CreateStagingDirectory;
   /** Internal test seam for a persistent cleanup failure that cannot be created portably. */
   removeStageDirectory?: (path: string) => Promise<void>;
   /** Internal test seam for a destination replacement attempt between validation and creation. */
@@ -63,6 +65,7 @@ interface StagingAccessPaths {
 }
 
 type TargetAccessGrant = (account: BotAccountId, paths: StagingAccessPaths, onSharedDirectoryGranted: (directory: string) => void) => Promise<void>;
+type CreateStagingDirectory = (path: string) => Promise<void>;
 
 function quote(value: string): string {
   if (!value || value.includes("\0")) throw new Error("LOCAL_HANDOFF_INVALID: Handoff command value is invalid");
@@ -116,10 +119,6 @@ async function defaultCopyAsTarget(input: TargetOwnedCopyInput, runBotCommand: R
   if (exitCode !== 0) throw new Error("target install exited unsuccessfully");
 }
 
-async function ensureIgnored(workspace: string, filename: string): Promise<void> {
-  await execFileAsync("/usr/bin/git", ["-C", workspace, "check-ignore", "-q", "--", filename]);
-}
-
 async function destinationDoesNotExist(path: string): Promise<void> {
   try {
     const entry = await lstat(path);
@@ -144,7 +143,7 @@ async function directoryBoundary(path: string, message: string, canonicalRoot?: 
   return canonicalPath;
 }
 
-async function ensureStagingRoot(stagingRoot: string, localWorkspace: string): Promise<string> {
+async function ensureStagingRoot(stagingRoot: string, localWorkspace: string, createStagingDirectory: CreateStagingDirectory): Promise<string> {
   const workspace = resolve(localWorkspace);
   const relativeStagingRoot = relative(workspace, stagingRoot);
   if (!relativeStagingRoot || relativeStagingRoot.startsWith("..") || relativeStagingRoot.includes(`..${sep}`)) throw new Error("LOCAL_HANDOFF_INVALID: Handoff staging root is outside the coordinator workspace");
@@ -159,11 +158,25 @@ async function ensureStagingRoot(stagingRoot: string, localWorkspace: string): P
       await directoryBoundary(current, "LOCAL_HANDOFF_INVALID: Handoff staging root must be a real coordinator directory", canonicalWorkspace);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      await mkdir(current, { mode: 0o700 });
+      try {
+        await createStagingDirectory(current);
+      } catch (mkdirError) {
+        if ((mkdirError as NodeJS.ErrnoException).code !== "EEXIST") throw mkdirError;
+      }
       await directoryBoundary(current, "LOCAL_HANDOFF_INVALID: Handoff staging root must be a real coordinator directory", canonicalWorkspace);
     }
   }
   return canonicalWorkspace;
+}
+
+async function targetWorkspaceBoundary(workspace: string): Promise<void> {
+  const accountWorkspace = resolve(workspace);
+  const devDirectory = dirname(accountWorkspace);
+  const accountHome = dirname(devDirectory);
+  const message = "LOCAL_HANDOFF_INVALID: Target handoff workspace must be a real account workspace";
+  const canonicalHome = await directoryBoundary(accountHome, message);
+  const canonicalDev = await directoryBoundary(devDirectory, message, canonicalHome);
+  await directoryBoundary(accountWorkspace, message, canonicalDev);
 }
 
 type StagingLease = StagingAccessPaths & { account: BotAccountId };
@@ -175,9 +188,11 @@ export class LocalJsonlHandoffTransport {
   private readonly grantTargetAccess: TargetAccessGrant;
   private readonly grantTargetStageAccess: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   private readonly revokeTargetAccess: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
+  private readonly createStagingDirectory: CreateStagingDirectory;
   private readonly removeStageDirectory: (path: string) => Promise<void>;
   private readonly rootAccessCounts = new Map<BotAccountId, number>();
   private readonly targetAccessQueues = new Map<BotAccountId, Promise<void>>();
+  private sharedAccessQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: LocalJsonlHandoffTransportOptions, runBotCommand: RunBotCommand = runBotPtyCommand) {
     this.workspaceFor = options.workspaceFor ?? ((account) => workspaceRoot(account, options.localWorkspaceRoot));
@@ -185,6 +200,7 @@ export class LocalJsonlHandoffTransport {
     this.grantTargetAccess = options.grantTargetAccess ?? grantTargetAccess;
     this.grantTargetStageAccess = options.grantTargetStageAccess ?? grantTargetStageAccess;
     this.revokeTargetAccess = options.revokeTargetAccess ?? revokeTargetAccess;
+    this.createStagingDirectory = options.createStagingDirectory ?? (async (path) => { await mkdir(path, { mode: 0o700 }); });
     this.removeStageDirectory = options.removeStageDirectory ?? ((path) => rm(path, { recursive: true, force: true }));
   }
 
@@ -194,11 +210,8 @@ export class LocalJsonlHandoffTransport {
     let stageDirectory: string | undefined;
     let lease: StagingLease | undefined;
     try {
-      // The target clone must ignore the durable handoff before any rollout
-      // bytes are staged, so an eventual checkpoint cannot add it to Git.
-      await ensureIgnored(input.targetWorkspace, filename);
       const localWorkspace = resolve(this.workspaceFor(LOCAL_ACCOUNT_ID));
-      const canonicalWorkspace = await ensureStagingRoot(stagingRoot, localWorkspace);
+      const canonicalWorkspace = await ensureStagingRoot(stagingRoot, localWorkspace, this.createStagingDirectory);
       await chmod(stagingRoot, 0o700);
       stageDirectory = await mkdtemp(resolve(stagingRoot, "handoff-"));
       if (!contained(stagingRoot, stageDirectory)) throw new Error("LOCAL_HANDOFF_INVALID: Handoff staging path is outside its coordinator workspace");
@@ -236,7 +249,7 @@ export class LocalJsonlHandoffTransport {
     const filename = handoffFilename(input.sourceAccountId, input.sourceThreadId);
     const targetPath = resolve(expectedWorkspace, filename);
     if (!contained(expectedWorkspace, targetPath)) throw new Error("LOCAL_HANDOFF_INVALID: Target handoff path is outside the account workspace");
-    await directoryBoundary(expectedWorkspace, "LOCAL_HANDOFF_INVALID: Target handoff workspace must be a real account workspace");
+    await targetWorkspaceBoundary(expectedWorkspace);
     await destinationDoesNotExist(targetPath);
     return { filename, targetPath };
   }
@@ -256,21 +269,38 @@ export class LocalJsonlHandoffTransport {
     }
   }
 
+  private async withSharedAccessLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.sharedAccessQueue;
+    let release: (() => void) | undefined;
+    const complete = new Promise<void>((resolveComplete) => { release = resolveComplete; });
+    this.sharedAccessQueue = previous.then(() => complete);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release?.();
+    }
+  }
+
   private async acquireStagingLease(account: BotAccountId, paths: StagingAccessPaths): Promise<StagingLease> {
     return this.withTargetAccessLock(account, async () => {
       const count = this.rootAccessCounts.get(account) ?? 0;
       const grantedSharedDirectories: string[] = [];
       try {
         if (count === 0) {
-          await this.grantTargetAccess(account, paths, (directory) => {
-            if (paths.sharedDirectories.includes(directory) && !grantedSharedDirectories.includes(directory)) grantedSharedDirectories.push(directory);
+          await this.withSharedAccessLock(async () => {
+            await this.grantTargetAccess(account, paths, (directory) => {
+              if (paths.sharedDirectories.includes(directory) && !grantedSharedDirectories.includes(directory)) grantedSharedDirectories.push(directory);
+            });
           });
         }
         else await this.grantTargetStageAccess(account, paths);
       } catch (error) {
         if (count === 0 && grantedSharedDirectories.length > 0) {
           try {
-            await this.revokeTargetAccess(account, { ...paths, sharedDirectories: grantedSharedDirectories });
+            await this.withSharedAccessLock(async () => {
+              await this.revokeTargetAccess(account, { ...paths, sharedDirectories: grantedSharedDirectories });
+            });
           } catch (rollbackError) {
             throw new Error("LOCAL_HANDOFF_CLEANUP_FAILED: Swarm could not revoke shared staging access after a failed ACL grant", { cause: rollbackError });
           }
@@ -287,7 +317,9 @@ export class LocalJsonlHandoffTransport {
       const count = (this.rootAccessCounts.get(lease.account) ?? 1) - 1;
       if (count <= 0) {
         this.rootAccessCounts.delete(lease.account);
-        await this.revokeTargetAccess(lease.account, lease);
+        await this.withSharedAccessLock(async () => {
+          await this.revokeTargetAccess(lease.account, lease);
+        });
       } else this.rootAccessCounts.set(lease.account, count);
     });
   }

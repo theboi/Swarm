@@ -70,7 +70,7 @@ function codeFor(error: unknown): { status: number; code: string; message: strin
     return { status: 503, code: "LOCAL_HANDOFF_COPY_FAILED", message: "Swarm could not copy the rollout into the target account workspace. Confirm the target account is connected and its local credential is configured, then try again." };
   }
   if (message.includes("LOCAL_HANDOFF_CLEANUP_FAILED")) {
-    return { status: 503, code: "LOCAL_HANDOFF_CLEANUP_FAILED", message: "Swarm copied the handoff but could not clean up its local staging data. Check local filesystem permissions before trying again." };
+    return { status: 503, code: "LOCAL_HANDOFF_CLEANUP_FAILED", message: "Swarm could not clean up local handoff staging access or data. The target handoff may not have been created; check local filesystem permissions before retrying." };
   }
   if (message.includes("LOCAL_HANDOFF_INVALID")) {
     return { status: 400, code: "LOCAL_HANDOFF_INVALID", message: "Swarm rejected an unsafe local handoff path or account." };
