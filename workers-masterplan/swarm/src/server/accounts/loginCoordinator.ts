@@ -151,8 +151,13 @@ function displayIdentity(metadata: Record<string, unknown>): AccountIdentityDisp
 }
 
 function fingerprintIdentity(metadata: Record<string, unknown>, salt: string): string {
-  const stableKeys = ["id", "accountId", "userId", "workspaceId", "organizationId", "workspace", "planType"];
+  // Workspace and plan metadata identify a subscription context, not a person.
+  // Prefer an account-scoped identifier and fall back to a normalized email;
+  // only the salted digest is retained in memory.
+  const stableKeys = ["id", "accountId", "userId"];
   const stable = stableKeys.flatMap((key) => typeof metadata[key] === "string" && metadata[key].trim() ? [[key, metadata[key].trim()]] : []);
+  const email = typeof metadata.email === "string" && metadata.email.trim() ? metadata.email.trim().toLowerCase() : undefined;
+  if (stable.length === 0 && email) stable.push(["email", email]);
   if (stable.length === 0) throw new LoginCoordinatorError("DEVICE_AUTH_UNAVAILABLE", "Codex did not provide stable identity metadata");
   return createHash("sha256").update(salt).update("\0").update(JSON.stringify(stable)).digest("hex");
 }

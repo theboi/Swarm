@@ -46,6 +46,15 @@ describe("LoginCoordinator", () => {
     expect(coordinator.connectedAccount("bot1/acc1")).toBe(true);
   });
 
+  it("does not collide distinct email identities that share workspace and plan metadata", () => {
+    const { coordinator } = fixture();
+
+    coordinator.registerConnectedIdentity("bot1/acc1", { email: "first@example.test", workspace: "Personal", planType: "Pro" });
+
+    expect(() => coordinator.registerConnectedIdentity("bot2/acc1", { email: "second@example.test", workspace: "Personal", planType: "Pro" })).not.toThrow();
+    expect(coordinator.connectedAccount("bot2/acc1")).toBe(true);
+  });
+
   it("re-reads the account after a login-completed notification instead of using notification data", async () => {
     const { coordinator } = fixture();
     const listeners = new Set<(event: { type: "account"; state?: string }) => void>();
