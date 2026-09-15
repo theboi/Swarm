@@ -54,21 +54,54 @@ describe("LocalJsonlHandoffTransport", () => {
     }
   });
 
-  it("revokes a partially granted staging-root ACL when the remaining target access grant fails", async () => {
+  it("revokes the first shared ACL when the second shared ACL grant fails", async () => {
     const { root, localWorkspace, stagingRoot, targetWorkspace } = await fixture();
-    let revoked = false;
+    const installedAcls = new Set<string>();
+    const revocationAttempts: string[] = [];
     const transport = new LocalJsonlHandoffTransport({
       stagingRoot,
       workspaceFor: (account: AccountId) => account === "claudiothe" ? localWorkspace : targetWorkspace,
       passwords: { bot1: "target-password" },
       copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
-      grantTargetAccess: async () => { throw new Error("directory ACL failed after root ACL grant"); },
-      revokeTargetAccess: async () => { revoked = true; },
+      grantTargetAccess: async (_account, paths, onSharedDirectoryGranted) => {
+        const [firstDirectory] = paths.sharedDirectories;
+        installedAcls.add(firstDirectory);
+        onSharedDirectoryGranted?.(firstDirectory);
+        throw new Error("second shared-directory ACL grant failed");
+      },
+      revokeTargetAccess: async (_account, paths) => {
+        for (const directory of [...paths.sharedDirectories].reverse()) {
+          revocationAttempts.push(directory);
+          if (!installedAcls.delete(directory)) throw new Error("ACL was never granted");
+        }
+      },
     });
 
     try {
       await expect(transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{}\n") })).rejects.toThrow("LOCAL_HANDOFF_COPY_FAILED");
-      expect(revoked).toBe(true);
+      expect(revocationAttempts).toEqual([dirname(stagingRoot)]);
+      expect(installedAcls).toEqual(new Set());
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes a persistent shared ACL rollback failure after a grant failure", async () => {
+    const { root, localWorkspace, stagingRoot, targetWorkspace } = await fixture();
+    const transport = new LocalJsonlHandoffTransport({
+      stagingRoot,
+      workspaceFor: (account: AccountId) => account === "claudiothe" ? localWorkspace : targetWorkspace,
+      passwords: { bot1: "target-password" },
+      copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
+      grantTargetAccess: async (_account, paths, onSharedDirectoryGranted) => {
+        onSharedDirectoryGranted?.(paths.sharedDirectories[0]);
+        throw new Error("second shared-directory ACL grant failed");
+      },
+      revokeTargetAccess: async () => { throw new Error("persistent shared ACL rollback failure"); },
+    });
+
+    try {
+      await expect(transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "bot1", targetWorkspace, jsonl: Buffer.from("{}\n") })).rejects.toThrow("LOCAL_HANDOFF_CLEANUP_FAILED");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

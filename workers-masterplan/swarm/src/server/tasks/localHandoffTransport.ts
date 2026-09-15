@@ -47,7 +47,7 @@ export interface LocalJsonlHandoffTransportOptions {
   /** Internal test seam; production invokes authenticated su through a PTY. */
   copyAsTarget?: TargetOwnedCopy;
   /** Internal test seam; production grants only the target account the minimum ACL access to staging. */
-  grantTargetAccess?: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
+  grantTargetAccess?: TargetAccessGrant;
   grantTargetStageAccess?: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   revokeTargetAccess?: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   /** Internal test seam for a persistent cleanup failure that cannot be created portably. */
@@ -61,6 +61,8 @@ interface StagingAccessPaths {
   directory: string;
   file: string;
 }
+
+type TargetAccessGrant = (account: BotAccountId, paths: StagingAccessPaths, onSharedDirectoryGranted: (directory: string) => void) => Promise<void>;
 
 function quote(value: string): string {
   if (!value || value.includes("\0")) throw new Error("LOCAL_HANDOFF_INVALID: Handoff command value is invalid");
@@ -83,15 +85,26 @@ async function grantTargetStageAccess(account: BotAccountId, paths: StagingAcces
   await execFileAsync("/bin/chmod", ["+a", `${account} allow read`, paths.file]);
 }
 
-async function grantTargetAccess(account: BotAccountId, paths: StagingAccessPaths): Promise<void> {
+async function grantTargetAccess(account: BotAccountId, paths: StagingAccessPaths, onSharedDirectoryGranted: (directory: string) => void): Promise<void> {
   // The file remains mode 0600. The target gets only directory traversal and
   // file read access long enough to run its authenticated install command.
-  for (const directory of paths.sharedDirectories) await execFileAsync("/bin/chmod", ["+a", `${account} allow search`, directory]);
+  for (const directory of paths.sharedDirectories) {
+    await execFileAsync("/bin/chmod", ["+a", `${account} allow search`, directory]);
+    onSharedDirectoryGranted(directory);
+  }
   await grantTargetStageAccess(account, paths);
 }
 
 async function revokeTargetAccess(account: BotAccountId, paths: StagingAccessPaths): Promise<void> {
-  for (const directory of [...paths.sharedDirectories].reverse()) await execFileAsync("/bin/chmod", ["-a", `${account} allow search`, directory]);
+  let rollbackFailure: unknown;
+  for (const directory of [...paths.sharedDirectories].reverse()) {
+    try {
+      await execFileAsync("/bin/chmod", ["-a", `${account} allow search`, directory]);
+    } catch (error) {
+      rollbackFailure ??= error;
+    }
+  }
+  if (rollbackFailure) throw new Error("Shared staging ACL revocation failed", { cause: rollbackFailure });
 }
 
 function targetCopyCommand(input: TargetOwnedCopyInput): string {
@@ -159,7 +172,7 @@ type StagingLease = StagingAccessPaths & { account: BotAccountId };
 export class LocalJsonlHandoffTransport {
   private readonly copyAsTarget: TargetOwnedCopy;
   private readonly workspaceFor: (account: AccountId) => string;
-  private readonly grantTargetAccess: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
+  private readonly grantTargetAccess: TargetAccessGrant;
   private readonly grantTargetStageAccess: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   private readonly revokeTargetAccess: (account: BotAccountId, paths: StagingAccessPaths) => Promise<void>;
   private readonly removeStageDirectory: (path: string) => Promise<void>;
@@ -246,11 +259,22 @@ export class LocalJsonlHandoffTransport {
   private async acquireStagingLease(account: BotAccountId, paths: StagingAccessPaths): Promise<StagingLease> {
     return this.withTargetAccessLock(account, async () => {
       const count = this.rootAccessCounts.get(account) ?? 0;
+      const grantedSharedDirectories: string[] = [];
       try {
-        if (count === 0) await this.grantTargetAccess(account, paths);
+        if (count === 0) {
+          await this.grantTargetAccess(account, paths, (directory) => {
+            if (paths.sharedDirectories.includes(directory) && !grantedSharedDirectories.includes(directory)) grantedSharedDirectories.push(directory);
+          });
+        }
         else await this.grantTargetStageAccess(account, paths);
       } catch (error) {
-        if (count === 0) await this.revokeTargetAccess(account, paths).catch(() => undefined);
+        if (count === 0 && grantedSharedDirectories.length > 0) {
+          try {
+            await this.revokeTargetAccess(account, { ...paths, sharedDirectories: grantedSharedDirectories });
+          } catch (rollbackError) {
+            throw new Error("LOCAL_HANDOFF_CLEANUP_FAILED: Swarm could not revoke shared staging access after a failed ACL grant", { cause: rollbackError });
+          }
+        }
         throw error;
       }
       this.rootAccessCounts.set(account, count + 1);
