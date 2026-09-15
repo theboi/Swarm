@@ -26,10 +26,18 @@ export function tmuxServerCommand(account: TerminalAccount, appServerCommand: st
   const tmux = shellQuote(TMUX_BINARY);
   const session = tmuxSessionName(account);
   const stop = `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true`;
+  const appServerSupervisor = [
+    "child=''",
+    'cleanup() { if [ -n "$child" ]; then /bin/kill -TERM "$child" >/dev/null 2>&1 || true; fi; }',
+    "trap cleanup EXIT HUP INT TERM",
+    `${appServerCommand} & child=$!`,
+    'wait "$child"',
+  ].join("; ");
   // Keep the command shell alive as the PTY process group's supervisor. When
   // the launcher closes that group, its trap tears down the detached tmux
-  // server as well instead of leaving an orphaned app-server behind.
-  return `${stop}; ${tmux} new-session -d -s ${session} ${appServerCommand}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
+  // server. The pane has its own supervisor because Codex can ignore the HUP
+  // sent when tmux closes a session.
+  return `${stop}; ${tmux} new-session -d -s ${session} /bin/zsh -lc ${shellQuote(appServerSupervisor)}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
 }
 
 export function tmuxAttachCommand(account: TerminalAccount): string {

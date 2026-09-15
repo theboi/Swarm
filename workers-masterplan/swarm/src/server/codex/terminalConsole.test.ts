@@ -10,6 +10,8 @@ describe("terminal console commands", () => {
     expect(command).toContain("new-session -d -s swarm-bot1");
     expect(command).toContain("trap ");
     expect(command).toContain("has-session -t swarm-bot1");
+    expect(command).toContain("child=$!");
+    expect(command).toContain('/bin/kill -TERM "$child"');
     expect(tmuxAttachCommand("bot1")).toContain("/usr/bin/su - bot1 -c");
   });
 
