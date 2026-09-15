@@ -38,6 +38,7 @@ import { createLogger } from "./logging/logger.js";
 import { GitCommandRunner } from "./git/commandRunner.js";
 import { accountForGitSyncTarget, GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
 import { createCoordinatorApp } from "./app.js";
+import { staticAssetDirectory } from "./staticAssets.js";
 import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
@@ -888,7 +889,7 @@ async function createRuntime(config: SwarmConfig) {
       await threads(id);
     } catch { /* AccountManager's credential recovery scheduler owns bounded retries. */ }
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => {
+  const coordinator = createCoordinatorApp({ services, staticDir: staticAssetDirectory(import.meta.url), flush: () => state.persist(), shutdown: async () => {
     shuttingDown = true;
     autoPilot.stop();
     journal.rejectLive();
