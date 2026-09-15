@@ -7,8 +7,9 @@ describe("terminal console commands", () => {
     const command = tmuxServerCommand("bot1", "'/opt/homebrew/bin/codex' app-server");
 
     expect(command).toContain("kill-session -t swarm-bot1");
-    expect(command).toContain("new-session -s swarm-bot1");
-    expect(command).not.toContain("new-session -A");
+    expect(command).toContain("new-session -d -s swarm-bot1");
+    expect(command).toContain("trap ");
+    expect(command).toContain("has-session -t swarm-bot1");
     expect(tmuxAttachCommand("bot1")).toContain("/usr/bin/su - bot1 -c");
   });
 

@@ -25,7 +25,11 @@ export function tmuxSessionName(account: TerminalAccount): string {
 export function tmuxServerCommand(account: TerminalAccount, appServerCommand: string): string {
   const tmux = shellQuote(TMUX_BINARY);
   const session = tmuxSessionName(account);
-  return `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true; exec ${tmux} new-session -s ${session} ${appServerCommand}`;
+  const stop = `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true`;
+  // Keep the command shell alive as the PTY process group's supervisor. When
+  // the launcher closes that group, its trap tears down the detached tmux
+  // server as well instead of leaving an orphaned app-server behind.
+  return `${stop}; ${tmux} new-session -d -s ${session} ${appServerCommand}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
 }
 
 export function tmuxAttachCommand(account: TerminalAccount): string {
