@@ -24,10 +24,11 @@ export class LegacyProfileMigrator {
     homeDirectory?: (bot: MacosBotId) => string;
     desktopRunning: (bot: MacosBotId) => Promise<boolean>;
     appServersRunning: (bot: MacosBotId) => Promise<boolean>;
+    allowAllBots?: boolean;
   }) {}
 
   async migrate(bot: MacosBotId, mode: "dry-run" | "apply"): Promise<{ accountId: BotProfileAccountId; migrated: boolean; source: string; destination: string }> {
-    if (mode === "apply" && bot !== "bot1") throw new ProfileOperationError("PRIMARY_PROFILE_CONFLICT", "Only bot1 may be migrated by this release");
+    if (mode === "apply" && bot !== "bot1" && !this.options.allowAllBots) throw new ProfileOperationError("PRIMARY_PROFILE_CONFLICT", "Only bot1 may be migrated unless all bots are explicit");
     const accountId = `${bot}/acc1` as BotProfileAccountId;
     const home = this.options.homeDirectory?.(bot) ?? `/Users/${bot}`;
     const source = join(home, ".codex");

@@ -11,6 +11,7 @@ const execFile = promisify(execFileCallback);
 export interface MigrationArguments {
   bot: MacosBotId;
   mode: "dry-run" | "apply";
+  allBots: boolean;
 }
 
 type MigrationResult = {
@@ -28,6 +29,7 @@ export function parseMigrationArguments(argv: readonly string[]): MigrationArgum
   const bots: string[] = [];
   let mode: MigrationArguments["mode"] = "dry-run";
   let explicitMode = false;
+  let allBots = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -40,6 +42,9 @@ export function parseMigrationArguments(argv: readonly string[]): MigrationArgum
       if (explicitMode) throw new Error("Specify at most one of --dry-run or --apply");
       mode = argument.slice(2) as MigrationArguments["mode"];
       explicitMode = true;
+    } else if (argument === "--all") {
+      if (allBots) throw new Error("Specify --all at most once");
+      allBots = true;
     } else {
       throw new Error(`Unsupported migration argument: ${argument}`);
     }
@@ -47,12 +52,12 @@ export function parseMigrationArguments(argv: readonly string[]): MigrationArgum
 
   if (bots.length !== 1) throw new Error("Specify exactly one --bot bot1 through bot8");
   if (!isMacosBotId(bots[0])) throw new Error("--bot must be bot1 through bot8");
-  return { bot: bots[0], mode };
+  return { bot: bots[0], mode, allBots };
 }
 
 /** This guard intentionally runs before a migrator can receive a live request. */
 export async function runMigrationCommand(command: MigrationArguments, dependencies: MigrationCommandDependencies): Promise<MigrationResult> {
-  if (command.mode === "apply" && command.bot !== "bot1") throw new Error("Only bot1 may receive a live migration during this release");
+  if (command.mode === "apply" && command.bot !== "bot1" && !command.allBots) throw new Error("Only bot1 may receive a live migration unless --all is explicit");
   return dependencies.migrator.migrate(command.bot, command.mode);
 }
 
@@ -67,13 +72,24 @@ async function matchingProcess(arguments_: string[]): Promise<boolean> {
   }
 }
 
+export function createProcessDetectors(checkProcess: (arguments_: string[]) => Promise<boolean> = matchingProcess): {
+  desktopRunning(bot: MacosBotId): Promise<boolean>;
+  appServersRunning(bot: MacosBotId): Promise<boolean>;
+} {
+  return {
+    desktopRunning: async (bot) => checkProcess(["-u", bot, "-f", "ChatGPT.app"]),
+    appServersRunning: async (bot) => checkProcess(["-u", bot, "-f", "codex.*app-server"]),
+  };
+}
+
 async function main(): Promise<void> {
   const command = parseMigrationArguments(process.argv.slice(2));
   const registry = await ProfileRegistry.load(resolve(process.cwd(), ".data", "account-profiles.json"));
+  const detectors = createProcessDetectors();
   const migrator = new LegacyProfileMigrator({
     registry,
-    desktopRunning: async () => matchingProcess(["-f", "ChatGPT.app"]),
-    appServersRunning: async (bot) => matchingProcess(["-u", bot, "-f", "codex.*app-server"]),
+    ...detectors,
+    allowAllBots: command.allBots,
   });
   const result = await runMigrationCommand(command, { migrator });
   process.stdout.write(`${JSON.stringify({ bot: command.bot, mode: command.mode, ...result })}\n`);

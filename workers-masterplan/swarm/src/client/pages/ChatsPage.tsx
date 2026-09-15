@@ -300,6 +300,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const openedMarkdownAccountId = useRef<AccountId | null>(null);
   const routedMarkdownSource = useRef<string | undefined>(undefined);
   const markdownRequestId = useRef(0);
+  const markdownScrollRestoreTimers = useRef<number[]>([]);
   const moveDialogRef = useRef<HTMLElement>(null);
   const moveCloseButton = useRef<HTMLButtonElement>(null);
   const renameCloseButton = useRef<HTMLButtonElement>(null);
@@ -538,12 +539,23 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const closeMarkdown = () => {
     markdownRequestId.current += 1;
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollPosition.current;
+    const restoreScrollPosition = () => { if (scrollRef.current) scrollRef.current.scrollTop = scrollPosition.current; };
+    for (const timer of markdownScrollRestoreTimers.current) window.clearTimeout(timer);
+    markdownScrollRestoreTimers.current = [];
+    restoreScrollPosition();
+    markdownScrollRestoreTimers.current = [
+      window.setTimeout(restoreScrollPosition, 0),
+      window.setTimeout(restoreScrollPosition, 175),
+    ];
     setDocument(null);
     openedMarkdownPath.current = null;
     openedMarkdownAccountId.current = null;
     onOpenMarkdownPathChange?.(null);
   };
+
+  useEffect(() => () => {
+    for (const timer of markdownScrollRestoreTimers.current) window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const source = `${accountId ?? ""}\u0000${openMarkdownPath ?? ""}`;

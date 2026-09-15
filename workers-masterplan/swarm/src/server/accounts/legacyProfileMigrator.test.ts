@@ -21,12 +21,22 @@ async function fixture() {
 }
 
 describe("LegacyProfileMigrator", () => {
-  it("rejects all live migrations except bot1 before touching any path", async () => {
+  it("requires an explicit all-bot override before migrating a non-bot1 profile", async () => {
     const { home, codexHome, registry } = await fixture();
     const migrator = new LegacyProfileMigrator({ registry, homeDirectory: () => home, desktopRunning: async () => false, appServersRunning: async () => false });
 
     await expect(migrator.migrate("bot2", "apply")).rejects.toMatchObject({ code: "PRIMARY_PROFILE_CONFLICT" });
     expect((await lstat(codexHome)).isDirectory()).toBe(true);
+
+    const bot2Slot: CodexAccountSlot = { id: "bot2/acc1", macosUser: "bot2", accountNumber: 1, codexHome, workspaceRoot: join(home, "Dev-EdenMind") };
+    const allBotsMigrator = new LegacyProfileMigrator({
+      registry: { resolve: (id) => id === "bot2/acc1" ? bot2Slot : undefined, replace: registry.replace },
+      homeDirectory: () => home,
+      desktopRunning: async () => false,
+      appServersRunning: async () => false,
+      allowAllBots: true,
+    });
+    await expect(allBotsMigrator.migrate("bot2", "apply")).resolves.toMatchObject({ accountId: "bot2/acc1", migrated: true });
   });
 
   it("atomically migrates bot1 acc1 to a managed profile and is idempotent", async () => {
