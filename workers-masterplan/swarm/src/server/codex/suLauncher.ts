@@ -97,7 +97,9 @@ export class SuLauncher {
     if (isBot && !credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
     if (!options.codexBin.startsWith("/")) throw new Error("Configured Codex binary must be an absolute path");
     const codexHome = target.codexHome;
-    if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
+    // Profile homes are deliberately private to their macOS bot (0700), so
+    // the coordinator must not require its own process to traverse them.
+    if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || (!target.slot && !(await this.dependencies.pathExists(codexHome)))) {
       throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
     const lease = await this.dependencies.allocatePort();
