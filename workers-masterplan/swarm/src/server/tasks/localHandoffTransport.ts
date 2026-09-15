@@ -119,6 +119,10 @@ async function defaultCopyAsTarget(input: TargetOwnedCopyInput, runBotCommand: R
   if (exitCode !== 0) throw new Error("target install exited unsuccessfully");
 }
 
+async function ensureIgnored(workspace: string, filename: string): Promise<void> {
+  await execFileAsync("/usr/bin/git", ["-C", workspace, "check-ignore", "-q", "--", filename]);
+}
+
 async function destinationDoesNotExist(path: string): Promise<void> {
   try {
     const entry = await lstat(path);
@@ -210,6 +214,7 @@ export class LocalJsonlHandoffTransport {
     let stageDirectory: string | undefined;
     let lease: StagingLease | undefined;
     try {
+      if (input.targetAccountId === LOCAL_ACCOUNT_ID) await ensureIgnored(input.targetWorkspace, filename);
       const localWorkspace = resolve(this.workspaceFor(LOCAL_ACCOUNT_ID));
       const canonicalWorkspace = await ensureStagingRoot(stagingRoot, localWorkspace, this.createStagingDirectory);
       await chmod(stagingRoot, 0o700);

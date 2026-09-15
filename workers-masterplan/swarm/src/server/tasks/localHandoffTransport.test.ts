@@ -132,6 +132,18 @@ describe("LocalJsonlHandoffTransport", () => {
     }
   });
 
+  it("rejects a local target checkout without the handoff ignore rule before rollout staging", async () => {
+    const { root, localWorkspace, stagingRoot, transport } = await fixture();
+    await writeFile(join(localWorkspace, ".gitignore"), "");
+
+    try {
+      await expect(transport.copyJsonl({ sourceAccountId: "bot7", sourceThreadId: "source-thread", targetAccountId: "claudiothe", targetWorkspace: localWorkspace, jsonl: Buffer.from("{}\n") })).rejects.toThrow("LOCAL_HANDOFF_COPY_FAILED");
+      await expect(readdir(stagingRoot)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("copies an over-16-MiB rollout byte-for-byte into the target workspace without staging residue", async () => {
     const { root, stagingRoot, targetWorkspace, copyAsTarget, transport } = await fixture();
     const rollout = Buffer.alloc(16 * 1024 * 1024 + 1, 0x5a);

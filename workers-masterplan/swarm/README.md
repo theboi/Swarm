@@ -164,12 +164,14 @@ authenticated, under its usage limit, or able to push Git changes. The original
 chat remains on its source account; its cached metadata and local rollout file
 are sufficient for the continuation.
 
-Swarm verifies that every target clone ignores `swarm-handoff-*.jsonl` before
-it stages the rollout under its Git-ignored `.data/handoffs/` directory. It
-then installs the file into the target account's EdenMind workspace through
-that account's authenticated `su` session. It never sends rollout contents
-through Codex app-server file APIs or Git. Each attempt receives a distinct,
-Git-ignored handoff filename, so a failed target startup can safely retry.
+For a local-account destination, Swarm verifies that the coordinator checkout
+ignores `swarm-handoff-*.jsonl` before it stages the rollout under its
+Git-ignored `.data/handoffs/` directory. For a bot destination, the target
+account verifies its own ignore rule inside the authenticated `su` install
+command, after staging and before the exclusive target-file creation. Swarm
+never sends rollout contents through Codex app-server file APIs or Git. Each
+attempt receives a distinct, Git-ignored handoff filename, so a failed target
+startup can safely retry.
 Temporary staging ACL access and data are removed after every attempt; the
 target-owned handoff file remains for the continuation attachment.
 
