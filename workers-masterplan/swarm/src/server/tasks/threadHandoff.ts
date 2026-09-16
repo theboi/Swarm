@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 
 import type { AccountId, ChatExecutionSettings, ThreadSummary } from "../../shared/contracts.js";
 import { handoffThreadName } from "./handoff.js";
@@ -29,34 +29,6 @@ export interface JsonlContinuationInput {
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
   settings?: ChatExecutionSettings;
   queuedMessages?: string;
-}
-
-export interface PrivateRolloutSource {
-  listAllThreads(): Promise<Array<Record<string, unknown>>>;
-  readFile(path: string): Promise<{ dataBase64: string }>;
-}
-
-const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_ROLLOUT_BASE64_BYTES = 64 * 1024 * 1024;
-
-/** Reads a bot-private rollout through the app-server already running as that bot. */
-export async function readJsonlFromAppServer(source: PrivateRolloutSource, codexHome: string, threadId: string): Promise<string> {
-  if (!THREAD_ID.test(threadId)) throw new Error("Invalid source thread identifier");
-  const thread = (await source.listAllThreads()).find((candidate) => candidate.id === threadId);
-  const path = thread?.path;
-  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("Source rollout path is unavailable");
-  const sessionsRoot = resolve(codexHome, "sessions");
-  const resolvedPath = resolve(path);
-  const withinSessions = relative(sessionsRoot, resolvedPath);
-  if (!withinSessions || withinSessions === ".." || withinSessions.startsWith(`..${sep}`) || isAbsolute(withinSessions)
-    || !basename(resolvedPath).endsWith(`-${threadId}.jsonl`)) {
-    throw new Error("Source rollout is outside the selected profile");
-  }
-  const result = await source.readFile(resolvedPath);
-  if (!result.dataBase64 || result.dataBase64.length > MAX_ROLLOUT_BASE64_BYTES || !/^[A-Za-z0-9+/]*={0,2}$/.test(result.dataBase64)) {
-    throw new Error("Source rollout payload is invalid");
-  }
-  return Buffer.from(result.dataBase64, "base64").toString("utf8");
 }
 
 /**

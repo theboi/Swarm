@@ -35,7 +35,7 @@ import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
-import { GitCommandRunner } from "./git/commandRunner.js";
+import { GitCommandRunner, runBotPtyJsonResultWorker } from "./git/commandRunner.js";
 import { accountForGitSyncTarget, GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
 import { createCoordinatorApp } from "./app.js";
 import { staticAssetDirectory } from "./staticAssets.js";
@@ -52,7 +52,7 @@ import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
-import { moveWithJsonl, readJsonlFromAppServer } from "./tasks/threadHandoff.js";
+import { moveWithJsonl } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -184,6 +184,17 @@ async function createRuntime(config: SwarmConfig) {
     log: (entry) => logger.info("suLauncher", entry),
   });
   const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(accountIds.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
+  const privateRolloutWorkerPath = fileURLToPath(new URL("./codex/privateRolloutWorker.js", import.meta.url));
+  const readRolloutJsonl = async (account: AccountId, threadId: string): Promise<string> => {
+    const slot = slotFor(account);
+    if (!slot) return rolloutReaders.get(account)!.readJsonl(threadId);
+    const password = config.accountPasswords[slot.macosUser];
+    if (!password) throw new Error("ACCOUNT_AUTH_REQUIRED");
+    const result = object(await runBotPtyJsonResultWorker(slot.macosUser, password, privateRolloutWorkerPath, { codexHome: slot.codexHome, threadId }));
+    const encoded = result.jsonlBase64;
+    if (typeof encoded !== "string" || !encoded || encoded.length > 64 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new Error("Source rollout payload is invalid");
+    return Buffer.from(encoded, "base64").toString("utf8");
+  };
   const refreshProfileRuntime = (): void => {
     profileSlots = registry.list();
     accountIds = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
@@ -752,11 +763,7 @@ async function createRuntime(config: SwarmConfig) {
         targetAccountId,
         targetWorkspace: projectWorkspaceFor(targetAccountId),
         clientUserMessageId,
-        readJsonl: async (accountId, sourceThreadId) => {
-          const slot = slotFor(accountId);
-          if (!slot) return rolloutReaders.get(accountId)!.readJsonl(sourceThreadId);
-          return readJsonlFromAppServer(await liveClient(accountId), slot.codexHome, sourceThreadId);
-        },
+        readJsonl: readRolloutJsonl,
         target: () => liveClient(targetAccountId),
         normalizeThread: (rawThread) => asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId)),
         claimResume: async () => {

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type CodexAccountSlot } from "../../shared/contracts.js";
 import { PROFILE_WORKER_READY } from "../accounts/profileWorkerProtocol.js";
 import { GitMergeConflictError } from "./sync.js";
+import { JSON_RESULT_PREFIX, JSON_RESULT_WORKER_READY } from "./jsonResultWorkerProtocol.js";
 
 function quote(value: string): string {
   if (!value || value.includes("\0")) throw new Error("Invalid Git command value");
@@ -158,6 +159,77 @@ export function runBotPtyJsonWorker(account: BotAccountId, password: string, wor
       child.write(`${input}\n`);
     });
     exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 ? undefined : new Error(exitCode === 65 ? "PROFILE_AUTH_ISOLATION_UNAVAILABLE" : "Profile setup failed")));
+  });
+}
+
+/** Runs a fixed bot-owned worker and captures exactly one marker-prefixed JSON result. */
+export function runBotPtyJsonResultWorker(account: BotAccountId, password: string, workerPath: string, payload: Record<string, unknown>, spawnBotPty: SpawnBotPty = spawnManagedBotPty): Promise<unknown> {
+  if (!workerPath.startsWith("/") || !password) return Promise.reject(new Error("Bot worker could not start"));
+  const input = JSON.stringify(payload);
+  if (input.includes(password)) return Promise.reject(new Error("Bot worker input must not contain a password"));
+  const command = `${quote(process.execPath)} ${quote(workerPath)}`;
+  return new Promise((resolve, reject) => {
+    let prompted = false;
+    let inputSent = false;
+    let settled = false;
+    let hasResult = false;
+    let result: unknown;
+    let output = "";
+    let tail = "";
+    let timer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const child = spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: "/tmp",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      try { child.dispose(); } catch { /* descriptor already closed */ }
+      if (error) reject(error);
+      else resolve(result);
+    };
+    timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } finally { finish(new Error("Bot worker timed out")); }
+    }, 120_000);
+    timer.unref();
+    dataSubscription = child.onData((data) => {
+      tail = `${tail}${data}`.slice(-512);
+      if (!prompted) {
+        if (!/Password:/i.test(tail)) return;
+        prompted = true;
+        tail = "";
+        child.write(`${password}\r`);
+        return;
+      }
+      if (!inputSent) {
+        if (!tail.includes(JSON_RESULT_WORKER_READY)) return;
+        inputSent = true;
+        tail = "";
+        child.write(`${input}\n`);
+        return;
+      }
+      output += data.replaceAll("\r", "");
+      if (output.length > 70 * 1024 * 1024) return finish(new Error("Bot worker result is too large"));
+      const marker = output.indexOf(JSON_RESULT_PREFIX);
+      if (marker < 0) return;
+      const end = output.indexOf("\n", marker);
+      if (end < 0) return;
+      try {
+        result = JSON.parse(output.slice(marker + JSON_RESULT_PREFIX.length, end));
+        hasResult = true;
+      } catch {
+        finish(new Error("Bot worker returned invalid JSON"));
+      }
+    });
+    exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 && hasResult ? undefined : new Error("Bot worker failed")));
   });
 }
 
