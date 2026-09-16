@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 
 import { PROFILE_WORKER_READY } from "./profileWorkerProtocol.js";
@@ -73,18 +74,24 @@ export async function setupProfileWorker(input: ProfileWorkerInput): Promise<voi
   await chmod(input.workspaceRoot, 0o700);
 }
 
-async function readInput(): Promise<ProfileWorkerInput> {
-  let raw = "";
-  for await (const chunk of process.stdin) raw += String(chunk);
-  const input: unknown = JSON.parse(raw);
-  if (!isInput(input)) throw new Error("Invalid profile setup input");
-  return input;
+export async function readProfileWorkerInput(inputStream: NodeJS.ReadableStream): Promise<ProfileWorkerInput> {
+  const lines = createInterface({ input: inputStream, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      const input: unknown = JSON.parse(line);
+      if (!isInput(input)) throw new Error("Invalid profile setup input");
+      return input;
+    }
+    throw new Error("Profile setup input ended before a JSON line was received");
+  } finally {
+    lines.close();
+  }
 }
 
 const executedPath = process.argv[1];
 if (executedPath && import.meta.url === new URL(`file://${executedPath}`).href) {
   process.stdout.write(`${PROFILE_WORKER_READY}\n`);
-  readInput().then(setupProfileWorker).catch((error: unknown) => {
+  readProfileWorkerInput(process.stdin).then(setupProfileWorker).catch((error: unknown) => {
     process.exitCode = error instanceof Error && error.message === "PROFILE_AUTH_ISOLATION_UNAVAILABLE" ? 65 : 1;
   });
 }
