@@ -39,7 +39,7 @@ function AccountCard({ account, assignments, tasks, headingLevel, onOpenTerminal
   tasks: TaskNode[];
   headingLevel: 2 | 3;
   onOpenTerminal: (account: AccountSnapshot) => void;
-  onReconnect: (account: AccountSnapshot) => void;
+  onReconnect: (account: AccountSnapshot, trigger: HTMLButtonElement) => void;
   onMakePrimary: (account: BotProfileAccountId) => void;
   primaryPending: boolean;
 }) {
@@ -59,7 +59,7 @@ function AccountCard({ account, assignments, tasks, headingLevel, onOpenTerminal
     {actionRequired ? <><p role="alert">{profileError(account.errorCode, "Action required: sign in to this account.")}</p>{account.terminalCommand ? <code>{account.terminalCommand}</code> : null}</> : null}
     <div className="account-card__actions">
       <button className="account-card__action" type="button" onClick={() => onOpenTerminal(account)}>Open terminal for {account.id}</button>
-      {actionRequired ? <button className="account-card__action" type="button" onClick={() => onReconnect(account)}>Reconnect {account.id}</button> : null}
+      {actionRequired ? <button className="account-card__action" type="button" onClick={(event) => onReconnect(account, event.currentTarget)}>{profileAccount && account.authentication === "unauthenticated" ? `Login to ${account.id}` : `Reconnect ${account.id}`}</button> : null}
       {profileAccount && !account.isPrimary ? <button className="account-card__action account-card__make-primary" type="button" disabled={primaryPending} onClick={() => onMakePrimary(profileAccount)}>{primaryPending ? "Making primary…" : `Make Primary for ${account.id}`}</button> : null}
     </div>
   </article>;
@@ -91,8 +91,18 @@ export function AccountsPage({ snapshot, api, onRefresh, onRefreshUsage, onBack 
       setMessage(account.connection === "connected" ? `Terminal opened for ${account.id}.` : `Sign-in terminal opened for ${account.id}.`);
     } catch { setError(`Unable to open a terminal for ${account.id}.`); }
   };
-  const reconnect = async (account: AccountSnapshot) => {
+  const reconnect = async (account: AccountSnapshot, trigger: HTMLButtonElement) => {
     setError(null);
+    if (account.authentication === "unauthenticated" && isBotProfileAccountId(account.id)) {
+      loginTrigger.current = trigger;
+      try {
+        const started = await api.startAccountLogin(account.id, "device_code");
+        if ("error" in started && started.error) { setError(profileError(started.error.code, started.error.message)); return; }
+        setLogin({ accountId: account.id, challenge: started.data });
+        setMessage(`${account.id} is ready to sign in.`);
+      } catch { setError(`Unable to start sign-in for ${account.id}.`); }
+      return;
+    }
     try {
       const result = await api.connectAccount(account.id);
       if ("error" in result && result.error) return setError(result.error.message);

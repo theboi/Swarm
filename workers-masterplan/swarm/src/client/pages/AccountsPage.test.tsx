@@ -44,6 +44,7 @@ describe("AccountsPage", () => {
 
     expect(addAccount).toHaveBeenCalledWith("bot1");
     expect(startAccountLogin).toHaveBeenCalledWith("bot1/acc2", "device_code");
+    expect(screen.getByRole("button", { name: "Login to bot1/acc2" })).toBeVisible();
     expect(await screen.findByRole("dialog", { name: "Sign in to bot1/acc2" })).toHaveTextContent("ABCD-EFGH");
   });
 
