@@ -198,7 +198,7 @@ export function runBotPtyJsonResultWorker(account: BotAccountId, password: strin
     };
     timer = setTimeout(() => {
       try { child.kill("SIGTERM"); } finally { finish(new Error("Bot worker timed out")); }
-    }, 120_000);
+    }, 30_000);
     timer.unref();
     dataSubscription = child.onData((data) => {
       tail = `${tail}${data}`.slice(-512);

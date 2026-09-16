@@ -3,12 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LocalRolloutTranscriptReader } from "./localRolloutReader.js";
+import { candidateSessionDirectories, LocalRolloutTranscriptReader } from "./localRolloutReader.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe("LocalRolloutTranscriptReader", () => {
+  it("derives the dated session directory from a UUIDv7 thread identifier", () => {
+    expect(candidateSessionDirectories("/profiles/acc1", "01a0a04a-11f5-7733-b7ff-32232673eeb5")).toContain(join("/profiles/acc1", "sessions", "2026", "09", "14"));
+  });
+
   it("loads completed chat messages and incrementally includes appended items", async () => {
     const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
     roots.push(root);
