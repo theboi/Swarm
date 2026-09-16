@@ -44,21 +44,35 @@ async function ensureCredentialStore(codexHome: string): Promise<void> {
   await chmod(configuration, 0o600);
 }
 
-async function ensureCheckout(workspaceRoot: string, repositoryUrl: string): Promise<void> {
-  try {
-    const details = await lstat(workspaceRoot);
-    const uid = process.getuid?.();
-    if (uid === undefined || details.isSymbolicLink() || !details.isDirectory() || details.uid !== uid) throw new Error("Workspace is not an owned directory");
-    const git = join(workspaceRoot, ".git");
-    if (!(await lstat(git)).isDirectory()) throw new Error("Workspace is unmanaged");
+async function verifyOwnedCheckout(workspaceRoot: string, repositoryUrl?: string): Promise<void> {
+  const details = await lstat(workspaceRoot);
+  const uid = process.getuid?.();
+  if (uid === undefined || details.isSymbolicLink() || !details.isDirectory() || details.uid !== uid) throw new Error("Workspace is not an owned directory");
+  const git = join(workspaceRoot, ".git");
+  if (!(await lstat(git)).isDirectory()) throw new Error("Workspace is unmanaged");
+  await execute("/usr/bin/git", ["-C", workspaceRoot, "rev-parse", "--verify", "HEAD^{commit}"]);
+  if (repositoryUrl !== undefined) {
     const remote = (await execute("/usr/bin/git", ["-C", workspaceRoot, "remote", "get-url", "origin"])).stdout.trim();
     if (remote !== repositoryUrl) throw new Error("Workspace remote does not match configured repository");
+  }
+}
+
+export async function ensureProfileCheckout(workspaceRoot: string, repositoryUrl: string, sourceWorkspaceRoot?: string): Promise<void> {
+  try {
+    await lstat(workspaceRoot);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     await mkdir(dirname(workspaceRoot), { recursive: true, mode: 0o700 });
-    await execute("/usr/bin/git", ["clone", "--origin", "origin", repositoryUrl, workspaceRoot]);
-    if (!(await stat(join(workspaceRoot, ".git"))).isDirectory()) throw new Error("Workspace clone verification failed");
+    if (sourceWorkspaceRoot !== undefined) {
+      await verifyOwnedCheckout(sourceWorkspaceRoot);
+      await execute("/usr/bin/git", ["clone", "--origin", "origin", "--branch", "main", sourceWorkspaceRoot, workspaceRoot]);
+      await execute("/usr/bin/git", ["-C", workspaceRoot, "remote", "set-url", "origin", repositoryUrl]);
+    } else {
+      await execute("/usr/bin/git", ["clone", "--origin", "origin", repositoryUrl, workspaceRoot]);
+    }
   }
+  await verifyOwnedCheckout(workspaceRoot, repositoryUrl);
+  if (!(await stat(join(workspaceRoot, ".git"))).isDirectory()) throw new Error("Workspace clone verification failed");
 }
 
 export async function setupProfileWorker(input: ProfileWorkerInput): Promise<void> {
@@ -70,7 +84,7 @@ export async function setupProfileWorker(input: ProfileWorkerInput): Promise<voi
   const profileRoot = dirname(input.codexHome);
   if (await realpath(profileRoot) !== profileRoot) throw new Error("Profile root must not be a symbolic link");
   await ensureCredentialStore(input.codexHome);
-  await ensureCheckout(input.workspaceRoot, input.repositoryUrl);
+  await ensureProfileCheckout(input.workspaceRoot, input.repositoryUrl, `/Users/${profile[1]}/Dev/EdenMind`);
   await chmod(input.workspaceRoot, 0o700);
 }
 
