@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { gunzipSync } from "node:zlib";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
 import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
@@ -46,6 +47,21 @@ function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonl
 }
 
 describe("createJsonlContinuation", () => {
+  it("attaches a large rollout as compressed base64 text without dropping content", async () => {
+    const sourceJsonl = '{"type":"event_msg","payload":{"text":"large chat"}}\n'.repeat(40_000);
+    const continuationTarget = target();
+    await createJsonlContinuation({
+      sourceAccountId: "bot1/acc1", sourceThreadId: "source-thread", sourceName: "Large chat",
+      targetAccountId: "bot3/acc1", targetWorkspace: "/Users/bot3/Dev/EdenMind",
+      jsonl: sourceJsonl, clientUserMessageId: "handoff-large", target: continuationTarget,
+      normalizeThread: (source) => summary("bot3/acc1", String(source.id)),
+    });
+    const [path, compressed] = (continuationTarget.writeFile as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string];
+    expect(path).toMatch(/\.jsonl\.gz\.b64$/);
+    expect(compressed.length).toBeLessThan(sourceJsonl.length / 10);
+    expect(gunzipSync(Buffer.from(compressed, "base64")).toString("utf8")).toBe(sourceJsonl);
+    expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Decode"), attachments: [{ name: expect.stringMatching(/\.jsonl\.gz\.b64$/), path }] }));
+  });
   it("creates a target-only continuation with the exact source JSONL attached", async () => {
     const continuationTarget = target();
     const sourceJsonl = "{\"type\":\"session_meta\"}\n";

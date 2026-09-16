@@ -52,7 +52,7 @@ import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
-import { moveWithJsonl } from "./tasks/threadHandoff.js";
+import { decodePrivateRollout, moveWithJsonl } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -190,10 +190,7 @@ async function createRuntime(config: SwarmConfig) {
     if (!slot) return rolloutReaders.get(account)!.readJsonl(threadId);
     const password = config.accountPasswords[slot.macosUser];
     if (!password) throw new Error("ACCOUNT_AUTH_REQUIRED");
-    const result = object(await runBotPtyJsonResultWorker(slot.macosUser, password, privateRolloutWorkerPath, { codexHome: slot.codexHome, threadId }));
-    const encoded = result.jsonlBase64;
-    if (typeof encoded !== "string" || !encoded || encoded.length > 64 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new Error("Source rollout payload is invalid");
-    return Buffer.from(encoded, "base64").toString("utf8");
+    return decodePrivateRollout(await runBotPtyJsonResultWorker(slot.macosUser, password, privateRolloutWorkerPath, { codexHome: slot.codexHome, threadId }));
   };
   const refreshProfileRuntime = (): void => {
     profileSlots = registry.list();
