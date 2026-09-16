@@ -41,7 +41,7 @@ describe("coordinator application composition", () => {
   });
 
   it("serves the compiled SPA and its client routes without shadowing API errors", async () => {
-    const staticDir = await mkdtemp(join(tmpdir(), "swarm-client-"));
+    const staticDir = await mkdtemp(join(tmpdir(), ".swarm-client-"));
     await writeFile(join(staticDir, "index.html"), "<main>Swarm client</main>");
     const coordinator = createCoordinatorApp({ services: await servicesFixture(), staticDir, flush: async () => undefined, shutdown: async () => undefined });
     stop = coordinator.shutdown;
