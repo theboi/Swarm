@@ -3,6 +3,8 @@ import { chmod, lstat, mkdir, readFile, realpath, stat, writeFile } from "node:f
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
+import { PROFILE_WORKER_READY } from "./profileWorkerProtocol.js";
+
 const execute = promisify(execFile);
 
 export interface ProfileWorkerInput {
@@ -81,6 +83,7 @@ async function readInput(): Promise<ProfileWorkerInput> {
 
 const executedPath = process.argv[1];
 if (executedPath && import.meta.url === new URL(`file://${executedPath}`).href) {
+  process.stdout.write(`${PROFILE_WORKER_READY}\n`);
   readInput().then(setupProfileWorker).catch((error: unknown) => {
     process.exitCode = error instanceof Error && error.message === "PROFILE_AUTH_ISOLATION_UNAVAILABLE" ? 65 : 1;
   });

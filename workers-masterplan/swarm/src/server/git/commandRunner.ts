@@ -3,6 +3,7 @@ import { spawn as spawnPty } from "node-pty";
 import { fileURLToPath } from "node:url";
 
 import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type CodexAccountSlot } from "../../shared/contracts.js";
+import { PROFILE_WORKER_READY } from "../accounts/profileWorkerProtocol.js";
 import { GitMergeConflictError } from "./sync.js";
 
 function quote(value: string): string {
@@ -116,6 +117,7 @@ export function runBotPtyJsonWorker(account: BotAccountId, password: string, wor
   const command = `${quote(process.execPath)} ${quote(workerPath)}`;
   return new Promise((resolve, reject) => {
     let prompted = false;
+    let inputSent = false;
     let settled = false;
     let tail = "";
     let timer: NodeJS.Timeout | undefined;
@@ -143,12 +145,16 @@ export function runBotPtyJsonWorker(account: BotAccountId, password: string, wor
     }, 120_000);
     timer.unref();
     dataSubscription = child.onData((data) => {
-      if (prompted) return;
       tail = `${tail}${data}`.slice(-256);
-      if (!/Password:/i.test(tail)) return;
-      prompted = true;
-      tail = "";
-      child.write(`${password}\r`);
+      if (!prompted) {
+        if (!/Password:/i.test(tail)) return;
+        prompted = true;
+        tail = "";
+        child.write(`${password}\r`);
+        return;
+      }
+      if (inputSent || !tail.includes(PROFILE_WORKER_READY)) return;
+      inputSent = true;
       child.write(`${input}\n`);
     });
     exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 ? undefined : new Error(exitCode === 65 ? "PROFILE_AUTH_ISOLATION_UNAVAILABLE" : "Profile setup failed")));

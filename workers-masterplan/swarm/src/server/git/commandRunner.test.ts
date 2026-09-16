@@ -75,7 +75,7 @@ describe("GitCommandRunner", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("sends profile worker input after the PTY password prompt without placing the password in worker JSON", async () => {
+  it("waits for the profile worker to take over the PTY before sending its input", async () => {
     let dataListener: ((data: string) => void) | undefined;
     let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
     const write = vi.fn();
@@ -94,6 +94,8 @@ describe("GitCommandRunner", () => {
 
     dataListener?.("Password:");
     expect(write).toHaveBeenCalledWith("correct horse\r");
+    expect(write.mock.calls.flat().some((value) => value.includes('"codexHome"'))).toBe(false);
+    dataListener?.("SWARM_PROFILE_WORKER_READY\n");
     const workerInput = write.mock.calls.flat().find((value) => value.includes('"codexHome"'));
     expect(workerInput).toContain('"codexHome"');
     expect(workerInput).not.toContain("correct horse");
