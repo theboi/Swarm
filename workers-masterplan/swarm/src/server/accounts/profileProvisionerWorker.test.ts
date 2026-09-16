@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { ensureProfileCheckout, readProfileWorkerInput } from "./profileProvisionerWorker.js";
+import { ensureCredentialStore, ensureProfileCheckout, readProfileWorkerInput } from "./profileProvisionerWorker.js";
 
 const execute = promisify(execFile);
 
@@ -51,6 +51,23 @@ describe("profile checkout provisioning", () => {
       const origin = (await execute("/usr/bin/git", ["-C", target, "remote", "get-url", "origin"])).stdout.trim();
       expect(origin).toBe(repositoryUrl);
       expect(origin).not.toContain("credential");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("profile credential-store configuration", () => {
+  it("accepts an existing file-backed credential store declaration", async () => {
+    const root = await mkdtemp(join(tmpdir(), "swarm-profile-config-"));
+    const codexHome = join(root, "profile");
+
+    try {
+      await mkdir(codexHome);
+      await writeFile(join(codexHome, "config.toml"), 'model = "gpt-test"\ncli_auth_credentials_store = "file"\n');
+
+      await expect(ensureCredentialStore(codexHome)).resolves.toBeUndefined();
+      await expect(readFile(join(codexHome, "config.toml"), "utf8")).resolves.toContain('cli_auth_credentials_store = "file"');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

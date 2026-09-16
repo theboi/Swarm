@@ -31,14 +31,15 @@ async function privateDirectory(path: string): Promise<void> {
   await chmod(path, 0o700);
 }
 
-async function ensureCredentialStore(codexHome: string): Promise<void> {
+export async function ensureCredentialStore(codexHome: string): Promise<void> {
   const configuration = join(codexHome, "config.toml");
   let existing = "";
   try { existing = await readFile(configuration, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const conflicting = /^\s*cli_auth_credentials_store\s*=\s*(?!"file"\s*$)/m.test(existing);
-  if (conflicting) throw new Error("PROFILE_AUTH_ISOLATION_UNAVAILABLE");
-  if (!/^\s*cli_auth_credentials_store\s*=\s*"file"\s*$/m.test(existing)) {
+  const declarations = existing.split(/\r?\n/).filter((line) => /^\s*cli_auth_credentials_store\s*=/.test(line));
+  const fileBacked = declarations.length === 1 && /^\s*cli_auth_credentials_store\s*=\s*["']file["']\s*(?:#.*)?$/.test(declarations[0]!);
+  if (declarations.length > 0 && !fileBacked) throw new Error("PROFILE_AUTH_ISOLATION_UNAVAILABLE");
+  if (!fileBacked) {
     await writeFile(configuration, `${existing}${existing && !existing.endsWith("\n") ? "\n" : ""}cli_auth_credentials_store = "file"\n`, { mode: 0o600 });
   }
   await chmod(configuration, 0o600);
