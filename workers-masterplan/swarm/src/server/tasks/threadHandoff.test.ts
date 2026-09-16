@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
-import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
+import { createJsonlContinuation, moveWithJsonl, readJsonlFromAppServer, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
 
 function summary(accountId: AccountId, id: string): ThreadSummary {
   return {
@@ -163,5 +163,30 @@ describe("moveWithJsonl", () => {
     expect(restoreResume).toHaveBeenCalledOnce();
     expect(restoreAssignment).toHaveBeenCalledOnce();
     expect(transfer).not.toHaveBeenCalled();
+  });
+});
+
+describe("readJsonlFromAppServer", () => {
+  it("reads a private profile rollout through its owning app-server", async () => {
+    const threadId = "01a07477-448b-7183-bc17-8629955fdba5";
+    const path = `/Users/bot1/.swarm/codex-profiles/acc1/sessions/2026/09/16/rollout-${threadId}.jsonl`;
+    const source = {
+      listAllThreads: vi.fn(async () => [{ id: threadId, path }]),
+      readFile: vi.fn(async () => ({ dataBase64: Buffer.from('{"type":"session_meta"}\n').toString("base64") })),
+    };
+
+    await expect(readJsonlFromAppServer(source, "/Users/bot1/.swarm/codex-profiles/acc1", threadId)).resolves.toBe('{"type":"session_meta"}\n');
+    expect(source.readFile).toHaveBeenCalledWith(path);
+  });
+
+  it("rejects a rollout path outside the selected profile", async () => {
+    const threadId = "01a07477-448b-7183-bc17-8629955fdba5";
+    const source = {
+      listAllThreads: vi.fn(async () => [{ id: threadId, path: `/Users/bot2/.codex/sessions/rollout-${threadId}.jsonl` }]),
+      readFile: vi.fn(async () => ({ dataBase64: "" })),
+    };
+
+    await expect(readJsonlFromAppServer(source, "/Users/bot1/.swarm/codex-profiles/acc1", threadId)).rejects.toThrow("outside the selected profile");
+    expect(source.readFile).not.toHaveBeenCalled();
   });
 });

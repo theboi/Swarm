@@ -52,7 +52,7 @@ import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
-import { moveWithJsonl } from "./tasks/threadHandoff.js";
+import { moveWithJsonl, readJsonlFromAppServer } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
@@ -752,7 +752,11 @@ async function createRuntime(config: SwarmConfig) {
         targetAccountId,
         targetWorkspace: projectWorkspaceFor(targetAccountId),
         clientUserMessageId,
-        readJsonl: (accountId, sourceThreadId) => rolloutReaders.get(accountId)!.readJsonl(sourceThreadId),
+        readJsonl: async (accountId, sourceThreadId) => {
+          const slot = slotFor(accountId);
+          if (!slot) return rolloutReaders.get(accountId)!.readJsonl(sourceThreadId);
+          return readJsonlFromAppServer(await liveClient(accountId), slot.codexHome, sourceThreadId);
+        },
         target: () => liveClient(targetAccountId),
         normalizeThread: (rawThread) => asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId)),
         claimResume: async () => {
