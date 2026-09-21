@@ -156,6 +156,16 @@ Only UIDs `502` through `510` are currently supported. Unknown accounts and
 UID/account mismatches fail closed; never wrap, search for a free port, or pick
 an ad hoc replacement.
 
+Supported `u<UID>` runtimes are behaviorally equivalent. The suffix and its
+derived ports and namespaces identify isolation ownership; they do not select a
+different application contract or acceptance standard. Always render the row
+for the worker's currently assigned macOS account. If a task moves between
+accounts, replace every account-derived value coherently and recreate or adopt
+only the new account's authorized holders. Treat earlier `uXXX` values as
+historical evidence, not as a reason to keep using the previous account, reopen
+planning, or block otherwise-ready execution. This substitution never permits
+mixing namespaces or using another account's active runtime.
+
 | Account | UID | Slot | Client | API | Supabase API–Mailpit POP3 |
 | --- | ---: | ---: | ---: | ---: | --- |
 | `claudiothe` | 502 | 2 | 3200 | 8200 | 15631–15636 |

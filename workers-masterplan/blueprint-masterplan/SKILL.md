@@ -290,6 +290,17 @@ isolation** block from the reference before runtime commands. The coordinator
 records the account/UID allocation and excludes every already-running runtime
 outside the worker's exact namespace.
 
+Runtime IDs are allocation labels, not behavior variants. All supported
+`u<UID>` runtimes implement the same application, isolation, readiness, and
+acceptance contract. A worker always uses the runtime derived from its currently
+assigned macOS account. When a task is reassigned, substitute the new account,
+UID, runtime ID, ports, project, network, workdir, holders, and cookie namespace
+as one coherent set. A prior `uXXX` value in a brief, plan, status, or handoff is
+historical execution metadata, not a semantic prerequisite: the reassignment
+alone does not require replanning, reopen a gate, weaken a test, or block the
+worker. Never mix allocations within one run or borrow a runtime currently
+assigned to another account.
+
 Here, `launcher` means the deterministic account-local launch procedure; it
 does not require a pre-existing wrapper script. Use a repository helper when
 one exists. When it does not, a worker whose brief already authorizes runtime
