@@ -121,4 +121,16 @@ describe("HTTP coordinator API", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3/threads/thread-1/name", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Graph plan review" }) }));
   });
+
+  it("updates automatic resume for one chat", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: { enabled: true } }), { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    await createHttpCoordinatorApi().setLimitResumeEnabled("bot3", "thread-1", true);
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3/threads/thread-1/limit-resume", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ enabled: true }),
+    }));
+  });
 });

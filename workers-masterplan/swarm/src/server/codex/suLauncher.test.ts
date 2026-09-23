@@ -74,6 +74,46 @@ describe("SuLauncher", () => {
     }
   });
 
+  it("unlocks a bot login keychain in the same su session before app-server startup", async () => {
+    const { launcher, child, spawn, waitForReady } = launcherFixture();
+    let ready!: () => void;
+    waitForReady.mockImplementation(() => new Promise<undefined>((resolve) => { ready = () => resolve(undefined); }));
+    const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    await waitForSpawn(spawn);
+
+    const command = ((spawn.mock.calls[0] as unknown as [string, string[]])[1][3]) as string;
+    expect(command).toContain("/usr/bin/security unlock-keychain '/Users/bot1/Library/Keychains/login.keychain-db'");
+    expect(command).not.toContain("bot-password");
+
+    child.emit("data", "Password:");
+    child.emit("data", "password to unlock /Users/bot1/Library/Keychains/login.keychain-db: ");
+    expect(child.writes).toEqual(["bot-password\n", "bot-password\n"]);
+    ready();
+    await (await launching).stop();
+  });
+
+  it("does not require the coordinator user to traverse a bot's private Codex profile", async () => {
+    const { launcher, child, spawn } = launcherFixture();
+    const pathExists = vi.fn(async () => false);
+    const isolated = new SuLauncher({
+      spawnPty: spawn,
+      allocatePort: async () => ({ port: 45123, release: async () => undefined }),
+      pathExists,
+      verifyCodexBinary: async () => true,
+      waitForReady: async () => undefined,
+      killProcessGroup: () => undefined,
+      openTerminal: async () => undefined,
+      log: () => undefined,
+    });
+
+    const launching = isolated.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    await waitForSpawn(spawn);
+    child.emit("data", "Password:");
+    await (await launching).stop();
+
+    expect(pathExists).not.toHaveBeenCalledWith("/Users/bot1/.codex");
+  });
+
   it("launches claudiothe directly without reading or writing a bot password", async () => {
     const { launcher, child, spawn, waitForReady } = launcherFixture();
     const handle = await launcher.launch({ account: "claudiothe", codexBin: "/opt/homebrew/bin/codex" });

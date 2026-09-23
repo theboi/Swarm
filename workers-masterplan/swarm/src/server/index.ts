@@ -505,6 +505,17 @@ async function createRuntime(config: SwarmConfig) {
       publishRuntimeEvent("auto_pilot", { enabled });
       return { enabled };
     },
+    setLimitResumeEnabled: async (id, threadId, enabled) => {
+      const timerKey = activeTurnKey(id, threadId);
+      if (!enabled) {
+        const timer = limitResumeTimers.get(timerKey);
+        if (timer) clearTimeout(timer);
+        limitResumeTimers.delete(timerKey);
+      }
+      await limitResumes.setEnabled(id, threadId, enabled);
+      publishRuntimeEvent("task", { taskId: assignments.forThread(id, threadId)?.taskId ?? "" });
+      return { enabled: limitResumes.isEnabled(id, threadId) };
+    },
     connectAccount: async (id) => {
       const connected = await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
       await outbox.recover({ readThread: async (record) => {

@@ -14,6 +14,7 @@ export interface CoordinatorRouteServices {
   snapshot(): Promise<CoordinatorSnapshot>;
   health(): Promise<HealthSnapshot>;
   setAutoPilot(enabled: boolean): Promise<AutoPilotState>;
+  setLimitResumeEnabled(accountId: AccountId, threadId: string, enabled: boolean): Promise<{ enabled: boolean }>;
   connectAccount(accountId: AccountId): Promise<unknown>;
   disconnectAccount(accountId: AccountId): Promise<void>;
   openTerminal(accountId: AccountId): Promise<void>;
@@ -76,8 +77,8 @@ function codeFor(error: unknown): { status: number; code: string; message: strin
     return { status: 400, code: "LOCAL_HANDOFF_INVALID", message: "Swarm rejected an unsafe local handoff path or account." };
   }
   if (message.includes("GIT_HANDOFF_PUSH_FAILED")) return { status: 409, code: "GIT_HANDOFF_PUSH_FAILED", message: message.replace(/^GIT_HANDOFF_PUSH_FAILED:\s*/, "") };
-  const code = /MASTERPLAN_NOT_READY|TASK_NOT_READY|RATE_LIMIT_WAIT|ACCOUNT_AUTH_REQUIRED|ACCOUNT_OFFLINE|FILE_OUTSIDE_WORKSPACE|DANGEROUS_APPROVAL_REQUIRED|HUMAN_APPROVAL_REQUIRED/.exec(message)?.[0] ?? "OPERATION_FAILED";
-  const status = code === "FILE_OUTSIDE_WORKSPACE" ? 403 : code === "ACCOUNT_OFFLINE" ? 409 : code === "TASK_NOT_READY" || code === "MASTERPLAN_NOT_READY" || code === "RATE_LIMIT_WAIT" ? 409 : 400;
+  const code = /MASTERPLAN_NOT_READY|TASK_NOT_READY|RATE_LIMIT_WAIT|PAID_PLAN_REQUIRED|ACCOUNT_AUTH_REQUIRED|ACCOUNT_OFFLINE|FILE_OUTSIDE_WORKSPACE|DANGEROUS_APPROVAL_REQUIRED|HUMAN_APPROVAL_REQUIRED/.exec(message)?.[0] ?? "OPERATION_FAILED";
+  const status = code === "FILE_OUTSIDE_WORKSPACE" || code === "PAID_PLAN_REQUIRED" ? 403 : code === "ACCOUNT_OFFLINE" ? 409 : code === "TASK_NOT_READY" || code === "MASTERPLAN_NOT_READY" || code === "RATE_LIMIT_WAIT" ? 409 : 400;
   return { status, code, message: code === "OPERATION_FAILED" ? "Codex could not complete this request. Try again, or check that the selected account is connected." : message };
 }
 
@@ -174,6 +175,7 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   router.get("/accounts/:account/models", requireSession(services.sessions), asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.listModels(id)); }));
   router.get("/accounts/:account/threads", requireSession(services.sessions), asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.listThreads(id)); }));
   router.post("/accounts/:account/threads", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.startThread(id)); }));
+  router.post("/accounts/:account/threads/:thread/limit-resume", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const enabled = record(request.body).enabled; if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (typeof enabled !== "boolean") { apiError(response, 400, "INVALID_REQUEST", "Automatic resume enabled must be a boolean"); return; } sendData(response, await services.setLimitResumeEnabled(id, param(request.params.thread), enabled)); }));
   router.post("/accounts/:account/threads/:thread/move", ...securedMutation, asyncRoute(async (request, response) => { const source = account(request.params.account); const body = record(request.body); const target = account(body.targetAccountId); const settings = executionSettings(body.settings); if (!source || !target || source === target) { apiError(response, 400, "INVALID_REQUEST", "Choose a different known account"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.moveThreadToAccount(source, param(request.params.thread), target, settings)); }));
   router.get("/accounts/:account/threads/:thread", requireSession(services.sessions), asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } sendData(response, await services.readTranscript(id, param(request.params.thread))); }));
   router.post("/accounts/:account/threads/:thread/name", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const name = text(record(request.body).name, "name")?.trim(); if (!id || !name || name.length > 200) { apiError(response, 400, "INVALID_REQUEST", "A known account and chat name of at most 200 characters are required"); return; } await services.renameThread(id, param(request.params.thread), name); sendData(response, {}); }));

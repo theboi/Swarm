@@ -13,7 +13,7 @@ import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
-type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount" | "renameThread">>;
+type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval" | "setLimitResumeEnabled"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount" | "renameThread">>;
 const EMPTY_TURN_KEYS: ReadonlySet<string> = new Set<string>();
 const TRANSCRIPT_RENDER_BATCH = 100;
 const noopMarkThreadRead = () => undefined;
@@ -289,6 +289,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [resumeUpdating, setResumeUpdating] = useState(false);
   const [openSubagent, setOpenSubagent] = useState<SubagentReference | null>(null);
   const [subagentGraph, setSubagentGraph] = useState<ReadonlyMap<string, SubagentReference[]>>(() => new Map());
   const [clock, setClock] = useState(() => Date.now());
@@ -662,6 +663,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
   const limitExhausted = Boolean(threadId && accountId && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, accountId, threadId));
+  const resumeEnabled = Boolean(threadId && accountId && snapshot.limitResumes?.some((record) => record.accountId === accountId && record.threadId === threadId && record.state !== "transferred"));
   const resumeCountdown = limitCountdown(exhaustedLimit?.resetsAt ?? null, clock);
   const resumeStatus = resumeNeedsSignIn && accountId
     ? `Sign in to ${accountId} before this chat can resume.`
@@ -678,6 +680,19 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     if (!openSubagent || !accountId) return;
     setSettingsByChat((current) => ({ ...current, [chatExecutionSettingsKey(accountId, openSubagent.threadId)]: next }));
     setGlobalSettings(next);
+  };
+
+  const toggleAutomaticResume = async () => {
+    if (!accountId || !selectedThread || isDraftChat || resumeUpdating) return;
+    setResumeUpdating(true);
+    try {
+      await run(
+        () => api.setLimitResumeEnabled(accountId, selectedThread.id, !resumeEnabled),
+        `Automatic resume ${resumeEnabled ? "disabled" : "enabled"}.`,
+      );
+    } finally {
+      setResumeUpdating(false);
+    }
   };
 
   useEffect(() => {
@@ -792,7 +807,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
         <section className="chat-panel" aria-labelledby="selected-chat-title">
           <header className="chat-panel__header">
             <div className="chat-panel__title"><span className="chat-panel__account">{accountId ?? "No account"}</span><h2 id="selected-chat-title">{selectedChatName}</h2>{isThinking ? <span className="chat-thinking" aria-label="Codex is thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}</div>
-            <div className="chat-panel__tools"><button className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.", () => { setThreadsByAccount((current) => ({ ...current, [accountId]: (current[accountId] ?? []).filter((thread) => thread.id !== selectedThread.id) })); if (createdThread?.id === selectedThread.id) setCreatedThread(null); })}><Archive aria-hidden="true" size={17} strokeWidth={1.75} /></button><button className="chat-tool chat-tool--icon" type="button" aria-label="Move to another account" title="Move to another account" disabled={!selectedThread || !accountId || isDraftChat || !api.moveThreadToAccount} onClick={openMove}><ArrowRightLeft aria-hidden="true" size={17} strokeWidth={1.75} /></button>{terminalCommand ? <button className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><SquareTerminal aria-hidden="true" size={17} strokeWidth={1.75} /></button> : null}</div>
+            <div className="chat-panel__tools"><button className={`chat-tool${resumeEnabled ? " chat-tool--primary" : ""}`} type="button" aria-label={`${resumeEnabled ? "Disable" : "Enable"} automatic resume`} aria-pressed={resumeEnabled} title={`${resumeEnabled ? "Disable" : "Enable"} automatic resume`} disabled={!selectedThread || !accountId || isDraftChat || resumeUpdating} onClick={() => void toggleAutomaticResume()}>Auto-resume <span aria-hidden="true">{resumeEnabled ? "On" : "Off"}</span></button><button className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.", () => { setThreadsByAccount((current) => ({ ...current, [accountId]: (current[accountId] ?? []).filter((thread) => thread.id !== selectedThread.id) })); if (createdThread?.id === selectedThread.id) setCreatedThread(null); })}><Archive aria-hidden="true" size={17} strokeWidth={1.75} /></button><button className="chat-tool chat-tool--icon" type="button" aria-label="Move to another account" title="Move to another account" disabled={!selectedThread || !accountId || isDraftChat || !api.moveThreadToAccount} onClick={openMove}><ArrowRightLeft aria-hidden="true" size={17} strokeWidth={1.75} /></button>{terminalCommand ? <button className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><SquareTerminal aria-hidden="true" size={17} strokeWidth={1.75} /></button> : null}</div>
           </header>
           {approvals.length ? <div className="chat-approvals">{approvals.map((approval) => <section className="chat-approval" key={approval.id} aria-labelledby={`approval-${approval.id}`}><div className="chat-approval__copy"><h3 id={`approval-${approval.id}`}>Approval required</h3><p>{approval.summary}</p></div><div className="chat-approval__actions">{approval.availableDecisions.map((decision) => {
             const permissions = isPermissionGrant(decision) ? approval.requestedPermissions : undefined;

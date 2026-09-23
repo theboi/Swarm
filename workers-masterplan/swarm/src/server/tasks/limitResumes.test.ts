@@ -5,6 +5,36 @@ import { DispatchOutbox } from "../dispatch/outbox.js";
 import { WorkerAssignmentManifest } from "./workerAssignments.js";
 
 describe("LimitResumeManifest", () => {
+  it("starts disabled, can be armed explicitly, and can be disabled again", async () => {
+    const manifest = new LimitResumeManifest([]);
+
+    expect(manifest.isEnabled("bot6", "thread-1")).toBe(false);
+    await manifest.setEnabled("bot6", "thread-1", true, 10);
+    expect(manifest.forThread("bot6", "thread-1")).toMatchObject({ state: "armed", updatedAt: 10 });
+    expect(manifest.isEnabled("bot6", "thread-1")).toBe(true);
+
+    await manifest.setEnabled("bot6", "thread-1", false, 20);
+    expect(manifest.forThread("bot6", "thread-1")).toBeUndefined();
+    expect(manifest.isEnabled("bot6", "thread-1")).toBe(false);
+  });
+
+  it("automatically enables resume when a chat hits its usage limit", async () => {
+    const manifest = new LimitResumeManifest([]);
+    await manifest.markWaiting("bot6", "thread-1", 10);
+
+    expect(manifest.isEnabled("bot6", "thread-1")).toBe(true);
+    expect(manifest.forThread("bot6", "thread-1")?.state).toBe("waiting_for_limit");
+  });
+
+  it("keeps automatic resume enabled after a successful recovery", async () => {
+    const manifest = new LimitResumeManifest([]);
+    await manifest.markWaiting("bot6", "thread-1", 10);
+    await manifest.claimResume("bot6", "thread-1", "resume-1", 20);
+
+    expect(await manifest.completeAcceptedResume("bot6", "thread-1", "resume-1", 30)).toBe(false);
+    expect(manifest.forThread("bot6", "thread-1")).toMatchObject({ state: "armed", updatedAt: 30 });
+  });
+
   it.each([
     "thread thread-1 already has an active writer",
     "session thread-1 is archived. Run codex unarchive first.",

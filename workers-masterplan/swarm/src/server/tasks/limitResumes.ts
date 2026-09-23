@@ -50,13 +50,28 @@ export class LimitResumeManifest {
     const value = this.records.get(key(accountId, threadId));
     return value && clone(value);
   }
+  isEnabled(accountId: AccountId, threadId: string): boolean {
+    const record = this.records.get(key(accountId, threadId));
+    return Boolean(record && record.state !== "transferred");
+  }
+  async setEnabled(accountId: AccountId, threadId: string, enabled: boolean, now = Date.now()): Promise<void> {
+    const recordKey = key(accountId, threadId);
+    const current = this.records.get(recordKey);
+    if (current?.state === "transferred") return;
+    if (enabled) {
+      if (current) return;
+      await this.mutate(() => { this.records.set(recordKey, { accountId, threadId, state: "armed", updatedAt: now }); });
+      return;
+    }
+    await this.clear(accountId, threadId);
+  }
   waitingForAccount(accountId: AccountId): DurableLimitResumeRecord[] {
     return [...this.records.values()].filter((record) => record.accountId === accountId && record.state === "waiting_for_limit").map(clone);
   }
 
   async markWaiting(accountId: AccountId, threadId: string, now = Date.now(), turnSettings?: ChatExecutionSettings): Promise<void> {
     const current = this.records.get(key(accountId, threadId));
-    if (current && current.state !== "waiting_for_limit") return;
+    if (current && current.state !== "armed" && current.state !== "waiting_for_limit") return;
     await this.mutate(() => {
       this.records.set(key(accountId, threadId), {
         accountId,
@@ -141,7 +156,12 @@ export class LimitResumeManifest {
     const record = this.records.get(key(accountId, threadId));
     if (!record || record.state !== "resuming" || record.resumeClientUserMessageId !== clientUserMessageId) return false;
     if (!record.pendingMessages?.length) {
-      await this.clear(accountId, threadId);
+      await this.mutate(() => {
+        record.state = "armed";
+        delete record.inFlightMessages;
+        delete record.resumeClientUserMessageId;
+        record.updatedAt = now;
+      });
       return false;
     }
     await this.mutate(() => {

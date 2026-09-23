@@ -20,9 +20,29 @@ const api = {
   steerTurn: async () => ({ data: {} }),
   interruptTurn: async () => ({ data: {} }),
   decideApproval: async () => ({ data: {} }),
+  setLimitResumeEnabled: async (_accountId: string, _threadId: string, enabled: boolean) => ({ data: { enabled } }),
 };
 
 describe("ChatsPage", () => {
+  it("shows automatic resume off by default and lets the user enable it", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const setLimitResumeEnabled = vi.fn(async () => ({ data: { enabled: true } }));
+    render(<ChatsPage snapshot={{ ...chatSnapshot, limitResumes: [] }} api={{ ...api, setLimitResumeEnabled }} />);
+
+    const toggle = screen.getByRole("button", { name: "Enable automatic resume" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(toggle);
+    expect(setLimitResumeEnabled).toHaveBeenCalledWith("bot3", "thread-1", true);
+  });
+
+  it("shows automatic resume enabled for an armed chat", () => {
+    setViewport(1440);
+    render(<ChatsPage snapshot={{ ...chatSnapshot, limitResumes: [{ accountId: "bot3" as const, threadId: "thread-1", state: "armed" as const, updatedAt: 2 }] }} api={api} />);
+
+    expect(screen.getByRole("button", { name: "Disable automatic resume" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("derives descendant activity from subagent lifecycle events", () => {
     const base = { accountId: "bot3" as const, threadId: "parent", turnId: "turn-1", type: "subAgentActivity" as const, status: "completed" as const, createdAt: 1 };
     const started = { ...base, id: "started", payload: { kind: "started", agentThreadId: "child", agentPath: "review" } };

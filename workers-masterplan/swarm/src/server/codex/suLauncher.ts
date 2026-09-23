@@ -50,7 +50,8 @@ function posixQuote(value: string): string {
 }
 
 function isPasswordPrompt(value: string): boolean {
-  return /(?:^|[\r\n])Password:\s*$/.test(value);
+  return /(?:^|[\r\n])Password:\s*$/.test(value)
+    || /(?:^|[\r\n])password to unlock [^\r\n]+:\s*$/i.test(value);
 }
 
 function ptyEnvironment(): Record<string, string> {
@@ -74,7 +75,7 @@ export class SuLauncher {
     if (isBot && !credential) throw new Error("ACCOUNT_AUTH_REQUIRED");
     if (!options.codexBin.startsWith("/")) throw new Error("Configured Codex binary must be an absolute path");
     const codexHome = `/Users/${options.account}/.codex`;
-    if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || !(await this.dependencies.pathExists(codexHome))) {
+    if (!(await this.dependencies.verifyCodexBinary(options.codexBin)) || (!isBot && !(await this.dependencies.pathExists(codexHome)))) {
       throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
     const lease = await this.dependencies.allocatePort();
@@ -92,7 +93,10 @@ export class SuLauncher {
     let token: string | undefined = randomBytes(32).toString("base64url");
     const digest = createHash("sha256").update(token).digest("hex");
     const endpoint = `ws://127.0.0.1:${lease.port}`;
-    const command = tmuxServerCommand(options.account, `${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`);
+    const serverCommand = tmuxServerCommand(options.account, `${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`);
+    const command = isBot
+      ? `/usr/bin/security unlock-keychain ${posixQuote(`/Users/${options.account}/Library/Keychains/login.keychain-db`)} || exit $?; ${serverCommand}`
+      : serverCommand;
     let child: SpawnedPty;
     try {
       // Codex owns this listener, so the short-lived reservation must be released
@@ -109,7 +113,7 @@ export class SuLauncher {
     }
 
     let settled = false;
-    let prompted = false;
+    let passwordPrompts = 0;
     let terminalTail = "";
     let startupTimer: NodeJS.Timeout | undefined;
     let retryTimer: NodeJS.Timeout | undefined;
@@ -192,15 +196,15 @@ export class SuLauncher {
       });
     };
     const receivePtyOutput = (chunk: string) => {
-      if (prompted || settled) return;
+      if (settled) return;
       terminalTail = `${terminalTail}${String(chunk)}`.slice(-256);
       if (!isPasswordPrompt(terminalTail)) return;
-      prompted = true;
+      passwordPrompts += 1;
       terminalTail = "";
       const password = credential;
-      credential = "";
-      if (!password) return fail("missing_password");
+      if (!password || passwordPrompts > 2) return fail("missing_password");
       child.write(`${password}\n`);
+      if (passwordPrompts > 1) return;
       const currentToken = token;
       if (!currentToken) return fail("missing_token");
       waitForAppServer(currentToken);

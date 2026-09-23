@@ -67,6 +67,18 @@ describe("AccountManager", () => {
     ]);
   });
 
+  it("rejects an authenticated free-plan account before displaying usage", async () => {
+    const { manager, client, launch } = fixture();
+    client.connect.mockResolvedValueOnce({ account: { type: "chatgpt", planType: "free" } as { type: string } & Record<string, unknown>, requiresOpenaiAuth: false });
+
+    await expect(manager.connect({ account, password: "bot-password" })).rejects.toThrow("PAID_PLAN_REQUIRED");
+
+    expect(client.readRateLimitWindows).not.toHaveBeenCalled();
+    expect(manager.snapshot(account)).toMatchObject({ connection: "action_required", authentication: "unauthenticated", errorCode: "PAID_PLAN_REQUIRED", rateLimits: [] });
+    await manager.recoverChangedCredentials({ account, password: "bot-password" });
+    expect(launch).toHaveBeenCalledOnce();
+  });
+
   it("uses a successful usage read as the authentication authority when app-server status requests OpenAI auth", async () => {
     const { manager, client } = fixture();
     client.connect.mockResolvedValueOnce({ account: { type: "chatgpt" }, requiresOpenaiAuth: true });

@@ -122,6 +122,7 @@ export class AccountManager {
   async recoverChangedCredentials(input: ConnectAccountInput, options: { force?: boolean } = {}): Promise<AccountSnapshot> {
     const snapshot = this.requireSnapshot(input.account);
     if (snapshot.authentication !== "unauthenticated" || snapshot.activeTurns > 0) return snapshot;
+    if (snapshot.errorCode === "PAID_PLAN_REQUIRED" && !options.force) return snapshot;
     const current = await this.readCredentialVersion(input.account);
     const changed = current !== undefined && current !== this.credentialVersions.get(input.account);
     if (!options.force && !changed) {
@@ -162,6 +163,10 @@ export class AccountManager {
       const client = this.options.createClient(handle);
       const account = await client.connect();
       if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      if (typeof account.account.planType === "string" && account.account.planType.trim().toLowerCase() === "free") {
+        await client.close();
+        throw new Error("PAID_PLAN_REQUIRED");
+      }
       let rateLimits = this.requireSnapshot(input.account).rateLimits;
       let rateLimitError: unknown;
       try {
@@ -180,13 +185,15 @@ export class AccountManager {
       return snapshot;
     } catch (error) {
       await handle?.stop();
+      const errorCode = error instanceof Error && error.message === "PAID_PLAN_REQUIRED" ? "PAID_PLAN_REQUIRED" : "ACCOUNT_AUTH_REQUIRED";
       this.setSnapshot(input.account, {
         connection: "action_required",
         authentication: "unauthenticated",
-        errorCode: "ACCOUNT_AUTH_REQUIRED",
-        terminalCommand: this.manualLoginCommand(input.account),
+        errorCode,
+        rateLimits: [],
+        terminalCommand: errorCode === "ACCOUNT_AUTH_REQUIRED" ? this.manualLoginCommand(input.account) : undefined,
       });
-      throw new Error("ACCOUNT_AUTH_REQUIRED");
+      throw new Error(errorCode);
     }
   }
 

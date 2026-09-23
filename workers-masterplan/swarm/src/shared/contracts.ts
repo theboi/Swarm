@@ -182,7 +182,7 @@ export interface WorkerAssignmentRecord {
   transferHistory: WorkerTransferRecord[];
 }
 
-export type LimitResumeState = "waiting_for_limit" | "resuming" | "transferring" | "transferred";
+export type LimitResumeState = "armed" | "waiting_for_limit" | "resuming" | "transferring" | "transferred";
 
 /** Durable recovery state for any chat whose active turn stopped at an account usage limit. */
 export interface LimitResumeRecord {

@@ -26,6 +26,7 @@ async function fixture() {
     snapshot: async () => snapshot,
     health: async () => health,
     setAutoPilot: vi.fn(async (enabled: boolean) => ({ enabled })),
+    setLimitResumeEnabled: vi.fn(async (_accountId, _threadId, enabled: boolean) => ({ enabled })),
     connectAccount: vi.fn(async () => ({ id: "bot1" })),
     disconnectAccount: vi.fn(async () => undefined),
     openTerminal,
@@ -96,6 +97,22 @@ describe("coordinator HTTP routes", () => {
 
     expect(services.setAutoPilot).toHaveBeenCalledOnce();
     expect(services.setAutoPilot).toHaveBeenCalledWith(true);
+  });
+
+  it("sets automatic resume only for an authenticated boolean request", async () => {
+    const { app, services } = await fixture();
+    const session = await services.sessions.createSession("claudio@example.test");
+    const origin = "http://127.0.0.1:4310";
+
+    await request(app).post("/api/v1/accounts/bot3/threads/thread-1/limit-resume")
+      .set("origin", origin).set("Cookie", `swarm_session=${session}`).send({ enabled: true })
+      .expect(200, { data: { enabled: true } });
+    await request(app).post("/api/v1/accounts/bot3/threads/thread-1/limit-resume")
+      .set("origin", origin).set("Cookie", `swarm_session=${session}`).send({ enabled: "true" })
+      .expect(400, { error: { code: "INVALID_REQUEST", message: "Automatic resume enabled must be a boolean" } });
+
+    expect(services.setLimitResumeEnabled).toHaveBeenCalledOnce();
+    expect(services.setLimitResumeEnabled).toHaveBeenCalledWith("bot3", "thread-1", true);
   });
 
   it("accepts a same-host Tailscale origin even when its address was not in the startup allowlist", async () => {
