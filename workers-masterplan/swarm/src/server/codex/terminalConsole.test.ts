@@ -25,6 +25,22 @@ describe("terminal console commands", () => {
     expect(tmuxAttachCommand(profile)).toContain(String.raw`-S '\''/Users/bot1/.swarm/tmux/swarm.sock'\''`);
   });
 
+  it("retires the pre-profile primary session before starting acc1", () => {
+    const primary = { id: "bot1/acc1" as const, macosUser: "bot1" as const, accountNumber: 1, codexHome: "/Users/bot1/.swarm/codex-profiles/acc1", workspaceRoot: "/Users/bot1/Dev/EdenMind" };
+    const command = tmuxServerCommand(primary, "codex app-server");
+
+    expect(command).toContain("'/opt/homebrew/bin/tmux' kill-session -t swarm-bot1");
+    expect(command.indexOf("kill-session -t swarm-bot1")).toBeLessThan(command.indexOf("new-session -d -s swarm-bot1-acc1"));
+  });
+
+  it("exits the pane supervisor after a termination signal", () => {
+    const command = tmuxServerCommand("bot1", "codex app-server");
+
+    expect(command).toContain("on_signal() { cleanup; exit 0; }");
+    expect(command).toContain("trap on_signal HUP INT TERM");
+    expect(command).toContain("trap cleanup EXIT");
+  });
+
   it("opens Codex login as the selected bot instead of passing credentials through the browser", () => {
     const command = codexLoginCommand("bot1", "/opt/homebrew/bin/codex");
 

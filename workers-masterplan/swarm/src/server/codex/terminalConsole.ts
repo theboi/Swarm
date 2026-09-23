@@ -36,10 +36,15 @@ export function tmuxServerCommand(account: TerminalAccount, appServerCommand: st
   const socketDirectory = tmuxSocket(account).replace(/\/[^/]+$/, "");
   const session = tmuxSessionName(account);
   const stop = `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true`;
+  const legacyStop = typeof account === "object" && account.accountNumber === 1
+    ? `${shellQuote(TMUX_BINARY)} kill-session -t swarm-${account.macosUser} >/dev/null 2>&1 || true; `
+    : "";
   const appServerSupervisor = [
     "child=''",
     'cleanup() { if [ -n "$child" ]; then /bin/kill -TERM "$child" >/dev/null 2>&1 || true; fi; }',
-    "trap cleanup EXIT HUP INT TERM",
+    "on_signal() { cleanup; exit 0; }",
+    "trap cleanup EXIT",
+    "trap on_signal HUP INT TERM",
     `${appServerCommand} & child=$!`,
     'wait "$child"',
   ].join("; ");
@@ -47,7 +52,7 @@ export function tmuxServerCommand(account: TerminalAccount, appServerCommand: st
   // the launcher closes that group, its trap tears down the detached tmux
   // server. The pane has its own supervisor because Codex can ignore the HUP
   // sent when tmux closes a session.
-  return `/bin/mkdir -p ${shellQuote(socketDirectory)}; /bin/chmod 700 ${shellQuote(socketDirectory)}; ${stop}; ${tmux} new-session -d -s ${session} /bin/zsh -lc ${shellQuote(appServerSupervisor)}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
+  return `/bin/mkdir -p ${shellQuote(socketDirectory)}; /bin/chmod 700 ${shellQuote(socketDirectory)}; ${legacyStop}${stop}; ${tmux} new-session -d -s ${session} /bin/zsh -lc ${shellQuote(appServerSupervisor)}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
 }
 
 export function tmuxAttachCommand(account: TerminalAccount): string {
