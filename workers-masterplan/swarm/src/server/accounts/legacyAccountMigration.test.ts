@@ -36,4 +36,17 @@ describe("legacy account migration", () => {
     expect(normalizeLegacyAccountId("bot9")).toBeUndefined();
     expect(() => normalizePersistedAccountIds({ dispatches: [{ accountId: "bot9" }] })).toThrow("Unknown account ID");
   });
+
+  it("coalesces legacy and qualified cached usage records using the newest sample", () => {
+    const older = [{ id: "codex:primary", usedPercent: 90, updatedAt: 100 }];
+    const newer = [{ id: "codex:primary", usedPercent: 25, updatedAt: 200 }];
+
+    expect(normalizePersistedAccountIds({
+      accountRateLimits: { "bot3/acc1": older, bot3: newer },
+    })).toEqual({ accountRateLimits: { "bot3/acc1": newer } });
+
+    expect(normalizePersistedAccountIds({
+      accountRateLimits: { bot3: newer, "bot3/acc1": older },
+    })).toEqual({ accountRateLimits: { "bot3/acc1": newer } });
+  });
 });

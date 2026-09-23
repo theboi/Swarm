@@ -27,13 +27,28 @@ function requiredAccountId(value: unknown): AccountId {
   return accountId;
 }
 
+function latestUpdatedAt(value: unknown[]): number {
+  return value.reduce<number>((latest, child) => {
+    if (!isRecord(child)) return latest;
+    const updatedAt = child.updatedAt;
+    if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt)) return latest;
+    return Math.max(latest, updatedAt);
+  }, Number.NEGATIVE_INFINITY);
+}
+
 function normalizeAccountRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error("Invalid account-keyed durable record");
   const result: Record<string, unknown> = {};
   for (const [accountId, child] of Object.entries(value)) {
     const normalized = requiredAccountId(accountId);
-    if (Object.hasOwn(result, normalized)) throw new Error("Duplicate account ID after legacy normalization");
-    result[normalized] = normalize(child);
+    const candidate = normalize(child);
+    if (!Object.hasOwn(result, normalized)) {
+      result[normalized] = candidate;
+      continue;
+    }
+    const current = result[normalized];
+    if (!Array.isArray(current) || !Array.isArray(candidate)) throw new Error("Duplicate account ID after legacy normalization");
+    if (latestUpdatedAt(candidate) > latestUpdatedAt(current)) result[normalized] = candidate;
   }
   return result;
 }
