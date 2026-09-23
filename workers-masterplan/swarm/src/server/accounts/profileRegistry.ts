@@ -83,17 +83,17 @@ function validateSlot(value: unknown): CodexAccountSlot {
   const legacyCodexHome = `/Users/${value.macosUser}/.codex`;
   const legacyWorkspace = `/Users/${value.macosUser}/Dev/EdenMind`;
   const managedCodexHome = expectedManagedCodexHome(value.macosUser, accountNumber);
-  const managedWorkspace = expectedManagedWorkspace(value.macosUser, accountNumber);
+  const oldManagedWorkspace = expectedManagedWorkspace(value.macosUser, accountNumber);
   const supportsLegacyPath = accountNumber === 1;
   if (value.codexHome !== managedCodexHome && (!supportsLegacyPath || value.codexHome !== legacyCodexHome)) fail("Profile Codex home is outside its approved root");
-  if (value.workspaceRoot !== managedWorkspace && (!supportsLegacyPath || value.workspaceRoot !== legacyWorkspace)) fail("Profile workspace is outside its approved root");
+  if (value.workspaceRoot !== legacyWorkspace && (supportsLegacyPath || value.workspaceRoot !== oldManagedWorkspace)) fail("Profile workspace is outside its approved root");
 
   return {
     id: value.id,
     macosUser: value.macosUser,
     accountNumber,
     codexHome: value.codexHome,
-    workspaceRoot: value.workspaceRoot,
+    workspaceRoot: legacyWorkspace,
   };
 }
 
@@ -105,12 +105,10 @@ function validateRegistry(value: unknown): ProfileRegistryFile {
   const profiles = value.profiles.map(validateSlot);
   const ids = new Set<string>();
   const codexHomes = new Set<string>();
-  const workspaceRoots = new Set<string>();
   for (const slot of profiles) {
-    if (ids.has(slot.id) || codexHomes.has(slot.codexHome) || workspaceRoots.has(slot.workspaceRoot)) fail("Profile registry has duplicate IDs or paths");
+    if (ids.has(slot.id) || codexHomes.has(slot.codexHome)) fail("Profile registry has duplicate IDs or credential paths");
     ids.add(slot.id);
     codexHomes.add(slot.codexHome);
-    workspaceRoots.add(slot.workspaceRoot);
   }
   for (const bot of MACOS_BOT_IDS) if (!ids.has(`${bot}/acc1`)) fail(`Missing required primary slot for ${bot}`);
   return { schemaVersion: 1, profiles: profiles.sort(compareSlots) };
@@ -157,7 +155,9 @@ export class ProfileRegistry {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return new ProfileRegistry(path, defaultRegistry().profiles);
       fail("Registry JSON is unreadable");
     }
-    return new ProfileRegistry(path, validateRegistry(parsed).profiles);
+    const validated = validateRegistry(parsed);
+    if (JSON.stringify(parsed) !== JSON.stringify(validated)) await writeRegistry(path, validated);
+    return new ProfileRegistry(path, validated.profiles);
   }
 
   list(): CodexAccountSlot[] {

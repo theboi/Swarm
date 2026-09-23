@@ -10,7 +10,7 @@ import {
 } from "../../shared/contracts.js";
 import type { ApprovalRouter } from "./approvalRouter.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
-import { safeThreadSettings, safeTurnSettings, workspaceRoot } from "./protocol.js";
+import { safeThreadResumeSettings, safeThreadSettings, safeTurnSettings, workspaceRoot } from "./protocol.js";
 import {
   hydrateTranscript,
   initialTranscriptState,
@@ -242,7 +242,7 @@ export class AppServerClient {
 
   async resumeThread(threadId: string): Promise<Record<string, unknown>> {
     this.requireReady();
-    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadSettings(this.account, this.workspaceRootOverride) });
+    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadResumeSettings(this.account, this.workspaceRootOverride) });
     this.assertSafeThreadEcho(response);
     this.unloadedThreadIds.delete(threadId);
     return response;

@@ -22,7 +22,7 @@ function managedSlot(macosUser: MacosBotId, accountNumber: number): CodexAccount
     macosUser,
     accountNumber,
     codexHome: `/Users/${macosUser}/.swarm/codex-profiles/acc${accountNumber}`,
-    workspaceRoot: `/Users/${macosUser}/Dev/EdenMind-acc${accountNumber}`,
+    workspaceRoot: `/Users/${macosUser}/Dev/EdenMind`,
   };
 }
 
@@ -79,5 +79,15 @@ describe("ProfileRegistry", () => {
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ schemaVersion: 1, profiles: registry.list() });
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect((await readdir(directory)).some((entry) => entry.includes(".tmp"))).toBe(false);
+  }));
+
+  it("migrates old per-profile clone paths to the bot's shared checkout", async () => withRegistry(async (path) => {
+    const oldSecondary = { ...managedSlot("bot1", 2), workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" };
+    await writeFile(path, JSON.stringify({ schemaVersion: 1, profiles: [...MACOS_BOT_IDS.map(legacySlot), oldSecondary] }));
+
+    const registry = await ProfileRegistry.load(path);
+
+    expect(registry.resolve("bot1/acc2")?.workspaceRoot).toBe("/Users/bot1/Dev/EdenMind");
+    expect(JSON.parse(await readFile(path, "utf8")).profiles.find((slot: CodexAccountSlot) => slot.id === "bot1/acc2").workspaceRoot).toBe("/Users/bot1/Dev/EdenMind");
   }));
 });

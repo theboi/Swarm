@@ -118,6 +118,7 @@ export interface FullAccessTurnSandboxPolicy {
 
 export interface SafeThreadSettings {
   cwd: string;
+  threadSource: "user";
   approvalPolicy: "untrusted";
   approvalsReviewer: "user";
   sandbox: "workspace-write";
@@ -155,7 +156,12 @@ export function workspaceRoot(account: AccountId | CodexAccountSlot | { id: type
 
 export function safeThreadSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): SafeThreadSettings {
   const cwd = workspaceRoot(account, localWorkspaceRoot);
-  return { cwd, approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
+  return { cwd, threadSource: "user", approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
+}
+
+export function safeThreadResumeSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): Omit<SafeThreadSettings, "threadSource"> {
+  const { threadSource: _threadSource, ...settings } = safeThreadSettings(account, localWorkspaceRoot);
+  return settings;
 }
 
 export function safeTurnSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {

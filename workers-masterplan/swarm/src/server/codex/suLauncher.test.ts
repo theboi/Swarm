@@ -77,6 +77,7 @@ describe("SuLauncher", () => {
     const command = ((spawn.mock.calls[0] as unknown as [string, string[]])[1][3]) as string;
     expect(spawn).toHaveBeenCalledWith("/usr/bin/su", ["-", "bot1", "-c", expect.any(String)], expect.any(Object));
     expect(command).toContain("swarm-bot1-acc2");
+    expect(command).toContain("/Users/bot1/.swarm/tmux/swarm.sock");
     expect(command).toMatch(/CODEX_HOME=.*\/Users\/bot1\/\.swarm\/codex-profiles\/acc2/);
     expect(command).not.toContain("bot-password");
     child.emit("data", "Password:");

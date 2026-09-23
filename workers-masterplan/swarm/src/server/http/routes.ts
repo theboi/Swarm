@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
 
 import { isBotProfileAccountId, isMacosBotId, type AccountId, type AccountSnapshot, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type ChatModelOption, type CoordinatorSnapshot, type DispatchOrigin, type HealthSnapshot, type MacosBotId, type ManifestPass, type PendingApproval, type ProfileLoginChallenge } from "../../shared/contracts.js";
 import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
+import type { InterruptRequestAuditContext } from "../audit/interruptAudit.js";
 import { apiError, readCookie, requireAllowedOrigin, requireJson, requireSession, SESSION_COOKIE } from "./authMiddleware.js";
 
 export interface CoordinatorRouteServices {
@@ -36,7 +38,7 @@ export interface CoordinatorRouteServices {
   archiveThread(accountId: AccountId, threadId: string): Promise<void>;
   startTurn(accountId: AccountId, threadId: string, input: { text: string; clientUserMessageId?: string; settings?: ChatExecutionSettings }): Promise<unknown>;
   steerTurn(accountId: AccountId, threadId: string, input: { text: string; turnId: string; clientUserMessageId?: string }): Promise<void>;
-  interruptTurn(accountId: AccountId, threadId: string, input: { turnId: string }): Promise<void>;
+  interruptTurn(accountId: AccountId, threadId: string, input: { turnId: string; audit: InterruptRequestAuditContext }): Promise<void>;
   readMarkdown(accountId: AccountId, path: string): Promise<{ filename: string; content: string }>;
   decideApproval(id: string, input: { decision: string; permissions?: Record<string, unknown> }): Promise<void>;
   allowedOrigins(): ReadonlySet<string>;
@@ -247,7 +249,19 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   router.post("/accounts/:account/threads/:thread/archive", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); if (!id) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } await services.archiveThread(id, param(request.params.thread)); sendData(response, {}); }));
   router.post("/accounts/:account/threads/:thread/turns", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const body = record(request.body); const value = text(body.text, "text"); const settings = executionSettings(body.settings); if (!id || !value) { apiError(response, 400, "INVALID_REQUEST", "A known account and text are required"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.startTurn(id, param(request.params.thread), { text: value, clientUserMessageId: text(body.clientUserMessageId, "clientUserMessageId"), ...(settings ? { settings } : {}) })); }));
   router.post("/accounts/:account/threads/:thread/steer", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const body = record(request.body); const value = text(body.text, "text"); const turnId = text(body.turnId, "turnId"); if (!id || !value || !turnId) { apiError(response, 400, "INVALID_REQUEST", "A known account, turnId, and text are required"); return; } await services.steerTurn(id, param(request.params.thread), { text: value, turnId, clientUserMessageId: text(body.clientUserMessageId, "clientUserMessageId") }); sendData(response, {}); }));
-  router.post("/accounts/:account/threads/:thread/interrupt", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const turnId = text(record(request.body).turnId, "turnId"); if (!id || !turnId) { apiError(response, 400, "INVALID_REQUEST", "A known account and turnId are required"); return; } await services.interruptTurn(id, param(request.params.thread), { turnId }); sendData(response, {}); }));
+  router.post("/accounts/:account/threads/:thread/interrupt", ...securedMutation, asyncRoute(async (request, response) => {
+    const id = account(request.params.account);
+    const turnId = text(record(request.body).turnId, "turnId");
+    if (!id || !turnId) { apiError(response, 400, "INVALID_REQUEST", "A known account and turnId are required"); return; }
+    const sourceAddress = resolveLoginSource({ directAddress: request.socket.remoteAddress ?? "unknown", forwardedFor: typeof request.headers["x-forwarded-for"] === "string" ? request.headers["x-forwarded-for"] : undefined, trustManagedProxy: services.config.trustManagedProxy });
+    const origin = typeof request.headers.origin === "string" ? request.headers.origin.slice(0, 500) : undefined;
+    const userAgent = typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"].slice(0, 500) : undefined;
+    await services.interruptTurn(id, param(request.params.thread), {
+      turnId,
+      audit: { requestId: randomUUID(), actorEmail: request.swarmAuth!.email, sourceAddress, ...(origin ? { origin } : {}), ...(userAgent ? { userAgent } : {}) },
+    });
+    sendData(response, {});
+  }));
   router.post("/accounts/:account/files/read", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const path = text(record(request.body).path, "path"); if (!id || !path) { apiError(response, 400, "INVALID_REQUEST", "A known account and file path are required"); return; } sendData(response, await services.readMarkdown(id, path)); }));
 
   router.post("/tasks/:task/preview", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const pass = body.pass === undefined ? undefined : manifestPass(body.pass); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.pass !== undefined && !pass) { apiError(response, 400, "INVALID_REQUEST", "Unknown worker pass"); return; } sendData(response, pass ? await services.previewLaunch(param(request.params.task), accountId, pass) : await services.previewLaunch(param(request.params.task), accountId)); }));

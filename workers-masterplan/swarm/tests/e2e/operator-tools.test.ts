@@ -57,7 +57,7 @@ describe("operator tools", () => {
     expect(redactSmokeOutput("Authorization: Bearer test-local-password", ["test-local-password"])).toBe("Authorization: Bearer [REDACTED]");
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "claudiothe" })).toMatchObject({ kind: "run", account: "claudiothe", password: undefined });
     expect(resolveSmokeEnvironment({ SWARM_SMOKE_ACCOUNT: "bot1/acc2", SWARM_USER1: "bot1:test-local-password" })).toMatchObject({ kind: "run", account: "bot1/acc2", password: "test-local-password" });
-    expect(manualLoginCommand({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" }, "/opt/homebrew/bin/codex")).toContain("CODEX_HOME");
+    expect(manualLoginCommand({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind" }, "/opt/homebrew/bin/codex")).toContain("CODEX_HOME");
   });
 
   it("requires the opt-in smoke turn to preserve the bot clone status", () => {

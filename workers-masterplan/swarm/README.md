@@ -6,7 +6,7 @@ such as `bot1/acc1` and `bot1/acc2`. Open it locally at
 [http://localhost:4310](http://localhost:4310), or through this Mac's
 Tailscale address. The development listener binds to all interfaces by default.
 Codex app-server runs directly for `claudiothe`; each bot profile runs through
-`su` with its own credential home and checkout. Automated bot operation remains
+`su` with its own credential home and the bot's shared checkout. Automated bot operation remains
 headless. Desktop compatibility is an operator-only, bot1-only canary step.
 
 ## Prerequisites
@@ -74,11 +74,11 @@ Swarm keeps a non-secret profile registry at `.data/account-profiles.json`.
 The registry is the source of truth for logical IDs and contains no passwords,
 OAuth tokens, `auth.json` contents, device codes, login IDs, or app-server
 capability tokens. `botN/acc1` is the initial profile for each bot; later
-profiles have isolated paths:
+profiles have isolated credential paths and share the bot's one main checkout:
 
 ```text
 /Users/botN/.swarm/codex-profiles/accX
-/Users/botN/Dev/EdenMind-accX
+/Users/botN/Dev/EdenMind
 ```
 
 In Accounts, select **Add account** for a bot. Swarm provisions the isolated
@@ -221,8 +221,8 @@ the explicit authorization described above.
 
 The first Accounts card is the full `claudiothe` Codex account. The local
 workspace Git status remains a separate information card. Every minute Swarm
-deterministically pulls `origin/main` in the local checkout and every configured
-bot checkout. A merge conflict raises one warning and steers the affected bot
+deterministically pulls `origin/main` in the local checkout and each configured
+bot's shared checkout. A merge conflict raises one warning and steers the affected bot
 once to resolve it. Before a usage-limit stop, Swarm attempts a Git checkpoint;
 a failed checkpoint is surfaced for manual resolution but does not block a
 JSONL-based account move.

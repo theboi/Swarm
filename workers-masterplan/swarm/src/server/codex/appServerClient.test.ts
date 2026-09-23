@@ -222,6 +222,7 @@ describe("AppServerClient", () => {
       expect(start.params).toEqual({
         ...(start.method === "thread/resume" ? { threadId: "thread-1" } : {}),
         cwd,
+        ...(start.method === "thread/start" ? { threadSource: "user" } : {}),
         approvalPolicy: "untrusted",
         approvalsReviewer: "user",
         sandbox: "workspace-write",
@@ -414,7 +415,7 @@ describe("AppServerClient", () => {
 
     const start = server!.received.find((message) => message.method === "thread/start");
     const turn = server!.received.find((message) => message.method === "turn/start");
-    expect(start?.params).toMatchObject({ cwd: localWorkspace });
+    expect(start?.params).toMatchObject({ cwd: localWorkspace, threadSource: "user" });
     expect(turn?.params).toMatchObject({ cwd: localWorkspace, sandboxPolicy: { writableRoots: [localWorkspace] } });
     await client.close();
   });

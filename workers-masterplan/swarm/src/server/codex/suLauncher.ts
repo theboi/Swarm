@@ -118,7 +118,7 @@ export class SuLauncher {
     const digest = createHash("sha256").update(token).digest("hex");
     const endpoint = `ws://127.0.0.1:${lease.port}`;
     const appServer = `/usr/bin/env CODEX_HOME=${posixQuote(codexHome)} ${posixQuote(options.codexBin)} app-server --listen ws://127.0.0.1:${lease.port} --ws-auth capability-token --ws-token-sha256 ${digest}`;
-    const command = tmuxServerCommand(target.account, appServer);
+    const command = tmuxServerCommand(target.slot ?? target.account, appServer);
     let child: SpawnedPty;
     try {
       // Codex owns this listener, so the short-lived reservation must be released

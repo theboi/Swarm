@@ -88,7 +88,7 @@ describe("GitCommandRunner", () => {
     } as BotPtyProcess;
     const runWorker = runBotPtyJsonWorker("bot1", "correct horse", "/opt/swarm/profile-worker.js", {
       codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
-      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
       repositoryUrl: "https://example.test/EdenMind.git",
     }, vi.fn(() => process));
 
@@ -146,12 +146,11 @@ describe("GitCommandRunner", () => {
   it("runs a profile Git pull as its macOS owner in that profile's explicit checkout", async () => {
     const runBotCommand = vi.fn(async () => 0);
     const runner = new GitCommandRunner("/workspace", { bot1: "correct horse" }, runBotCommand as never);
-    const slot = { id: "bot1/acc2" as const, macosUser: "bot1" as const, accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" };
+    const slot = { id: "bot1/acc2" as const, macosUser: "bot1" as const, accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind" };
 
     await expect(runner.pullAccount(slot)).resolves.toBeUndefined();
 
-    expect(runBotCommand).toHaveBeenCalledWith("bot1", "correct horse", expect.stringContaining("/Users/bot1/Dev/EdenMind-acc2"));
-    expect(runBotCommand).toHaveBeenCalledWith("bot1", "correct horse", expect.not.stringContaining("-C '/Users/bot1/Dev/EdenMind' "));
+    expect(runBotCommand).toHaveBeenCalledWith("bot1", "correct horse", expect.stringContaining("/Users/bot1/Dev/EdenMind"));
   });
 
   it("commits local changes, rebases a newer origin/main, and pushes the checkpoint", async () => {

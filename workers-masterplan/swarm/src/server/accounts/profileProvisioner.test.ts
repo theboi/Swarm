@@ -34,7 +34,7 @@ describe("ProfileProvisioner", () => {
     expect(registry.publish).toHaveBeenCalledTimes(2);
     expect(runWorker).toHaveBeenNthCalledWith(1, "bot1", "password", {
       codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
-      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
       repositoryUrl: "https://example.test/EdenMind.git",
     });
   });
@@ -45,9 +45,9 @@ describe("ProfileProvisioner", () => {
 
     await expect(provisioner.create("bot1")).rejects.toMatchObject({ code: "PROFILE_SETUP_FAILED" });
     expect(registry.publish).not.toHaveBeenCalled();
-    expect(cleanupEmptyOwned).toHaveBeenCalledWith("bot1", ["/Users/bot1/.swarm/codex-profiles/acc2", "/Users/bot1/Dev/EdenMind-acc2"]);
+    expect(cleanupEmptyOwned).toHaveBeenCalledWith("bot1", ["/Users/bot1/.swarm/codex-profiles/acc2"]);
 
-    const managedSlot: CodexAccountSlot = { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" };
+    const managedSlot: CodexAccountSlot = { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind" };
     registry.resolve = (id: BotProfileAccountId) => id === managedSlot.id ? managedSlot : undefined;
     const repaired = await provisioner.repair("bot1/acc2");
     expect(repaired.id).toBe("bot1/acc2");

@@ -1,7 +1,7 @@
 import type { AccountId, CodexAccountSlot } from "../../shared/contracts.js";
 import { workspaceRoot } from "../codex/protocol.js";
 
-/** Separate macOS accounts work from isolated normal clones, not one shared checkout. */
+/** Credential profiles on one macOS account share that bot's normal main checkout. */
 export function launchGitMetadata(accountId: AccountId | CodexAccountSlot, localWorkspaceRoot?: string) {
   return {
     checkoutMode: "independent_main_clone" as const,

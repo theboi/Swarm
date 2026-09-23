@@ -103,6 +103,29 @@ describe("coordinator HTTP routes", () => {
     expect(services.setAutoPilot).toHaveBeenCalledWith(true);
   });
 
+  it("passes authenticated request metadata into the interrupt audit", async () => {
+    const { app, services } = await fixture();
+    const session = await services.sessions.createSession("claudio@example.test");
+
+    await request(app).post("/api/v1/accounts/bot1/threads/thread-1/interrupt")
+      .set("origin", "http://127.0.0.1:4310")
+      .set("user-agent", "audit-test-browser")
+      .set("Cookie", `swarm_session=${session}`)
+      .send({ turnId: "turn-1" })
+      .expect(200);
+
+    expect(services.interruptTurn).toHaveBeenCalledWith("bot1", "thread-1", {
+      turnId: "turn-1",
+      audit: expect.objectContaining({
+        requestId: expect.any(String),
+        actorEmail: "claudio@example.test",
+        sourceAddress: expect.any(String),
+        origin: "http://127.0.0.1:4310",
+        userAgent: "audit-test-browser",
+      }),
+    });
+  });
+
   it("manages registry-backed profile accounts without exposing login IDs", async () => {
     const { app, services } = await fixture();
     const agent = request.agent(app);

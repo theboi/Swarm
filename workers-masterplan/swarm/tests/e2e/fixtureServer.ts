@@ -249,7 +249,7 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
       id,
       macosUser: bot,
       accountNumber: number,
-      workspaceRoot: `/fixture/${bot}/EdenMind-acc${number}`,
+      workspaceRoot: `/fixture/${bot}/EdenMind`,
       isPrimary: false,
       connection: "action_required",
       authentication: "unauthenticated",

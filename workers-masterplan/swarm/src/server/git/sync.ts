@@ -77,9 +77,12 @@ export class GitSynchronizer {
   async syncNow(): Promise<void> {
     this.refreshTargets();
     await this.run("local", "pull", () => this.dependencies.pullLocal());
-    for (const target of this.botTargets()) {
-      const id = this.targetId(target);
-      await this.run(id, "pull", () => this.dependencies.pullBot(target));
+    for (const targets of this.botTargetGroups()) {
+      const representative = targets[0]!;
+      const id = this.targetId(representative);
+      await this.run(id, "pull", () => this.dependencies.pullBot(representative));
+      const status = this.snapshot(id);
+      for (const alias of targets.slice(1)) this.statuses.set(this.targetId(alias), { ...status });
     }
   }
 
@@ -120,6 +123,17 @@ export class GitSynchronizer {
   private botTargets(): Array<BotAccountId | CodexAccountSlot> {
     const slots = this.dependencies.profileSlots?.();
     return slots ? [...slots] : [...BOT_ACCOUNT_IDS];
+  }
+
+  private botTargetGroups(): Array<Array<BotAccountId | CodexAccountSlot>> {
+    const groups = new Map<string, Array<BotAccountId | CodexAccountSlot>>();
+    for (const target of this.botTargets()) {
+      const workspace = typeof target === "string" ? target : target.workspaceRoot;
+      const group = groups.get(workspace) ?? [];
+      group.push(target);
+      groups.set(workspace, group);
+    }
+    return [...groups.values()];
   }
 
   private targetId(target: BotAccountId | CodexAccountSlot): GitSyncTarget {

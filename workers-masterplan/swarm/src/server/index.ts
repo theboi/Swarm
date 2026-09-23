@@ -17,6 +17,7 @@ import { ProfileRegistry } from "./accounts/profileRegistry.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
+import { InterruptAuditJournal, type InterruptAuditRecord } from "./audit/interruptAudit.js";
 import { DurableApprovalJournal } from "./approvals/journal.js";
 import type { ApprovalJournalEntry } from "./codex/approvalRouter.js";
 import { ApprovalRouter } from "./codex/approvalRouter.js";
@@ -71,6 +72,7 @@ type DurableState = {
   approvals?: ApprovalJournalEntry[];
   notifications?: { breakingChangeAccounts?: AccountId[] };
   accountRateLimits?: Partial<Record<AccountId, RateLimitWindow[]>>;
+  interruptAudit?: InterruptAuditRecord[];
 };
 
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -129,10 +131,12 @@ async function createRuntime(config: SwarmConfig) {
   root.autoPilot ??= { enabled: false };
   root.notifications ??= {};
   root.notifications.breakingChangeAccounts ??= [];
+  root.interruptAudit ??= [];
   const sessions = new SessionStore(config.sessionSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const throttle = new LoginThrottle({ persistence: root.auth as never, persist: () => state.persist() });
   const verifyTotp = createTotpVerifier(config.totpSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
+  const interruptAudit = new InterruptAuditJournal(root.interruptAudit, async (records) => state.mutate((value) => { value.interruptAudit = records; }));
   const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
   const assignments = new WorkerAssignmentManifest(root.workerAssignments ?? [], async (records) => state.mutate((value) => { value.workerAssignments = records; }));
   root.limitResumes ??= (root.workerAssignments ?? [])
@@ -312,6 +316,14 @@ async function createRuntime(config: SwarmConfig) {
           }
         }
         if (event.type === "turn" && event.threadId && (event.state === "failed" || event.state === "interrupted")) activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
+        if (event.type === "turn" && event.threadId && event.state === "interrupted" && event.historical !== true) {
+          void interruptAudit.observeInterrupted(event.accountId, event.threadId, event.turnId)
+            .then((record) => logger[record.attribution === "swarm_request" ? "info" : "warn"]("interruptAudit", {
+              event: "interrupted_observed", auditId: record.id, attribution: record.attribution, account: record.accountId,
+              threadId: record.threadId, turnId: record.turnId, matchedRequestId: record.matchedRequestId,
+            }))
+            .catch((error) => logger.error("interruptAudit", { event: "interrupted_audit_failed", account: event.accountId, threadId: event.threadId, turnId: event.turnId, error: error instanceof Error ? error.message : "failed" }));
+        }
         publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}), ...(event.historical ? { historical: true } : {}) });
       });
       if (isBotProfileAccountId(handle.account) && loginCoordinator) loginCoordinator.bindAppServer(handle.account, client);
@@ -331,16 +343,21 @@ async function createRuntime(config: SwarmConfig) {
   const mergeConflictSteerGate = new MergeConflictSteerGate();
   gitSynchronizer.onChange((target, status) => {
     const syncAccount = accountForGitSyncTarget(target);
+    const syncSlot = isBotProfileAccountId(syncAccount) ? slotFor(syncAccount) : undefined;
+    const affectedAccounts = syncSlot
+      ? profileSlots.filter((slot) => slot.workspaceRoot === syncSlot.workspaceRoot).map((slot) => slot.id)
+      : [syncAccount];
     if (target === "local") localWorkspace.gitSync = status;
-    accounts.updateSnapshot(syncAccount, { gitSync: status });
+    for (const accountId of affectedAccounts) accounts.updateSnapshot(accountId, { gitSync: status });
     publishRuntimeEvent("git_sync", { target, state: status.state, action: status.action });
     if (mergeConflictSteerGate.shouldSteer(syncAccount, status)) {
-      for (const assignment of assignments.list().filter((item) => item.accountId === syncAccount && item.state === "assigned")) {
-        const turnId = activeTurnIds.get(activeTurnKey(syncAccount, assignment.threadId));
-        const client = accounts.client(syncAccount);
+      for (const assignment of assignments.list().filter((item) => affectedAccounts.includes(item.accountId) && item.state === "assigned")) {
+        const turnId = activeTurnIds.get(activeTurnKey(assignment.accountId, assignment.threadId));
+        const client = accounts.client(assignment.accountId);
         if (!turnId || !(client instanceof AppServerClient) || !client.isConnected()) continue;
         void client.steerTurn({ threadId: assignment.threadId, turnId, clientUserMessageId: randomUUID(), text: "Pull origin/main and merge the incoming changes. Resolve any merge conflicts, run the affected checks, then continue." })
-          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: syncAccount, error: error instanceof Error ? error.message : "failed" }));
+          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: assignment.accountId, error: error instanceof Error ? error.message : "failed" }));
+        break;
       }
     }
   });
@@ -819,7 +836,20 @@ async function createRuntime(config: SwarmConfig) {
       return (await liveClient(id)).startTurn({ threadId, text: input.text, clientUserMessageId, settings: input.settings });
     },
     steerTurn: async (id, threadId, input) => { await (await liveClient(id)).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },
-    interruptTurn: async (id, threadId, input) => { await (await liveClient(id)).interruptTurn(threadId, input.turnId); },
+    interruptTurn: async (id, threadId, input) => {
+      const audit = await interruptAudit.request({ accountId: id, threadId, turnId: input.turnId, ...input.audit });
+      logger.info("interruptAudit", { event: "interrupt_requested", auditId: audit.id, requestId: audit.requestId, actorEmail: audit.actorEmail, sourceAddress: audit.sourceAddress, origin: audit.origin, userAgent: audit.userAgent, account: id, threadId, turnId: input.turnId });
+      try {
+        await (await liveClient(id)).interruptTurn(threadId, input.turnId);
+        await interruptAudit.accept(audit.id);
+        logger.info("interruptAudit", { event: "interrupt_accepted", auditId: audit.id, requestId: audit.requestId, account: id, threadId, turnId: input.turnId });
+      } catch (error) {
+        const message = String(logger.redact(error instanceof Error ? error.message : "Codex interrupt failed"));
+        await interruptAudit.reject(audit.id, message);
+        logger.warn("interruptAudit", { event: "interrupt_rejected", auditId: audit.id, requestId: audit.requestId, account: id, threadId, turnId: input.turnId, error: message });
+        throw error;
+      }
+    },
     readMarkdown: async (id, path) => { const file = await readWorkspaceMarkdown({ account: id, requestedPath: path, workspaceRoot: workspaceFor(id), appServer: await liveClient(id) }); return { filename: file.filename, content: file.text }; },
     decideApproval: async (id, input) => {
       const kind = input.decision === "grant_turn" || input.decision === "grant_turn_strict" ? input.decision : input.decision === "accept" || input.decision === "decline" || input.decision === "cancel" ? input.decision : input.decision === "deny" ? "deny" : undefined;

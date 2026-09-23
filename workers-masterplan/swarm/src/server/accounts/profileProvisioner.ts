@@ -25,7 +25,7 @@ function slotFor(id: BotProfileAccountId, bot: MacosBotId): CodexAccountSlot {
     macosUser: bot,
     accountNumber,
     codexHome: `/Users/${bot}/.swarm/codex-profiles/acc${accountNumber}`,
-    workspaceRoot: `/Users/${bot}/Dev/EdenMind-acc${accountNumber}`,
+    workspaceRoot: `/Users/${bot}/Dev/EdenMind`,
   };
 }
 
@@ -66,7 +66,7 @@ export class ProfileProvisioner {
       if (!isBotProfileAccountId(accountId)) throw new ProfileProvisionerError("PROFILE_SETUP_FAILED", "Invalid profile ID");
       const slot = this.options.registry.resolve(accountId);
       if (!slot) throw new ProfileProvisionerError("PROFILE_SETUP_FAILED", "Unknown profile slot");
-      if (slot.accountNumber < 2 || slot.codexHome !== `/Users/${slot.macosUser}/.swarm/codex-profiles/acc${slot.accountNumber}` || slot.workspaceRoot !== `/Users/${slot.macosUser}/Dev/EdenMind-acc${slot.accountNumber}`) {
+      if (slot.accountNumber < 2 || slot.codexHome !== `/Users/${slot.macosUser}/.swarm/codex-profiles/acc${slot.accountNumber}` || slot.workspaceRoot !== `/Users/${slot.macosUser}/Dev/EdenMind`) {
         throw new ProfileProvisionerError("PROFILE_SETUP_FAILED", "Only managed secondary profile slots can be repaired");
       }
       await this.setup(slot, false);
@@ -81,7 +81,7 @@ export class ProfileProvisioner {
       await this.runWorker(slot.macosUser, password, workerInput(slot, this.options.repositoryUrl));
       if (publish) await this.options.registry.publish(slot);
     } catch (error) {
-      if (publish) await this.cleanupEmptyOwned(slot.macosUser, [slot.codexHome, slot.workspaceRoot]).catch(() => undefined);
+      if (publish) await this.cleanupEmptyOwned(slot.macosUser, [slot.codexHome]).catch(() => undefined);
       if (error instanceof ProfileProvisionerError) throw error;
       if (error instanceof Error && error.message === "PROFILE_AUTH_ISOLATION_UNAVAILABLE") throw new ProfileProvisionerError("PROFILE_AUTH_ISOLATION_UNAVAILABLE");
       throw new ProfileProvisionerError("PROFILE_SETUP_FAILED");

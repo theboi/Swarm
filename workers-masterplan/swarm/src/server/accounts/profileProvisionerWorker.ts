@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -58,35 +58,26 @@ async function verifyOwnedCheckout(workspaceRoot: string, repositoryUrl?: string
   }
 }
 
-export async function ensureProfileCheckout(workspaceRoot: string, repositoryUrl: string, sourceWorkspaceRoot?: string): Promise<void> {
+export async function ensureProfileCheckout(workspaceRoot: string, repositoryUrl: string): Promise<void> {
   try {
     await lstat(workspaceRoot);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    await mkdir(dirname(workspaceRoot), { recursive: true, mode: 0o700 });
-    if (sourceWorkspaceRoot !== undefined) {
-      await verifyOwnedCheckout(sourceWorkspaceRoot);
-      await execute("/usr/bin/git", ["clone", "--origin", "origin", "--branch", "main", sourceWorkspaceRoot, workspaceRoot]);
-      await execute("/usr/bin/git", ["-C", workspaceRoot, "remote", "set-url", "origin", repositoryUrl]);
-    } else {
-      await execute("/usr/bin/git", ["clone", "--origin", "origin", repositoryUrl, workspaceRoot]);
-    }
+    throw new Error("Shared workspace does not exist");
   }
   await verifyOwnedCheckout(workspaceRoot, repositoryUrl);
-  if (!(await stat(join(workspaceRoot, ".git"))).isDirectory()) throw new Error("Workspace clone verification failed");
 }
 
 export async function setupProfileWorker(input: ProfileWorkerInput): Promise<void> {
   const profile = isInput(input) ? /^\/Users\/(bot[1-8])\/\.swarm\/codex-profiles\/acc([2-9]|[1-9][0-9]+)$/.exec(input.codexHome) : undefined;
-  if (!profile || input.workspaceRoot !== `/Users/${profile[1]}/Dev/EdenMind-acc${profile[2]}` || !/^https:\/\//.test(input.repositoryUrl)) throw new Error("Invalid profile setup input");
+  if (!profile || input.workspaceRoot !== `/Users/${profile[1]}/Dev/EdenMind` || !/^https:\/\//.test(input.repositoryUrl)) throw new Error("Invalid profile setup input");
   await privateDirectory(dirname(dirname(input.codexHome)));
   await privateDirectory(dirname(input.codexHome));
   await privateDirectory(input.codexHome);
   const profileRoot = dirname(input.codexHome);
   if (await realpath(profileRoot) !== profileRoot) throw new Error("Profile root must not be a symbolic link");
   await ensureCredentialStore(input.codexHome);
-  await ensureProfileCheckout(input.workspaceRoot, input.repositoryUrl, `/Users/${profile[1]}/Dev/EdenMind`);
-  await chmod(input.workspaceRoot, 0o700);
+  await ensureProfileCheckout(input.workspaceRoot, input.repositoryUrl);
 }
 
 export async function readProfileWorkerInput(inputStream: NodeJS.ReadableStream): Promise<ProfileWorkerInput> {

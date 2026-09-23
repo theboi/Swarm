@@ -18,12 +18,22 @@ function macosUser(account: TerminalAccount): MacosBotId | undefined {
   return isMacosBotId(account) ? account : undefined;
 }
 
+function tmuxSocket(account: TerminalAccount): string {
+  const owner = macosUser(account) ?? LOCAL_ACCOUNT_ID;
+  return `/Users/${owner}/.swarm/tmux/swarm.sock`;
+}
+
+function tmuxCommand(account: TerminalAccount): string {
+  return `${shellQuote(TMUX_BINARY)} -S ${shellQuote(tmuxSocket(account))}`;
+}
+
 export function tmuxSessionName(account: TerminalAccount): string {
   return `swarm-${accountId(account).replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }
 
 export function tmuxServerCommand(account: TerminalAccount, appServerCommand: string): string {
-  const tmux = shellQuote(TMUX_BINARY);
+  const tmux = tmuxCommand(account);
+  const socketDirectory = tmuxSocket(account).replace(/\/[^/]+$/, "");
   const session = tmuxSessionName(account);
   const stop = `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true`;
   const appServerSupervisor = [
@@ -37,11 +47,11 @@ export function tmuxServerCommand(account: TerminalAccount, appServerCommand: st
   // the launcher closes that group, its trap tears down the detached tmux
   // server. The pane has its own supervisor because Codex can ignore the HUP
   // sent when tmux closes a session.
-  return `${stop}; ${tmux} new-session -d -s ${session} /bin/zsh -lc ${shellQuote(appServerSupervisor)}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
+  return `/bin/mkdir -p ${shellQuote(socketDirectory)}; /bin/chmod 700 ${shellQuote(socketDirectory)}; ${stop}; ${tmux} new-session -d -s ${session} /bin/zsh -lc ${shellQuote(appServerSupervisor)}; trap ${shellQuote(stop)} EXIT HUP INT TERM; while ${tmux} has-session -t ${session} >/dev/null 2>&1; do /bin/sleep 1; done`;
 }
 
 export function tmuxAttachCommand(account: TerminalAccount): string {
-  const command = `exec ${shellQuote(TMUX_BINARY)} attach-session -t ${tmuxSessionName(account)}`;
+  const command = `exec ${tmuxCommand(account)} attach-session -t ${tmuxSessionName(account)}`;
   if (accountId(account) === LOCAL_ACCOUNT_ID) return command;
   const owner = macosUser(account);
   if (!owner) throw new Error("A logical profile requires its owning macOS slot");

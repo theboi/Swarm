@@ -24,14 +24,14 @@ describe("GitSynchronizer", () => {
       macosUser: "bot1" as const,
       accountNumber: 2,
       codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
-      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
     };
     const acc3 = {
       ...acc2,
       id: "bot1/acc3" as const,
       accountNumber: 3,
       codexHome: "/Users/bot1/.swarm/codex-profiles/acc3",
-      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc3",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
     };
     const profiles: CodexAccountSlot[] = [acc2];
     const pullBot = vi.fn(async (_account: BotAccountId | CodexAccountSlot) => undefined);
@@ -46,9 +46,9 @@ describe("GitSynchronizer", () => {
     synchronizer.refreshTargets();
     await synchronizer.syncNow();
 
+    expect(pullBot).toHaveBeenCalledTimes(2);
     expect(pullBot).toHaveBeenNthCalledWith(1, acc2);
     expect(pullBot).toHaveBeenNthCalledWith(2, acc2);
-    expect(pullBot).toHaveBeenNthCalledWith(3, acc3);
     expect(synchronizer.snapshot("bot1/acc2")).toMatchObject({ state: "ok", action: "pull" });
     expect(synchronizer.snapshot("bot1/acc3")).toMatchObject({ state: "ok", action: "pull" });
   });

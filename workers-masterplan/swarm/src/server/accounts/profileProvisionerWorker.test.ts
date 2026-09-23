@@ -17,23 +17,22 @@ describe("profile provisioner worker input", () => {
 
     input.write(`${JSON.stringify({
       codexHome: "/Users/bot3/.swarm/codex-profiles/acc2",
-      workspaceRoot: "/Users/bot3/Dev/EdenMind-acc2",
+      workspaceRoot: "/Users/bot3/Dev/EdenMind",
       repositoryUrl: "https://example.test/EdenMind.git",
     })}\n`);
 
     await expect(parsed).resolves.toEqual({
       codexHome: "/Users/bot3/.swarm/codex-profiles/acc2",
-      workspaceRoot: "/Users/bot3/Dev/EdenMind-acc2",
+      workspaceRoot: "/Users/bot3/Dev/EdenMind",
       repositoryUrl: "https://example.test/EdenMind.git",
     });
   });
 });
 
 describe("profile checkout provisioning", () => {
-  it("seeds from the bot's local checkout and replaces its origin URL", async () => {
+  it("uses the existing bot checkout without creating another clone", async () => {
     const root = await mkdtemp(join(tmpdir(), "swarm-profile-checkout-"));
     const source = join(root, "source");
-    const target = join(root, "target");
     const repositoryUrl = "https://example.test/EdenMind.git";
 
     try {
@@ -45,12 +44,13 @@ describe("profile checkout provisioning", () => {
       await execute("/usr/bin/git", ["-C", source, "commit", "-m", "seed"]);
       await execute("/usr/bin/git", ["-C", source, "remote", "add", "origin", "https://user:credential@example.test/EdenMind.git"]);
 
-      await ensureProfileCheckout(target, repositoryUrl, source);
+      await execute("/usr/bin/git", ["-C", source, "remote", "set-url", "origin", repositoryUrl]);
+      await ensureProfileCheckout(source, repositoryUrl);
 
-      await expect(readFile(join(target, "README.md"), "utf8")).resolves.toBe("local seed\n");
-      const origin = (await execute("/usr/bin/git", ["-C", target, "remote", "get-url", "origin"])).stdout.trim();
+      await expect(readFile(join(source, "README.md"), "utf8")).resolves.toBe("local seed\n");
+      const origin = (await execute("/usr/bin/git", ["-C", source, "remote", "get-url", "origin"])).stdout.trim();
       expect(origin).toBe(repositoryUrl);
-      expect(origin).not.toContain("credential");
+      await expect(ensureProfileCheckout(join(root, "missing"), repositoryUrl)).rejects.toThrow("Shared workspace does not exist");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
