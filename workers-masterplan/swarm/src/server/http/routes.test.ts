@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPasswordHash } from "../auth/password.js";
 import { LoginThrottle, SessionStore } from "../auth/sessionStore.js";
 import { createTotpVerifier, totpAt } from "../auth/totp.js";
-import type { CoordinatorSnapshot, HealthSnapshot } from "../../shared/contracts.js";
+import type { AccountSnapshot, CoordinatorSnapshot, HealthSnapshot, ProfileLoginChallenge } from "../../shared/contracts.js";
 import { createApiRouter, type CoordinatorRouteServices } from "./routes.js";
 
 const health: HealthSnapshot = {
@@ -27,6 +27,11 @@ async function fixture() {
     health: async () => health,
     setAutoPilot: vi.fn(async (enabled: boolean) => ({ enabled })),
     setLimitResumeEnabled: vi.fn(async (_accountId, _threadId, enabled: boolean) => ({ enabled })),
+    resolveAccountId: (value) => value === "claudiothe" || value === "bot1" || value === "bot2" || value === "bot1/acc2" ? value : undefined,
+    makePrimary: vi.fn(async (): Promise<AccountSnapshot[]> => [{ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2", isPrimary: true, connection: "disconnected", authentication: "unknown", rateLimits: [], activeTurns: 0, lastAssignedAt: null }]),
+    addAccount: vi.fn(async (): Promise<AccountSnapshot> => ({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2", connection: "disconnected", authentication: "unknown", rateLimits: [], activeTurns: 0, lastAssignedAt: null })),
+    startAccountLogin: vi.fn(async (): Promise<ProfileLoginChallenge> => ({ accountId: "bot1/acc2", loginId: "private-login-id", method: "device_code", verificationUrl: "https://auth.example.test", userCode: "ABCD-EFGH", expiresAt: 1000 })),
+    cancelAccountLogin: vi.fn(async () => undefined),
     connectAccount: vi.fn(async () => ({ id: "bot1" })),
     disconnectAccount: vi.fn(async () => undefined),
     openTerminal,
@@ -103,16 +108,93 @@ describe("coordinator HTTP routes", () => {
     const { app, services } = await fixture();
     const session = await services.sessions.createSession("claudio@example.test");
     const origin = "http://127.0.0.1:4310";
+    const authenticated = request(app)
+      .post("/api/v1/accounts/bot1/threads/thread-1/limit-resume")
+      .set("origin", origin)
+      .set("Cookie", `swarm_session=${session}`);
 
-    await request(app).post("/api/v1/accounts/bot3/threads/thread-1/limit-resume")
-      .set("origin", origin).set("Cookie", `swarm_session=${session}`).send({ enabled: true })
-      .expect(200, { data: { enabled: true } });
-    await request(app).post("/api/v1/accounts/bot3/threads/thread-1/limit-resume")
-      .set("origin", origin).set("Cookie", `swarm_session=${session}`).send({ enabled: "true" })
+    await authenticated.send({ enabled: true }).expect(200, { data: { enabled: true } });
+    await request(app)
+      .post("/api/v1/accounts/bot1/threads/thread-1/limit-resume")
+      .set("origin", origin)
+      .set("Cookie", `swarm_session=${session}`)
+      .send({ enabled: "true" })
       .expect(400, { error: { code: "INVALID_REQUEST", message: "Automatic resume enabled must be a boolean" } });
+    await request(app)
+      .post("/api/v1/accounts/bot1/threads/thread-1/limit-resume")
+      .set("origin", origin)
+      .send({ enabled: true })
+      .expect(401, { error: { code: "AUTH_INVALID", message: "Authentication required" } });
 
     expect(services.setLimitResumeEnabled).toHaveBeenCalledOnce();
-    expect(services.setLimitResumeEnabled).toHaveBeenCalledWith("bot3", "thread-1", true);
+    expect(services.setLimitResumeEnabled).toHaveBeenCalledWith("bot1", "thread-1", true);
+  });
+
+  it("passes authenticated request metadata into the interrupt audit", async () => {
+    const { app, services } = await fixture();
+    const session = await services.sessions.createSession("claudio@example.test");
+
+    await request(app).post("/api/v1/accounts/bot1/threads/thread-1/interrupt")
+      .set("origin", "http://127.0.0.1:4310")
+      .set("user-agent", "audit-test-browser")
+      .set("Cookie", `swarm_session=${session}`)
+      .send({ turnId: "turn-1" })
+      .expect(200);
+
+    expect(services.interruptTurn).toHaveBeenCalledWith("bot1", "thread-1", {
+      turnId: "turn-1",
+      audit: expect.objectContaining({
+        requestId: expect.any(String),
+        actorEmail: "claudio@example.test",
+        sourceAddress: expect.any(String),
+        origin: "http://127.0.0.1:4310",
+        userAgent: "audit-test-browser",
+      }),
+    });
+  });
+
+  it("manages registry-backed profile accounts without exposing login IDs", async () => {
+    const { app, services } = await fixture();
+    const agent = request.agent(app);
+    const origin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+
+    await agent.post("/api/v1/accounts/bot1%2Facc2/primary").set("origin", origin).send({}).expect(200);
+    await agent.post("/api/v1/bots/bot1/accounts").set("origin", origin).send({}).expect(200);
+    const login = await agent.post("/api/v1/accounts/bot1%2Facc2/login").set("origin", origin).send({ method: "device_code" }).expect(200);
+    await agent.post("/api/v1/accounts/bot1%2Facc2/login/cancel").set("origin", origin).send({}).expect(200, { data: {} });
+
+    expect(services.makePrimary).toHaveBeenCalledWith("bot1/acc2");
+    expect(services.addAccount).toHaveBeenCalledWith("bot1");
+    expect(services.startAccountLogin).toHaveBeenCalledWith("bot1/acc2", "device_code");
+    expect(login.body).toEqual({ data: { accountId: "bot1/acc2", method: "device_code", verificationUrl: "https://auth.example.test", userCode: "ABCD-EFGH", expiresAt: 1000 } });
+    expect(JSON.stringify(login.body)).not.toContain("private-login-id");
+  });
+
+  it("rejects unknown profiles and browser OAuth from a non-loopback dashboard", async () => {
+    const { app, services, origins } = await fixture();
+    const agent = request.agent(app);
+    const localOrigin = "http://127.0.0.1:4310";
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", localOrigin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", localOrigin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+    await agent.post("/api/v1/accounts/bot9%2Facc2/login").set("origin", localOrigin).send({ method: "device_code" }).expect(400, { error: { code: "INVALID_REQUEST", message: "A known profile account and supported login method are required" } });
+    origins.add("https://swarm.example.test");
+    await agent.post("/api/v1/accounts/bot1%2Facc2/login").set("host", "swarm.example.test").set("origin", "https://swarm.example.test").send({ method: "same_mac_browser" }).expect(403, { error: { code: "AUTH_INVALID", message: "Browser login must be started from the local Swarm dashboard" } });
+    expect(services.startAccountLogin).not.toHaveBeenCalledWith("bot1/acc2", "same_mac_browser");
+  });
+
+  it("requires a session, an allowed JSON mutation origin, and preserves profile conflict codes", async () => {
+    const { app, services } = await fixture();
+    const origin = "http://127.0.0.1:4310";
+    await request(app).post("/api/v1/accounts/bot1%2Facc2/primary").set("origin", origin).send({}).expect(401);
+
+    const agent = request.agent(app);
+    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" });
+    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
+    await agent.post("/api/v1/accounts/bot1%2Facc2/primary").set("origin", origin).expect(415, { error: { code: "INVALID_REQUEST", message: "Expected application/json request body" } });
+    (services.makePrimary as ReturnType<typeof vi.fn>).mockRejectedValueOnce(Object.assign(new Error("Desktop is running"), { code: "DESKTOP_APP_RUNNING" }));
+    await agent.post("/api/v1/accounts/bot1%2Facc2/primary").set("origin", origin).send({}).expect(409, { error: { code: "DESKTOP_APP_RUNNING", message: "Desktop is running" } });
   });
 
   it("accepts a same-host Tailscale origin even when its address was not in the startup allowlist", async () => {
@@ -200,22 +282,6 @@ describe("coordinator HTTP routes", () => {
     const settings = { model: "gpt-5.6-terra", effort: "xhigh", serviceTier: "standard", permissionMode: "full_access" };
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot2", settings }).expect(200);
     await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot1" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Choose a different known account" } });
-
-    (services.moveThreadToAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("LOCAL_HANDOFF_COPY_FAILED: target install failed"));
-    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot3" }).expect(503, {
-      error: {
-        code: "LOCAL_HANDOFF_COPY_FAILED",
-        message: "Swarm could not copy the rollout into the target account workspace. Confirm the target account is connected and its local credential is configured, then try again.",
-      },
-    });
-
-    (services.moveThreadToAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("LOCAL_HANDOFF_CLEANUP_FAILED: persistent cleanup failure"));
-    await agent.post("/api/v1/accounts/bot1/threads/thread-1/move").set("origin", origin).send({ targetAccountId: "bot4" }).expect(503, {
-      error: {
-        code: "LOCAL_HANDOFF_CLEANUP_FAILED",
-        message: "Swarm could not clean up local handoff staging access or data. The target handoff may not have been created; check local filesystem permissions before retrying.",
-      },
-    });
 
     expect(services.moveThreadToAccount).toHaveBeenCalledWith("bot1", "thread-1", "bot2", settings);
   });

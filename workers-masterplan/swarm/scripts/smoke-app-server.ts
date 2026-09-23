@@ -2,24 +2,25 @@ import { spawn as spawnProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer } from "node:net";
+import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { config as loadDotenv } from "dotenv";
 import WebSocket from "ws";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId } from "../src/shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type CodexAccountSlot, type MacosBotId } from "../src/shared/contracts.js";
+import { ProfileRegistry } from "../src/server/accounts/profileRegistry.js";
 import { JsonRpcClient } from "../src/server/codex/jsonRpcClient.js";
 import { clonePath, safeThreadSettings, safeTurnSettings } from "../src/server/codex/protocol.js";
 import { SuLauncher, type LaunchHandle, type PortLease } from "../src/server/codex/suLauncher.js";
 import { codexLoginCommand } from "../src/server/codex/terminalConsole.js";
 import { swarmUserPassword } from "../src/server/config/config.js";
 
-const ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
 const SMOKE_PROMPT = "Reply with SMOKE_OK. Do not use tools or modify files.";
 
 export type SmokeEnvironment =
   | { kind: "skip"; code: "SWARM_SMOKE_SKIPPED"; message: string }
-  | { kind: "run"; account: AccountId; password: string | undefined; codexBin: string; startTurn: boolean };
+  | { kind: "run"; account: AccountId; password: string | undefined; codexBin: string; startTurn: boolean; slot?: CodexAccountSlot };
 
 class SmokeError extends Error {
   constructor(readonly code: "ACCOUNT_AUTH_REQUIRED" | "SMOKE_CAPABILITY_TOKEN_REJECTED" | "SMOKE_TURN_FAILED") {
@@ -28,18 +29,25 @@ class SmokeError extends Error {
 }
 
 function isAccount(value: string | undefined): value is AccountId {
-  return Boolean(value && ACCOUNTS.has(value as AccountId));
+  return value === LOCAL_ACCOUNT_ID || isMacosBotId(value) || isBotProfileAccountId(value);
+}
+
+function botFor(account: AccountId): MacosBotId | undefined {
+  if (isMacosBotId(account)) return account;
+  return isBotProfileAccountId(account) ? account.split("/")[0] as MacosBotId : undefined;
 }
 
 export function resolveSmokeEnvironment(env: NodeJS.ProcessEnv): SmokeEnvironment {
   const account = env.SWARM_SMOKE_ACCOUNT;
   if (!isAccount(account)) {
-    return { kind: "skip", code: "SWARM_SMOKE_SKIPPED", message: "Set SWARM_SMOKE_ACCOUNT to claudiothe or bot1 through bot8." };
+    return { kind: "skip", code: "SWARM_SMOKE_SKIPPED", message: "Set SWARM_SMOKE_ACCOUNT to claudiothe, bot1 through bot8, or a registered botN/accX profile." };
   }
   if (account === LOCAL_ACCOUNT_ID) {
     return { kind: "run", account, password: undefined, codexBin: env.SWARM_CODEX_BIN ?? "/opt/homebrew/bin/codex", startTurn: env.SWARM_SMOKE_START_TURN === "true" };
   }
-  const index = Number(account.slice(3));
+  const bot = botFor(account);
+  if (!bot) return { kind: "skip", code: "SWARM_SMOKE_SKIPPED", message: "Set SWARM_SMOKE_ACCOUNT to a known Swarm account." };
+  const index = Number(bot.slice(3));
   const password = swarmUserPassword(env, index);
   if (!password) {
     return {
@@ -62,7 +70,7 @@ export function redactSmokeOutput(value: string, secrets: readonly string[]): st
   return secrets.reduce((redacted, secret) => secret ? redacted.split(secret).join("[REDACTED]") : redacted, withoutBearer);
 }
 
-export function manualLoginCommand(account: AccountId, codexBin: string): string {
+export function manualLoginCommand(account: AccountId | CodexAccountSlot, codexBin: string): string {
   return codexLoginCommand(account, codexBin);
 }
 
@@ -70,9 +78,16 @@ export function repositoryIsUnchanged(before: string, after: string): boolean {
   return before === after;
 }
 
-async function readAccountGitStatus(account: AccountId, password: string | undefined): Promise<string> {
+function workspaceForSmoke(account: AccountId, slot?: CodexAccountSlot): string {
+  if (slot) return slot.workspaceRoot;
+  if (account === LOCAL_ACCOUNT_ID) return process.cwd();
+  return clonePath(account);
+}
+
+async function readAccountGitStatus(account: AccountId, password: string | undefined, slot?: CodexAccountSlot): Promise<string> {
+  const workspace = workspaceForSmoke(account, slot);
   if (account === LOCAL_ACCOUNT_ID) {
-    const child = spawnProcess("/usr/bin/git", ["-C", clonePath(account), "status", "--porcelain"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawnProcess("/usr/bin/git", ["-C", workspace, "status", "--porcelain"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     return new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => { child.kill("SIGTERM"); reject(new Error("Timed out reading the local repository status")); }, 30_000);
@@ -84,8 +99,10 @@ async function readAccountGitStatus(account: AccountId, password: string | undef
       child.once("exit", (code) => { clearTimeout(timeout); if (code !== 0) reject(new Error("Unable to read the local repository status")); else resolve(output); });
     });
   }
-  const command = `'${"/usr/bin/git"}' -C '${clonePath(account)}' status --porcelain`;
-  const child = spawnProcess("/usr/bin/script", ["-q", "/dev/null", "/usr/bin/su", "-", account, "-c", command], { stdio: ["pipe", "pipe", "pipe"] });
+  const bot = botFor(account);
+  if (!bot) throw new Error("Unable to resolve the bot owner for this smoke account");
+  const command = `'${"/usr/bin/git"}' -C '${workspace}' status --porcelain`;
+  const child = spawnProcess("/usr/bin/script", ["-q", "/dev/null", "/usr/bin/su", "-", bot, "-c", command], { stdio: ["pipe", "pipe", "pipe"] });
   let output = "";
   let prompted = false;
   return new Promise<string>((resolve, reject) => {
@@ -236,8 +253,9 @@ function hasSmokeOkAgentMessage(value: unknown): boolean {
   return Object.values(record).some(hasSmokeOkAgentMessage);
 }
 
-async function runDisposableTurn(rpc: JsonRpcClient, account: AccountId): Promise<void> {
-  const created = await rpc.request("thread/start", safeThreadSettings(account));
+async function runDisposableTurn(rpc: JsonRpcClient, account: AccountId, slot?: CodexAccountSlot): Promise<void> {
+  const target = slot ?? account;
+  const created = await rpc.request("thread/start", safeThreadSettings(target));
   const threadId = threadIdFrom(created);
   if (!threadId) throw new SmokeError("SMOKE_TURN_FAILED");
   try {
@@ -245,7 +263,7 @@ async function runDisposableTurn(rpc: JsonRpcClient, account: AccountId): Promis
       threadId,
       clientUserMessageId: randomUUID(),
       input: [{ type: "text", text: SMOKE_PROMPT }],
-      ...safeTurnSettings(account),
+      ...safeTurnSettings(target),
     });
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await delay(2_000);
@@ -272,7 +290,7 @@ function createLauncher(): SuLauncher {
 }
 
 export async function runSmoke(env: NodeJS.ProcessEnv = process.env): Promise<number> {
-  const settings = resolveSmokeEnvironment(env);
+  let settings = resolveSmokeEnvironment(env);
   if (settings.kind === "skip") {
     process.stdout.write(`${settings.code}: ${settings.message}\n`);
     return 0;
@@ -281,7 +299,16 @@ export async function runSmoke(env: NodeJS.ProcessEnv = process.env): Promise<nu
   let handle: LaunchHandle | undefined;
   let rpc: JsonRpcClient | undefined;
   try {
-    handle = await createLauncher().launch({ account: settings.account, password: settings.password, codexBin: settings.codexBin });
+    if (isBotProfileAccountId(settings.account)) {
+      const registry = await ProfileRegistry.load(resolve(process.cwd(), ".data", "account-profiles.json"));
+      const slot = registry.resolve(settings.account);
+      if (!slot) {
+        process.stdout.write(`SWARM_SMOKE_SKIPPED: Profile ${settings.account} is not present in the local registry.\n`);
+        return 0;
+      }
+      settings = { ...settings, slot };
+    }
+    handle = await createLauncher().launch({ account: settings.account, ...(settings.slot ? { slot: settings.slot } : {}), password: settings.password, codexBin: settings.codexBin });
     await assertMissingTokenIsRejected(handle.endpoint);
     rpc = new JsonRpcClient({ launch: handle });
     await rpc.connect();
@@ -298,9 +325,9 @@ export async function runSmoke(env: NodeJS.ProcessEnv = process.env): Promise<nu
     }
     const threads = await listAllThreads(rpc);
     if (settings.startTurn) {
-      const before = await readAccountGitStatus(settings.account, settings.password);
-      await runDisposableTurn(rpc, settings.account);
-      const after = await readAccountGitStatus(settings.account, settings.password);
+      const before = await readAccountGitStatus(settings.account, settings.password, settings.slot);
+      await runDisposableTurn(rpc, settings.account, settings.slot);
+      const after = await readAccountGitStatus(settings.account, settings.password, settings.slot);
       if (!repositoryIsUnchanged(before, after)) throw new SmokeError("SMOKE_TURN_FAILED");
     }
     const bucketCount = rateLimits && typeof rateLimits === "object" ? Object.keys(rateLimits as Record<string, unknown>).length : 0;
@@ -310,7 +337,7 @@ export async function runSmoke(env: NodeJS.ProcessEnv = process.env): Promise<nu
     const code = error instanceof SmokeError && error.code === "ACCOUNT_AUTH_REQUIRED" ? error.code : error instanceof Error && error.message === "ACCOUNT_AUTH_REQUIRED" ? "ACCOUNT_AUTH_REQUIRED" : "SMOKE_FAILED";
     const details = error instanceof Error ? redactSmokeOutput(error.message, settings.password ? [settings.password] : []) : "Unknown smoke failure";
     process.stderr.write(`${code}: ${details}\n`);
-    if (code === "ACCOUNT_AUTH_REQUIRED") process.stderr.write(`Manual login: ${manualLoginCommand(settings.account, settings.codexBin)}\n`);
+    if (code === "ACCOUNT_AUTH_REQUIRED") process.stderr.write(`Manual login: ${manualLoginCommand(settings.slot ?? settings.account, settings.codexBin)}\n`);
     return 1;
   } finally {
     await rpc?.close().catch(() => undefined);

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import { ACCOUNT_IDS, type AccountId, type ManifestPass, type TaskManifest, type TaskReadiness } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type ManifestPass, type TaskManifest, type TaskReadiness } from "../../shared/contracts.js";
 
 interface CompletionPassReceipt {
   state: "complete";
@@ -65,14 +65,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function isKnownAccountId(value: unknown): value is AccountId {
+  return value === LOCAL_ACCOUNT_ID
+    || isMacosBotId(value)
+    || isBotProfileAccountId(value)
+    || (typeof value === "string" && (ACCOUNT_IDS as readonly string[]).includes(value));
+}
+
 function parseReceipt(value: unknown, expectedTaskId: string, allowedPasses: readonly ManifestPass[]): WorkerCompletionReceipt {
   if (!isRecord(value) || value.schemaVersion !== 1 || value.taskId !== expectedTaskId || !isRecord(value.passes)) throw new Error(`Invalid completion manifest receipt filename or schema for ${expectedTaskId}`);
   const passes: Partial<Record<ManifestPass, CompletionPassReceipt>> = {};
   for (const pass of ["planning", "execution"] as const) {
     const candidate = value.passes[pass];
     if (candidate === undefined) continue;
-    if (!allowedPasses.includes(pass) || !isRecord(candidate) || candidate.state !== "complete" || typeof candidate.completedBy !== "string" || !ACCOUNT_IDS.includes(candidate.completedBy as AccountId) || typeof candidate.completedAt !== "string" || !Number.isFinite(Date.parse(candidate.completedAt))) throw new Error(`Invalid ${pass} completion receipt for ${expectedTaskId}`);
-    passes[pass] = { state: "complete", completedBy: candidate.completedBy as AccountId, completedAt: candidate.completedAt };
+    if (!allowedPasses.includes(pass) || !isRecord(candidate) || candidate.state !== "complete" || !isKnownAccountId(candidate.completedBy) || typeof candidate.completedAt !== "string" || !Number.isFinite(Date.parse(candidate.completedAt))) throw new Error(`Invalid ${pass} completion receipt for ${expectedTaskId}`);
+    passes[pass] = { state: "complete", completedBy: candidate.completedBy, completedAt: candidate.completedAt };
   }
   return { schemaVersion: 1, taskId: expectedTaskId, passes };
 }

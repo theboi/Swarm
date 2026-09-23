@@ -1,12 +1,12 @@
 import { realpath as nodeRealpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { AccountId } from "../../shared/contracts.js";
+import type { AccountId, CodexAccountSlot } from "../../shared/contracts.js";
 import { workspaceRoot } from "../codex/protocol.js";
 
 export interface ApprovalRequest { method: string; params: Record<string, unknown>; }
 
 /** Contexts are capabilities issued only for an account's fixed clone. */
-export interface ApprovalContext { readonly account: AccountId; readonly workspaceRoot: string; }
+export interface ApprovalContext { readonly account: AccountId; readonly workspaceRoot: string; readonly slot?: CodexAccountSlot; }
 const issuedContexts = new WeakSet<object>();
 
 export interface ApprovalFilesystem { realpath(path: string): Promise<string>; }
@@ -27,8 +27,10 @@ const V2_PERMISSIONS = "item/permissions/requestApproval";
 const LEGACY_COMMAND = "execCommandApproval";
 const LEGACY_PATCH = "applyPatchApproval";
 
-export function createApprovalContext(account: AccountId, localWorkspaceRoot?: string): ApprovalContext {
-  const context = Object.freeze({ account, workspaceRoot: workspaceRoot(account, localWorkspaceRoot) });
+export function createApprovalContext(account: AccountId | CodexAccountSlot, localWorkspaceRoot?: string): ApprovalContext {
+  const context = typeof account === "object"
+    ? Object.freeze({ account: account.id, workspaceRoot: workspaceRoot(account), slot: account })
+    : Object.freeze({ account, workspaceRoot: workspaceRoot(account, localWorkspaceRoot) });
   issuedContexts.add(context);
   return context;
 }
@@ -40,7 +42,7 @@ export function validContext(context: unknown): context is ApprovalContext {
 
 function requireContext(context: unknown): ApprovalContext {
   if (!validContext(context)) throw new Error("Approval context must be created by the coordinator");
-  if (context.workspaceRoot !== workspaceRoot(context.account, context.workspaceRoot)) throw new Error("Approval context is not bound to its account workspace");
+  if (context.workspaceRoot !== workspaceRoot(context.slot ?? context.account, context.workspaceRoot)) throw new Error("Approval context is not bound to its account workspace");
   return context;
 }
 

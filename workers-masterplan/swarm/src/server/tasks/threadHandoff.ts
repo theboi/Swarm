@@ -1,9 +1,20 @@
+import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
+
 import type { AccountId, ChatExecutionSettings, ThreadSummary } from "../../shared/contracts.js";
-import type { LocalHandoffFile } from "./localHandoffTransport.js";
 import { handoffThreadName } from "./handoff.js";
+
+export function decodePrivateRollout(value: unknown): string {
+  const encoded = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).jsonlGzipBase64 : undefined;
+  if (typeof encoded !== "string" || !encoded || encoded.length > 64 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new Error("Source rollout payload is invalid");
+  try { return gunzipSync(Buffer.from(encoded, "base64"), { maxOutputLength: 48 * 1024 * 1024 }).toString("utf8"); }
+  catch { throw new Error("Source rollout payload is invalid"); }
+}
 
 export interface JsonlContinuationTarget {
   startThread(): Promise<Record<string, unknown>>;
+  writeFile(path: string, contents: string): Promise<unknown>;
   setThreadName(threadId: string, name: string): Promise<unknown>;
   startTurn(input: {
     threadId: string;
@@ -20,8 +31,7 @@ export interface JsonlContinuationInput {
   sourceName: string | null;
   targetAccountId: AccountId;
   targetWorkspace: string;
-  jsonl: Buffer;
-  copyJsonl(input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }): Promise<LocalHandoffFile>;
+  jsonl: string;
   clientUserMessageId: string;
   target: JsonlContinuationTarget;
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
@@ -41,8 +51,7 @@ export interface MoveWithJsonlInput {
   targetAccountId: AccountId;
   targetWorkspace: string;
   clientUserMessageId: string;
-  readJsonl(accountId: AccountId, threadId: string): Promise<Buffer>;
-  copyJsonl(input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }): Promise<LocalHandoffFile>;
+  readJsonl(accountId: AccountId, threadId: string): Promise<string>;
   target(): Promise<JsonlContinuationTarget>;
   normalizeThread(source: Record<string, unknown>): ThreadSummary;
   claimResume(): Promise<void>;
@@ -56,30 +65,34 @@ export interface MoveWithJsonlInput {
   queuedMessages?: string;
 }
 
+function handoffFilename(sourceAccountId: AccountId, sourceThreadId: string): string {
+  const suffix = createHash("sha256").update(`${sourceAccountId}\u0000${sourceThreadId}`).digest("hex").slice(0, 12);
+  return `swarm-handoff-${sourceAccountId.replace(/[^A-Za-z0-9_-]/g, "-")}-${suffix}.jsonl`;
+}
+
 export async function createJsonlContinuation(input: JsonlContinuationInput): Promise<ThreadSummary> {
-  const handoff = await input.copyJsonl({
-    sourceAccountId: input.sourceAccountId,
-    sourceThreadId: input.sourceThreadId,
-    targetAccountId: input.targetAccountId,
-    targetWorkspace: input.targetWorkspace,
-    jsonl: input.jsonl,
-  });
   const rawThread = await input.target.startThread();
   const thread = input.normalizeThread(rawThread);
+  const compressed = Buffer.byteLength(input.jsonl, "utf8") > 1024 * 1024;
+  const filename = `${handoffFilename(input.sourceAccountId, input.sourceThreadId)}${compressed ? ".gz.b64" : ""}`;
+  const path = resolve(input.targetWorkspace, filename);
+  await input.target.writeFile(path, compressed ? gzipSync(Buffer.from(input.jsonl, "utf8")).toString("base64") : input.jsonl);
 
   const threadName = handoffThreadName(input.sourceName);
   await input.target.setThreadName(thread.id, threadName);
   const queuedMessages = input.queuedMessages ?? "";
   const prompt = [
     `Continue the previous chat from source account ${input.sourceAccountId} and source thread ${input.sourceThreadId}.`,
-    `The attached ${handoff.filename} contains the exact source rollout JSONL. Continue from where the source session left off on target account ${input.targetAccountId}.`,
+    compressed
+      ? `The attached ${filename} is the exact source rollout JSONL, gzip-compressed and base64-encoded. Decode it with base64 -D followed by gunzip, then continue from where the source session left off on target account ${input.targetAccountId}.`
+      : `The attached ${filename} contains the exact source rollout JSONL. Continue from where the source session left off on target account ${input.targetAccountId}.`,
     ...(queuedMessages ? ["", queuedMessages] : []),
   ].join("\n");
   await input.target.startTurn({
     threadId: thread.id,
     clientUserMessageId: input.clientUserMessageId,
     text: prompt,
-    attachments: [{ name: handoff.filename, path: handoff.path }],
+    attachments: [{ name: filename, path }],
     ...(input.settings ? { settings: input.settings } : {}),
   });
 
@@ -101,7 +114,6 @@ export async function moveWithJsonl(input: MoveWithJsonlInput): Promise<ThreadSu
       targetWorkspace: input.targetWorkspace,
       jsonl,
       clientUserMessageId: input.clientUserMessageId,
-      copyJsonl: input.copyJsonl,
       target: await input.target(),
       normalizeThread: input.normalizeThread,
       ...(input.settings ? { settings: input.settings } : {}),

@@ -1,4 +1,4 @@
-import { LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type ChatExecutionSettings, type CodexAccountSlot, type MacosBotId } from "../../shared/contracts.js";
 import { isAbsolute, resolve } from "node:path";
 
 /** The Codex app-server wire protocol deliberately omits a JSON-RPC version field. */
@@ -39,6 +39,8 @@ export interface ProtocolDiagnostic {
 export const APP_SERVER_METHODS = [
   "initialize",
   "account/read",
+  "account/login/start",
+  "account/login/cancel",
   "account/rateLimits/read",
   "thread/list",
   "thread/read",
@@ -116,6 +118,7 @@ export interface FullAccessTurnSandboxPolicy {
 
 export interface SafeThreadSettings {
   cwd: string;
+  threadSource: "user";
   approvalPolicy: "untrusted";
   approvalsReviewer: "user";
   sandbox: "workspace-write";
@@ -131,23 +134,37 @@ export interface SafeTurnSettings {
   serviceTier?: string;
 }
 
+function legacyWorkspaceRoot(macosUser: MacosBotId): string {
+  return `/Users/${macosUser}/Dev/EdenMind`;
+}
+
 export function clonePath(account: AccountId): string {
-  return `/Users/${account}/Dev/EdenMind`;
+  if (!isMacosBotId(account)) throw new Error("A logical profile requires an explicit workspace slot");
+  return legacyWorkspaceRoot(account);
 }
 
 /** The local account works in the coordinator checkout; bot accounts stay in their isolated clones. */
-export function workspaceRoot(account: AccountId, localWorkspaceRoot?: string): string {
-  if (account !== LOCAL_ACCOUNT_ID || !localWorkspaceRoot) return clonePath(account);
-  if (!isAbsolute(localWorkspaceRoot)) throw new Error("Local workspace root must be absolute");
+export function workspaceRoot(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): string {
+  if (typeof account === "object") {
+    if (!isAbsolute(account.workspaceRoot)) throw new Error("Workspace root must be absolute");
+    return resolve(account.workspaceRoot);
+  }
+  if (!localWorkspaceRoot) return clonePath(account);
+  if (!isAbsolute(localWorkspaceRoot)) throw new Error("Explicit workspace root must be absolute");
   return resolve(localWorkspaceRoot);
 }
 
-export function safeThreadSettings(account: AccountId, localWorkspaceRoot?: string): SafeThreadSettings {
+export function safeThreadSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): SafeThreadSettings {
   const cwd = workspaceRoot(account, localWorkspaceRoot);
-  return { cwd, approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
+  return { cwd, threadSource: "user", approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "workspace-write" };
 }
 
-export function safeTurnSettings(account: AccountId, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {
+export function safeThreadResumeSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string): Omit<SafeThreadSettings, "threadSource"> {
+  const { threadSource: _threadSource, ...settings } = safeThreadSettings(account, localWorkspaceRoot);
+  return settings;
+}
+
+export function safeTurnSettings(account: AccountId | CodexAccountSlot | { id: typeof LOCAL_ACCOUNT_ID; workspaceRoot: string }, localWorkspaceRoot?: string, selected: ChatExecutionSettings = {}): SafeTurnSettings {
   const cwd = workspaceRoot(account, localWorkspaceRoot);
   const overrides = {
     ...(selected.model ? { model: selected.model } : {}),

@@ -26,6 +26,16 @@ function contentText(value: unknown): string {
   return value.flatMap((part) => typeof record(part)?.text === "string" ? [record(part)!.text as string] : []).join("");
 }
 
+export function candidateSessionDirectories(codexHome: string, threadId: string): string[] {
+  if (!threadIdPattern.test(threadId) || threadId[14]?.toLowerCase() !== "7") return [];
+  const timestamp = Number.parseInt(threadId.replaceAll("-", "").slice(0, 12), 16);
+  if (!Number.isSafeInteger(timestamp)) return [];
+  return [0, -86_400_000, 86_400_000].map((offset) => {
+    const date = new Date(timestamp + offset);
+    return join(codexHome, "sessions", String(date.getUTCFullYear()), String(date.getUTCMonth() + 1).padStart(2, "0"), String(date.getUTCDate()).padStart(2, "0"));
+  });
+}
+
 function normalizeChanges(value: unknown): Array<{ path: string; kind: string }> {
   if (Array.isArray(value)) return value.flatMap((change) => {
     const item = record(change);
@@ -81,8 +91,8 @@ export class LocalRolloutTranscriptReader {
     return { thread: { id: threadId, turns: [...cached.turns.values()].map((turn) => ({ id: turn.id, startedAt: turn.startedAt, ...(turn.status ? { status: turn.status } : {}), ...(turn.error ? { error: turn.error } : {}), ...(turn.clientUserMessageId ? { clientUserMessageId: turn.clientUserMessageId } : {}), itemsView: "full", items: [...turn.items.values()] })) } };
   }
 
-  async readJsonl(threadId: string): Promise<Buffer> {
-    return readFile(await this.rolloutPath(threadId));
+  async readJsonl(threadId: string): Promise<string> {
+    return readFile(await this.rolloutPath(threadId), "utf8");
   }
 
   async readRecentActivity(threadId: string, now = Date.now()): Promise<{ activity: "active" | "idle"; turnId?: string } | undefined> {
@@ -100,6 +110,10 @@ export class LocalRolloutTranscriptReader {
 
   private async rolloutPath(threadId: string): Promise<string> {
     if (!threadIdPattern.test(threadId)) throw new Error("Invalid local thread identifier");
+    for (const directory of candidateSessionDirectories(this.codexHome, threadId)) {
+      const dated = await findRollout(directory, threadId);
+      if (dated) return dated;
+    }
     const path = await findRollout(join(this.codexHome, "sessions"), threadId);
     if (!path) throw new Error("Local rollout transcript not found");
     return path;

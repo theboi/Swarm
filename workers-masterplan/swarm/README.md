@@ -1,12 +1,13 @@
 # EdenMind Swarm Coordinator
 
 The coordinator is a local-first operations tool for supervising Codex
-app-server chats across the local `claudiothe` account and `bot1` through
-`bot8`. Open it locally at [http://localhost:4310](http://localhost:4310), or
-through this Mac's Tailscale address. The development listener binds to all
-interfaces by default.
-Codex app-server runs directly for `claudiothe`; each bot runs through `su`.
-Codex Desktop must never be launched for a bot account.
+app-server chats across the local `claudiothe` account and logical bot profiles
+such as `bot1/acc1` and `bot1/acc2`. Open it locally at
+[http://localhost:4310](http://localhost:4310), or through this Mac's
+Tailscale address. The development listener binds to all interfaces by default.
+Codex app-server runs directly for `claudiothe`; each bot profile runs through
+`su` with its own credential home and the bot's shared checkout. Automated bot operation remains
+headless. Desktop compatibility is an operator-only, bot1-only canary step.
 
 ## Prerequisites
 
@@ -66,6 +67,53 @@ credential.
 terminal controller uses the next port (`4311` by default) for the signed-in
 dashboard's **Open Terminal** action. A browser session remains valid for 30 days of
 inactivity before another password-and-TOTP login is required.
+
+### Profile slots and sign-in
+
+Swarm keeps a non-secret profile registry at `.data/account-profiles.json`.
+The registry is the source of truth for logical IDs and contains no passwords,
+OAuth tokens, `auth.json` contents, device codes, login IDs, or app-server
+capability tokens. `botN/acc1` is the initial profile for each bot; later
+profiles have isolated credential paths and share the bot's one main checkout:
+
+```text
+/Users/botN/.swarm/codex-profiles/accX
+/Users/botN/Dev/EdenMind
+```
+
+In Accounts, select **Add account** for a bot. Swarm provisions the isolated
+slot, then starts a ten-minute, in-memory device-code challenge. Open the
+displayed verification page in the intended operator browser and enter the
+displayed code. The fallback **Use browser sign-in** is available only from a
+loopback dashboard request on the same Mac. Swarm exposes only a non-secret
+email, workspace, or plan label after completion, and it rejects an identity
+already connected to another profile.
+
+Use the profile-aware repair command only for an existing secondary slot:
+
+```sh
+npm run profiles:setup -- --account bot1/acc2
+```
+
+It recreates only the owned, isolated paths and prints a profile-scoped manual
+login command. It does not repair `acc1`, migrate a bot, or delete profiles.
+
+**Primary** describes the profile selected by the managed `~/.codex` symlink
+for a bot. **Make Primary** is an atomic symlink transaction: it refuses while
+ChatGPT or Codex Desktop is running for that bot, refuses an unmanaged
+`~/.codex`, verifies the replacement, and rolls back on failure. It affects
+Desktop compatibility only; every app-server keeps using its profile's own
+`CODEX_HOME`.
+
+The only approved live migration sequence for this release is a separately
+authorized bot1 canary. Its read-only preflight command is:
+
+```sh
+npm run profiles:migrate -- --bot bot1 --dry-run
+```
+
+Do not run `--apply`, sign in, or test Desktop until a new explicit canary
+authorization has been recorded. `bot2` through `bot8` are outside that canary.
 
 `manifests/mvp3.json` is the production default. It is the 32-task **Pass 1**
 projection of the approved MVP3 Blueprint Masterplan: 26 ordinary planning
@@ -164,27 +212,17 @@ authenticated, under its usage limit, or able to push Git changes. The original
 chat remains on its source account; its cached metadata and local rollout file
 are sufficient for the continuation.
 
-For a local-account destination, Swarm verifies that the coordinator checkout
-ignores `swarm-handoff-*.jsonl` before it stages the rollout under its
-Git-ignored `.data/handoffs/` directory. For a bot destination, the target
-account verifies its own ignore rule inside the authenticated `su` install
-command, after staging and before the exclusive target-file creation. Swarm
-never sends rollout contents through Codex app-server file APIs or Git. Each
-attempt receives a distinct, Git-ignored handoff filename, so a failed target
-startup can safely retry.
-Temporary staging ACL access and data are removed after every attempt; the
-target-owned handoff file remains for the continuation attachment.
-
-Each account runs one loopback-only Codex app-server. `claudiothe` starts the
-CLI directly with its existing local Codex profile; each bot starts through
-`su`, receives its password through Swarm's pseudo-terminal, and keeps its
-per-launch capability token in memory. Use the CLI app-server path only; do
-not open Codex Desktop under a bot account.
+Each logical account runs one loopback-only Codex app-server. `claudiothe`
+starts the CLI directly with its existing local Codex profile; each bot profile
+starts through `su`, receives its password through Swarm's pseudo-terminal,
+injects only that slot's `CODEX_HOME`, and keeps its per-launch capability token
+in memory. The canary Desktop probe is manual and must be performed only after
+the explicit authorization described above.
 
 The first Accounts card is the full `claudiothe` Codex account. The local
 workspace Git status remains a separate information card. Every minute Swarm
-deterministically pulls `origin/main` in the local checkout and every configured
-bot checkout. A merge conflict raises one warning and steers the affected bot
+deterministically pulls `origin/main` in the local checkout and each configured
+bot's shared checkout. A merge conflict raises one warning and steers the affected bot
 once to resolve it. Before a usage-limit stop, Swarm attempts a Git checkpoint;
 a failed checkpoint is surfaced for manual resolution but does not block a
 JSONL-based account move.
@@ -237,16 +275,20 @@ action never receives an approve-for-session option.
 ## Smoke check for a real account
 
 The opt-in smoke check uses the real app-server, never Codex Desktop. Bots run
-through `su`; `claudiothe` runs directly:
+through `su`; `claudiothe` runs directly. A registered logical profile may be
+selected explicitly:
 
 ```sh
 SWARM_SMOKE_ACCOUNT=bot3 npm run smoke:app-server
+# after the profile exists in the local registry:
+SWARM_SMOKE_ACCOUNT=bot1/acc2 npm run smoke:app-server
 # or: SWARM_SMOKE_ACCOUNT=claudiothe npm run smoke:app-server
 ```
 
-It clearly skips unless `SWARM_SMOKE_ACCOUNT` is set to `claudiothe` or one of
-the bots; bot checks also require their matching `SWARM_USERn=botn:password`
-local credential. The default metadata-only flow verifies that a missing
+It clearly skips unless `SWARM_SMOKE_ACCOUNT` is set to `claudiothe`, one of
+the legacy bot IDs, or a registered logical profile; bot checks also require
+their matching `SWARM_USERn=botn:password` local credential. The default
+metadata-only flow verifies that a missing
 capability token is rejected, then runs `initialize`, `initialized`,
 `account/read`, rate-limit metadata, and paginated thread listing. It starts no
 turn and always closes the child process. If authentication is expired, it

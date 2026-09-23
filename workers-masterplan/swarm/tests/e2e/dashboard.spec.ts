@@ -53,7 +53,7 @@ test.describe("Home dashboard", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
 
-    await expect(page.locator(".account-summary-row")).toHaveCount(9);
+    await expect(page.locator(".account-summary-row")).toHaveCount(10);
     await expect(page.locator(".account-summary-row").first()).toContainText("claudiothe");
     await expect(page.getByLabel("bot2: five-hour remaining 80%; weekly remaining 20%")).toBeVisible();
     await expect(page.locator(".account-summary-row").filter({ hasText: "bot2" }).locator(".account-summary__weekly")).toHaveAttribute("style", /width: 20%;/);
@@ -61,8 +61,8 @@ test.describe("Home dashboard", () => {
 
     await page.getByRole("button", { name: "View more accounts" }).click();
     await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
-    await expect(page.locator(".accounts-grid .account-card")).toHaveCount(9);
-    await expect(page.getByRole("button", { name: "Open terminal for bot1" })).toBeVisible();
+    await expect(page.locator(".accounts-list .account-card")).toHaveCount(10);
+    await expect(page.getByRole("button", { name: "Open terminal for bot1/acc1" })).toBeVisible();
     await page.getByRole("button", { name: "Back to home" }).click();
     await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   });

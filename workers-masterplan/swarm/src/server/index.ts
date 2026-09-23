@@ -1,15 +1,23 @@
 import { access, realpath, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
-import { ACCOUNT_IDS, BOT_ACCOUNT_IDS, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type ChatExecutionSettings, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type MacosBotId, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { LoginCoordinator } from "./accounts/loginCoordinator.js";
+import { PrimaryProfileManager } from "./accounts/primaryProfileManager.js";
+import { restorePrimaryProfileState } from "./accounts/primaryProfileState.js";
+import { ProfileProvisioner } from "./accounts/profileProvisioner.js";
+import { ProfileRegistry } from "./accounts/profileRegistry.js";
 import { createPasswordHash } from "./auth/password.js";
 import { LoginThrottle, SessionStore } from "./auth/sessionStore.js";
 import { createTotpVerifier } from "./auth/totp.js";
+import { InterruptAuditJournal, type InterruptAuditRecord } from "./audit/interruptAudit.js";
 import { DurableApprovalJournal } from "./approvals/journal.js";
 import type { ApprovalJournalEntry } from "./codex/approvalRouter.js";
 import { ApprovalRouter } from "./codex/approvalRouter.js";
@@ -28,9 +36,10 @@ import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
 import { DispatchOutbox } from "./dispatch/outbox.js";
 import { createLogger } from "./logging/logger.js";
-import { GitCommandRunner } from "./git/commandRunner.js";
+import { GitCommandRunner, runBotPtyJsonResultWorker } from "./git/commandRunner.js";
 import { accountForGitSyncTarget, GitSynchronizer, MergeConflictSteerGate } from "./git/sync.js";
 import { createCoordinatorApp } from "./app.js";
+import { staticAssetDirectory } from "./staticAssets.js";
 import { dashboardOrigins } from "./http/dashboardOrigins.js";
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { mergeRateLimits, nextLimitResumeCheck, rankAccounts } from "./scheduler/accountScheduler.js";
@@ -44,12 +53,13 @@ import { refreshTaskGraphAtomically } from "./tasks/taskRefreshState.js";
 import { applyCompletionManifest, completedTaskIdsForPass, loadCompletionManifest, projectManifestToPass } from "./tasks/completionManifest.js";
 import { WorkerAssignmentManifest } from "./tasks/workerAssignments.js";
 import { LimitResumeManifest, shouldRetireLimitResume, type DurableLimitResumeRecord } from "./tasks/limitResumes.js";
-import { moveWithJsonl } from "./tasks/threadHandoff.js";
-import { LocalJsonlHandoffTransport } from "./tasks/localHandoffTransport.js";
+import { decodePrivateRollout, moveWithJsonl } from "./tasks/threadHandoff.js";
 import { loadManifest } from "./tasks/manifestLoader.js";
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./tasks/launchMetadata.js";
 import { launchGitMetadata } from "./tasks/launchGitMetadata.js";
 import { renderWorkerPrompt } from "./tasks/promptTemplates.js";
+
+const execFileAsync = promisify(execFile);
 
 type DurableState = {
   auth?: { challenges?: Record<string, unknown>; sessions?: Record<string, unknown>; loginThrottle?: Record<string, { failures: number; retryAt: number }>; usedTotp?: Record<string, true> };
@@ -62,10 +72,9 @@ type DurableState = {
   approvals?: ApprovalJournalEntry[];
   notifications?: { breakingChangeAccounts?: AccountId[] };
   accountRateLimits?: Partial<Record<AccountId, RateLimitWindow[]>>;
+  interruptAudit?: InterruptAuditRecord[];
 };
 
-const accountIds = ACCOUNT_IDS;
-function accountId(value: string): AccountId { if (!(accountIds as readonly string[]).includes(value)) throw new Error("ACCOUNT_OFFLINE"); return value as AccountId; }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringAt(value: unknown, field: string): string | undefined { const result = object(value)[field]; return typeof result === "string" && result ? result : undefined; }
 function isWorkspaceThread(cwd: unknown, workspace: string | undefined): boolean {
@@ -85,6 +94,16 @@ function asThread(account: AccountId, source: Record<string, unknown>, workspace
 }
 function responseThread(value: unknown): Record<string, unknown> { const response = object(value); return response.thread && typeof response.thread === "object" && !Array.isArray(response.thread) ? object(response.thread) : response; }
 
+/** Fails closed: an indeterminate Desktop process state must never permit a primary symlink swap. */
+async function desktopRunningFor(bot: MacosBotId): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/pgrep", ["-u", bot, "-fl", "/Applications/(ChatGPT|Codex)\\.app/"]);
+    return stdout.trim().length > 0;
+  } catch (error) {
+    return Number((error as NodeJS.ErrnoException).code) === 1 ? false : true;
+  }
+}
+
 async function leasePort(): Promise<PortLease> {
   const listener = createNetServer();
   await new Promise<void>((resolveListen, rejectListen) => { listener.once("error", rejectListen); listener.listen(0, "127.0.0.1", () => resolveListen()); });
@@ -98,6 +117,12 @@ function taskNode(manifest: TaskManifest, readiness: TaskReadiness[]): TaskNode[
 }
 
 async function createRuntime(config: SwarmConfig) {
+  const registry = await ProfileRegistry.load(resolve(process.cwd(), ".data", "account-profiles.json"));
+  let profileSlots = registry.list();
+  let accountIds: AccountId[] = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
+  const slotFor = (account: AccountId): CodexAccountSlot | undefined => profileSlots.find((slot) => slot.id === account);
+  const primaryProfiles = new PrimaryProfileManager({ registry, desktopRunning: desktopRunningFor });
+  const primaryByBot = await restorePrimaryProfileState(primaryProfiles, profileSlots);
   const logger = createLogger({ secrets: [config.loginPasswordHash, config.totpSecret, config.sessionSecret, ...Object.values(config.accountPasswords)].filter((value): value is string => Boolean(value)) });
   const store = createCoordinatorStateStore<DurableState>(resolve(process.cwd(), ".data", "state.json"), config);
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
@@ -106,10 +131,12 @@ async function createRuntime(config: SwarmConfig) {
   root.autoPilot ??= { enabled: false };
   root.notifications ??= {};
   root.notifications.breakingChangeAccounts ??= [];
+  root.interruptAudit ??= [];
   const sessions = new SessionStore(config.sessionSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const throttle = new LoginThrottle({ persistence: root.auth as never, persist: () => state.persist() });
   const verifyTotp = createTotpVerifier(config.totpSecret, { persistence: root.auth as never, persist: () => state.persist() });
   const journal = new DurableApprovalJournal(root.approvals ?? [], async (entries) => state.mutate((value) => { value.approvals = entries; }));
+  const interruptAudit = new InterruptAuditJournal(root.interruptAudit, async (records) => state.mutate((value) => { value.interruptAudit = records; }));
   const outbox = new DispatchOutbox(root.dispatches ?? [], async (records) => state.mutate((value) => { value.dispatches = records; }));
   const assignments = new WorkerAssignmentManifest(root.workerAssignments ?? [], async (records) => state.mutate((value) => { value.workerAssignments = records; }));
   root.limitResumes ??= (root.workerAssignments ?? [])
@@ -119,15 +146,19 @@ async function createRuntime(config: SwarmConfig) {
   const completedTaskIds = new Set(root.completedTaskIds ?? []);
   let completedTaskPass = root.completedTaskPass;
   const coordinationWorkspaceRoot = resolve(config.coordinationRoot ?? process.cwd());
-  const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : undefined;
-  const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(account, workspaceFor(account));
-  const localHandoffTransport = new LocalJsonlHandoffTransport({
-    stagingRoot: join(coordinationWorkspaceRoot, ".data", "handoffs"),
-    localWorkspaceRoot: coordinationWorkspaceRoot,
-    passwords: config.accountPasswords,
-  });
+  const workspaceFor = (account: AccountId): string | undefined => account === LOCAL_ACCOUNT_ID ? coordinationWorkspaceRoot : slotFor(account)?.workspaceRoot;
+  const projectWorkspaceFor = (account: AccountId): string => workspaceRoot(slotFor(account) ?? account, workspaceFor(account));
+  const legacyCodexHome = (macosUser: import("../shared/contracts.js").MacosBotId): string => `/Users/${macosUser}/.codex`;
+  const codexHomeForAccount = (account: AccountId): string => {
+    if (account === LOCAL_ACCOUNT_ID) return process.env.CODEX_HOME ?? `/Users/${config.localAccount}/.codex`;
+    if (isMacosBotId(account)) return legacyCodexHome(account);
+    const slot = slotFor(account);
+    if (slot) return slot.codexHome;
+    throw new Error("A logical profile requires an explicit Codex home slot");
+  };
   const localWorkspace: LocalWorkspaceSnapshot = { label: `${config.localAccount} (local)`, gitSync: { state: "idle", action: "pull", lastAttemptAt: null } };
   let publishRuntimeEvent: (type: string, payload: Record<string, unknown>) => void = () => undefined;
+  let publishAccountSnapshots: (accounts: import("../shared/contracts.js").AccountSnapshot[]) => void = () => undefined;
   let requestAutoPilot = () => undefined;
   let shuttingDown = false;
   const gitRunner = new GitCommandRunner(coordinationWorkspaceRoot, config.accountPasswords);
@@ -156,11 +187,27 @@ async function createRuntime(config: SwarmConfig) {
     openTerminal: openMacOsTerminal,
     log: (entry) => logger.info("suLauncher", entry),
   });
-  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(ACCOUNT_IDS.map((account) => [account, new LocalRolloutTranscriptReader(`/Users/${account}/.codex`)]));
+  const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(accountIds.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
+  const privateRolloutWorkerPath = fileURLToPath(new URL("./codex/privateRolloutWorker.js", import.meta.url));
+  const readRolloutJsonl = async (account: AccountId, threadId: string): Promise<string> => {
+    const slot = slotFor(account);
+    if (!slot) return rolloutReaders.get(account)!.readJsonl(threadId);
+    const password = config.accountPasswords[slot.macosUser];
+    if (!password) throw new Error("ACCOUNT_AUTH_REQUIRED");
+    return decodePrivateRollout(await runBotPtyJsonResultWorker(slot.macosUser, password, privateRolloutWorkerPath, { codexHome: slot.codexHome, threadId }));
+  };
+  const refreshProfileRuntime = (): void => {
+    profileSlots = registry.list();
+    accountIds = [LOCAL_ACCOUNT_ID, ...profileSlots.map((slot) => slot.id)];
+    for (const slot of profileSlots) {
+      if (!rolloutReaders.has(slot.id)) rolloutReaders.set(slot.id, new LocalRolloutTranscriptReader(slot.codexHome));
+    }
+  };
   const completedLaunchThreads = new Set<string>();
   const completedLaunchThreadKey = (account: AccountId, threadId: string) => `${account}\u0000${threadId}`;
   const autoPilotRecoveryGuard = new AutoPilotRecoveryGuard();
   let accounts: AccountManager;
+  let loginCoordinator: LoginCoordinator | undefined;
   const breakingChangeAccounts = new Set<AccountId>(root.notifications.breakingChangeAccounts);
   const recordBreakingChange = (account: AccountId) => {
     accounts.updateSnapshot(account, { hasBreakingChange: true });
@@ -213,15 +260,25 @@ async function createRuntime(config: SwarmConfig) {
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     credentialVersion: async (account) => {
       try {
-        const value = await stat(`/Users/${account}/.codex/auth.json`);
+        const value = await stat(resolve(codexHomeForAccount(account), "auth.json"));
         return `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}`;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
         throw error;
       }
     },
+    accountIds: () => accountIds,
+    resolveSlot: slotFor,
+    onAuthenticated: (account, metadata) => {
+      if (!isBotProfileAccountId(account)) return undefined;
+      if (!loginCoordinator) throw new Error("ACCOUNT_AUTH_REQUIRED");
+      return loginCoordinator.registerConnectedIdentity(account, metadata);
+    },
+    onDisconnected: (account) => {
+      if (isBotProfileAccountId(account)) loginCoordinator?.disconnect(account);
+    },
     createClient: (handle) => {
-      const localWorkspaceRoot = workspaceFor(handle.account);
+      const localWorkspaceRoot = handle.slot?.workspaceRoot ?? workspaceFor(handle.account);
       const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
       client.onEvent((event) => {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
@@ -236,7 +293,7 @@ async function createRuntime(config: SwarmConfig) {
             await limitResumes.markWaiting(event.accountId, exhaustedThreadId, Date.now(), client.turnSettings(exhaustedThreadId));
             if (limitResumes.forThread(event.accountId, exhaustedThreadId)?.state !== "waiting_for_limit") return;
             await assignments.markWaitingForLimit(event.accountId, exhaustedThreadId);
-            try { await gitRunner.checkpointAndPush(event.accountId); }
+            try { await gitRunner.checkpointAndPush(slotFor(event.accountId) ?? event.accountId); }
             catch {
               const status = { state: "warning" as const, action: "push" as const, lastAttemptAt: Date.now(), message: "Git push failed. Push manually before transferring this worker." };
               if (event.accountId === LOCAL_ACCOUNT_ID) localWorkspace.gitSync = status;
@@ -259,8 +316,17 @@ async function createRuntime(config: SwarmConfig) {
           }
         }
         if (event.type === "turn" && event.threadId && (event.state === "failed" || event.state === "interrupted")) activeTurnIds.delete(activeTurnKey(event.accountId, event.threadId));
+        if (event.type === "turn" && event.threadId && event.state === "interrupted" && event.historical !== true) {
+          void interruptAudit.observeInterrupted(event.accountId, event.threadId, event.turnId)
+            .then((record) => logger[record.attribution === "swarm_request" ? "info" : "warn"]("interruptAudit", {
+              event: "interrupted_observed", auditId: record.id, attribution: record.attribution, account: record.accountId,
+              threadId: record.threadId, turnId: record.turnId, matchedRequestId: record.matchedRequestId,
+            }))
+            .catch((error) => logger.error("interruptAudit", { event: "interrupted_audit_failed", account: event.accountId, threadId: event.threadId, turnId: event.turnId, error: error instanceof Error ? error.message : "failed" }));
+        }
         publishRuntimeEvent(event.type, { accountId: event.accountId, ...(event.threadId ? { threadId: event.threadId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.state ? { state: event.state } : {}), ...(event.historical ? { historical: true } : {}) });
       });
+      if (isBotProfileAccountId(handle.account) && loginCoordinator) loginCoordinator.bindAppServer(handle.account, client);
       return client;
     },
   });
@@ -272,20 +338,26 @@ async function createRuntime(config: SwarmConfig) {
   const gitSynchronizer = new GitSynchronizer({
     pullLocal: () => gitRunner.pullLocal(),
     pullBot: (account) => gitRunner.pullAccount(account),
+    profileSlots: () => profileSlots,
   });
   const mergeConflictSteerGate = new MergeConflictSteerGate();
   gitSynchronizer.onChange((target, status) => {
     const syncAccount = accountForGitSyncTarget(target);
+    const syncSlot = isBotProfileAccountId(syncAccount) ? slotFor(syncAccount) : undefined;
+    const affectedAccounts = syncSlot
+      ? profileSlots.filter((slot) => slot.workspaceRoot === syncSlot.workspaceRoot).map((slot) => slot.id)
+      : [syncAccount];
     if (target === "local") localWorkspace.gitSync = status;
-    accounts.updateSnapshot(syncAccount, { gitSync: status });
+    for (const accountId of affectedAccounts) accounts.updateSnapshot(accountId, { gitSync: status });
     publishRuntimeEvent("git_sync", { target, state: status.state, action: status.action });
     if (mergeConflictSteerGate.shouldSteer(syncAccount, status)) {
-      for (const assignment of assignments.list().filter((item) => item.accountId === syncAccount && item.state === "assigned")) {
-        const turnId = activeTurnIds.get(activeTurnKey(syncAccount, assignment.threadId));
-        const client = accounts.client(syncAccount);
+      for (const assignment of assignments.list().filter((item) => affectedAccounts.includes(item.accountId) && item.state === "assigned")) {
+        const turnId = activeTurnIds.get(activeTurnKey(assignment.accountId, assignment.threadId));
+        const client = accounts.client(assignment.accountId);
         if (!turnId || !(client instanceof AppServerClient) || !client.isConnected()) continue;
         void client.steerTurn({ threadId: assignment.threadId, turnId, clientUserMessageId: randomUUID(), text: "Pull origin/main and merge the incoming changes. Resolve any merge conflicts, run the affected checks, then continue." })
-          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: syncAccount, error: error instanceof Error ? error.message : "failed" }));
+          .catch((error) => logger.warn("git_sync", { event: "merge_steer_failed", account: assignment.accountId, error: error instanceof Error ? error.message : "failed" }));
+        break;
       }
     }
   });
@@ -342,19 +414,29 @@ async function createRuntime(config: SwarmConfig) {
     try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
   };
   await refreshTasks();
+  const passwordFor = (id: AccountId): string | undefined => {
+    if (isMacosBotId(id)) return config.accountPasswords[id];
+    const slot = slotFor(id);
+    return slot ? config.accountPasswords[slot.macosUser] : undefined;
+  };
   const liveClient = async (id: AccountId): Promise<AppServerClient> => {
     const client = accounts.client(id);
     if (client instanceof AppServerClient && client.isConnected()) return client;
-    await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+    await accounts.connect({ account: id, password: passwordFor(id) });
     const recovered = accounts.client(id);
     if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("ACCOUNT_OFFLINE");
     return recovered;
   };
-  const accountSnapshot = () => accounts.snapshotsList();
+  const accountSnapshot = () => accounts.snapshotsList().map((snapshot) => {
+    const slot = slotFor(snapshot.id);
+    return slot
+      ? { ...snapshot, macosUser: slot.macosUser, accountNumber: slot.accountNumber, workspaceRoot: slot.workspaceRoot, isPrimary: primaryByBot.get(slot.macosUser) === slot.id }
+      : snapshot;
+  });
   const rateLimitRefresher = new AccountRateLimitRefresher({
     prepare: async (id) => {
       if (accounts.snapshot(id).authentication !== "unauthenticated") return;
-      await accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] }, { force: true });
+      await accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) }, { force: true });
     },
     read: async (id) => (await liveClient(id)).readRateLimitWindows(),
     current: (id) => accounts.snapshot(id),
@@ -496,6 +578,49 @@ async function createRuntime(config: SwarmConfig) {
     timer.unref();
     limitResumeTimers.set(key, timer);
   };
+  const profileClient = async (accountId: BotProfileAccountId): Promise<AppServerClient> => {
+    const current = accounts.preAuthClient(accountId);
+    if (current instanceof AppServerClient && current.isConnected()) return current;
+    await accounts.connect({ account: accountId, password: passwordFor(accountId) }).catch((error) => {
+      const recovered = accounts.preAuthClient(accountId);
+      if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw error;
+    });
+    const recovered = accounts.preAuthClient(accountId);
+    if (!(recovered instanceof AppServerClient) || !recovered.isConnected()) throw new Error("DEVICE_AUTH_UNAVAILABLE");
+    return recovered;
+  };
+  const profileProvisioner = new ProfileProvisioner({
+    registry,
+    repositoryUrl: config.repositoryUrl,
+    passwordFor: (bot) => config.accountPasswords[bot],
+  });
+  const loginExpiryTimers = new Map<BotProfileAccountId, NodeJS.Timeout>();
+  const clearLoginExpiry = (accountId: BotProfileAccountId): void => {
+    const timer = loginExpiryTimers.get(accountId);
+    if (timer) clearTimeout(timer);
+    loginExpiryTimers.delete(accountId);
+  };
+  loginCoordinator = new LoginCoordinator({
+    fingerprintSalt: config.sessionSecret,
+    start: async (accountId, method) => {
+      const client = await profileClient(accountId);
+      return method === "device_code" ? client.startDeviceLogin() : client.startBrowserLogin();
+    },
+    cancel: async (accountId, loginId) => {
+      const client = accounts.preAuthClient(accountId);
+      if (client instanceof AppServerClient && client.isConnected()) await client.cancelLogin(loginId);
+    },
+    onCompletion: (accountId, identity) => {
+      clearLoginExpiry(accountId);
+      accounts.markAuthenticated(accountId, identity);
+      void updateRateLimits(accountId).catch((error) => logger.warn("accounts", { event: "profile_login_rate_limits_failed", account: accountId, error: error instanceof Error ? error.message : "failed" }));
+    },
+    onFailure: (accountId, error) => {
+      clearLoginExpiry(accountId);
+      void accounts.rejectAuthentication(accountId, error.code)
+        .catch((closeError) => logger.warn("accounts", { event: "profile_login_rejected_close_failed", account: accountId, error: closeError instanceof Error ? closeError.message : "failed" }));
+    },
+  });
   const services: CoordinatorRouteServices = {
     config: { ...config, secureCookies: false }, sessions, throttle, verifyTotp,
     snapshot, health,
@@ -516,8 +641,47 @@ async function createRuntime(config: SwarmConfig) {
       publishRuntimeEvent("task", { taskId: assignments.forThread(id, threadId)?.taskId ?? "" });
       return { enabled: limitResumes.isEnabled(id, threadId) };
     },
+    resolveAccountId: (value) => {
+      if (value === LOCAL_ACCOUNT_ID) return value;
+      if (isBotProfileAccountId(value)) return slotFor(value) ? value : undefined;
+      if (isMacosBotId(value)) return slotFor(`${value}/acc1` as BotProfileAccountId)?.id;
+      return undefined;
+    },
+    makePrimary: async (accountId) => {
+      const state = await primaryProfiles.makePrimary(accountId);
+      if (!state.primaryAccountId) throw new Error("PRIMARY_SWITCH_FAILED");
+      primaryByBot.set(state.macosUser, state.primaryAccountId);
+      const changed = accountSnapshot().filter((snapshot) => snapshot.macosUser === state.macosUser);
+      publishAccountSnapshots(changed);
+      return changed;
+    },
+    addAccount: async (bot) => {
+      const slot = await profileProvisioner.create(bot);
+      refreshProfileRuntime();
+      gitSynchronizer.refreshTargets();
+      const snapshot = accountSnapshot().find((item) => item.id === slot.id);
+      if (!snapshot) throw new Error("PROFILE_SETUP_FAILED");
+      publishAccountSnapshots([snapshot]);
+      return snapshot;
+    },
+    startAccountLogin: async (accountId, method) => {
+      clearLoginExpiry(accountId);
+      const challenge = await loginCoordinator!.start(accountId, method);
+      const delay = Math.max(0, challenge.expiresAt - Date.now());
+      const timer = setTimeout(() => {
+        loginExpiryTimers.delete(accountId);
+        void loginCoordinator?.cancel(accountId).catch(() => undefined);
+      }, delay);
+      timer.unref();
+      loginExpiryTimers.set(accountId, timer);
+      return challenge;
+    },
+    cancelAccountLogin: async (accountId) => {
+      clearLoginExpiry(accountId);
+      await loginCoordinator!.cancel(accountId);
+    },
     connectAccount: async (id) => {
-      const connected = await accounts.connect({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] });
+      const connected = await accounts.connect({ account: id, password: passwordFor(id) });
       await outbox.recover({ readThread: async (record) => {
         const result = await (await liveClient(record.accountId)).readThread(record.threadId, { includeTurns: true });
         const turns = Array.isArray(object(result).thread && object(object(result).thread).turns) ? object(object(result).thread).turns as Array<Record<string, unknown>> : [];
@@ -624,8 +788,7 @@ async function createRuntime(config: SwarmConfig) {
         targetAccountId,
         targetWorkspace: projectWorkspaceFor(targetAccountId),
         clientUserMessageId,
-        readJsonl: (accountId, sourceThreadId) => rolloutReaders.get(accountId)!.readJsonl(sourceThreadId),
-        copyJsonl: (input) => localHandoffTransport.copyJsonl(input),
+        readJsonl: readRolloutJsonl,
         target: () => liveClient(targetAccountId),
         normalizeThread: (rawThread) => asThread(targetAccountId, responseThread(rawThread), projectWorkspaceFor(targetAccountId)),
         claimResume: async () => {
@@ -684,7 +847,20 @@ async function createRuntime(config: SwarmConfig) {
       return (await liveClient(id)).startTurn({ threadId, text: input.text, clientUserMessageId, settings: input.settings });
     },
     steerTurn: async (id, threadId, input) => { await (await liveClient(id)).steerTurn({ threadId, turnId: input.turnId, text: input.text, clientUserMessageId: input.clientUserMessageId ?? randomUUID() }); },
-    interruptTurn: async (id, threadId, input) => { await (await liveClient(id)).interruptTurn(threadId, input.turnId); },
+    interruptTurn: async (id, threadId, input) => {
+      const audit = await interruptAudit.request({ accountId: id, threadId, turnId: input.turnId, ...input.audit });
+      logger.info("interruptAudit", { event: "interrupt_requested", auditId: audit.id, requestId: audit.requestId, actorEmail: audit.actorEmail, sourceAddress: audit.sourceAddress, origin: audit.origin, userAgent: audit.userAgent, account: id, threadId, turnId: input.turnId });
+      try {
+        await (await liveClient(id)).interruptTurn(threadId, input.turnId);
+        await interruptAudit.accept(audit.id);
+        logger.info("interruptAudit", { event: "interrupt_accepted", auditId: audit.id, requestId: audit.requestId, account: id, threadId, turnId: input.turnId });
+      } catch (error) {
+        const message = String(logger.redact(error instanceof Error ? error.message : "Codex interrupt failed"));
+        await interruptAudit.reject(audit.id, message);
+        logger.warn("interruptAudit", { event: "interrupt_rejected", auditId: audit.id, requestId: audit.requestId, account: id, threadId, turnId: input.turnId, error: message });
+        throw error;
+      }
+    },
     readMarkdown: async (id, path) => { const file = await readWorkspaceMarkdown({ account: id, requestedPath: path, workspaceRoot: workspaceFor(id), appServer: await liveClient(id) }); return { filename: file.filename, content: file.text }; },
     decideApproval: async (id, input) => {
       const kind = input.decision === "grant_turn" || input.decision === "grant_turn_strict" ? input.decision : input.decision === "accept" || input.decision === "decline" || input.decision === "cancel" ? input.decision : input.decision === "deny" ? "deny" : undefined;
@@ -705,15 +881,15 @@ async function createRuntime(config: SwarmConfig) {
       refresh: async () => {
         await refreshTasks(true);
         pass = manifest?.lifecycle?.activePass ?? "planning";
-        const refreshedAccounts = new Set<(typeof BOT_ACCOUNT_IDS)[number]>();
-        const refreshCandidates = accountSnapshot().filter((account) => (BOT_ACCOUNT_IDS as readonly AccountId[]).includes(account.id) && account.connection === "connected" && account.authentication === "authenticated");
+        const refreshedAccounts = new Set<AccountId>();
+        const refreshCandidates = accountSnapshot().filter((account) => account.id !== LOCAL_ACCOUNT_ID && account.connection === "connected" && account.authentication === "authenticated");
         await Promise.allSettled(refreshCandidates.map(async (account) => {
           try { await threads(account.id); }
           catch (error) {
             logger.warn("autoPilot", { event: "threads_refresh_failed", account: account.id, error: error instanceof Error ? error.message : "failed" });
             return;
           }
-          refreshedAccounts.add(account.id as (typeof BOT_ACCOUNT_IDS)[number]);
+          refreshedAccounts.add(account.id);
         }));
         if (shuttingDown) return refreshedAccounts;
         await recoverAcceptedAutoPilotDispatches({
@@ -752,7 +928,7 @@ async function createRuntime(config: SwarmConfig) {
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
   const credentialRefreshTimer = setInterval(() => {
-    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: id === LOCAL_ACCOUNT_ID ? undefined : config.accountPasswords[id] })));
+    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) })));
   }, 15_000);
   credentialRefreshTimer.unref();
   const connectInitialAccount = async (id: AccountId): Promise<void> => {
@@ -762,7 +938,7 @@ async function createRuntime(config: SwarmConfig) {
       await threads(id);
     } catch { /* AccountManager's credential recovery scheduler owns bounded retries. */ }
   };
-  const coordinator = createCoordinatorApp({ services, staticDir: resolve(process.cwd(), "dist"), flush: () => state.persist(), shutdown: async () => {
+  const coordinator = createCoordinatorApp({ services, staticDir: staticAssetDirectory(import.meta.url), flush: () => state.persist(), shutdown: async () => {
     shuttingDown = true;
     autoPilot.stop();
     journal.rejectLive();
@@ -771,10 +947,12 @@ async function createRuntime(config: SwarmConfig) {
     gitSynchronizer.stop();
     for (const id of rateWaitTimers.keys()) clearRateWait(id);
     for (const timer of limitResumeTimers.values()) clearTimeout(timer);
+    for (const timer of loginExpiryTimers.values()) clearTimeout(timer);
     await autoPilot.whenIdle();
     await accounts.shutdown();
   } });
   publishRuntimeEvent = (type, payload) => { coordinator.hub.publish(type, payload); };
+  publishAccountSnapshots = (snapshots) => { coordinator.hub.publishAccountSnapshots(snapshots); };
   accounts.onChange((snapshot) => {
     coordinator.hub.publish("account", {} as Record<string, unknown>);
     if (snapshot.connection === "connected" && snapshot.authentication === "authenticated") requestAutoPilot();

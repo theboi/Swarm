@@ -1,20 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AccountId, RateLimitWindow } from "../../shared/contracts.js";
+import type { AccountId, CodexAccountSlot, RateLimitWindow } from "../../shared/contracts.js";
 import { AccountManager } from "./accountManager.js";
 import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 
 const account = "bot1" as const;
 
-function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number) {
+function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot, onAuthenticated?: (account: AccountId, metadata: Record<string, unknown>) => Record<string, string> | undefined) {
   const handle: LaunchHandle = { account: selectedAccount, endpoint: "ws://127.0.0.1:42001", capabilityToken: "transient", stop: vi.fn(async () => undefined) };
   const launch = vi.fn(async () => handle);
   const openTerminal = vi.fn(async () => undefined);
   const openLoginTerminal = vi.fn(async () => undefined);
   const launcher = { launch, openTerminal, openLoginTerminal, shutdown: vi.fn(async () => undefined) } as unknown as SuLauncher;
-  const client = { connect: vi.fn(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
+  const client = { connect: vi.fn<() => Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>>(async () => ({ account: { type: "chatgpt" }, requiresOpenaiAuth: false })), isConnected: vi.fn(() => true), readRateLimitWindows: vi.fn<() => Promise<RateLimitWindow[]>>(async () => []), close: vi.fn(async () => undefined) };
   const createClient = vi.fn(() => client);
   const credentialVersion = vi.fn<() => Promise<string | undefined>>(async () => "credential-v1");
-  const manager = new AccountManager({ launcher, createClient, codexBin: "/opt/homebrew/bin/codex", onRateLimitReadError, credentialVersion, now });
+  const manager = new AccountManager({
+    launcher,
+    createClient,
+    codexBin: "/opt/homebrew/bin/codex",
+    onRateLimitReadError,
+    credentialVersion,
+    now,
+    onAuthenticated,
+    ...(profileSlot ? { accountIds: () => [profileSlot.id], resolveSlot: (candidate: AccountId) => candidate === profileSlot.id ? profileSlot : undefined } : {}),
+  });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
 }
 
@@ -129,6 +138,22 @@ describe("AccountManager", () => {
     await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({ connection: "connected", authentication: "authenticated", errorCode: "USAGE_UNAVAILABLE" });
     expect(client.readRateLimitWindows).toHaveBeenCalledOnce();
     expect(handle.stop).not.toHaveBeenCalled();
+  });
+
+  it("retains an unauthenticated app-server for managed login instead of relaunching it", async () => {
+    const { manager, client, handle, launch } = fixture();
+    client.connect.mockResolvedValueOnce({ account: null, requiresOpenaiAuth: true });
+
+    await expect(manager.connect({ account, password: "bot-password" })).resolves.toMatchObject({
+      connection: "action_required",
+      authentication: "unauthenticated",
+      errorCode: "ACCOUNT_AUTH_REQUIRED",
+    });
+    await manager.connect({ account, password: "bot-password" });
+
+    expect(handle.stop).not.toHaveBeenCalled();
+    expect(launch).toHaveBeenCalledOnce();
+    expect(client.connect).toHaveBeenCalledOnce();
   });
 
   it("updates stale authentication after later usage failures and recovers after a successful probe", async () => {
@@ -331,6 +356,36 @@ describe("AccountManager", () => {
 
     expect(openLoginTerminal).toHaveBeenCalledWith(account, "/opt/homebrew/bin/codex");
     expect(openTerminal).not.toHaveBeenCalled();
+  });
+
+  it("uses the resolved secondary profile slot for terminal login and attachment", async () => {
+    const profile: CodexAccountSlot = {
+      id: "bot1/acc2",
+      macosUser: "bot1",
+      accountNumber: 2,
+      codexHome: "/Users/bot1/.swarm/codex-profiles/acc2",
+      workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2",
+    };
+    const { manager, openTerminal, openLoginTerminal, launch } = fixture(profile.id, undefined, undefined, profile);
+
+    await manager.openTerminal(profile.id);
+    await manager.connect({ account: profile.id, password: "bot-password" });
+    await manager.openTerminal(profile.id);
+
+    expect(openLoginTerminal).toHaveBeenCalledWith(profile, "/opt/homebrew/bin/codex");
+    expect(launch).toHaveBeenCalledWith({ account: profile.id, slot: profile, password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });
+    expect(openTerminal).toHaveBeenCalledWith(profile.id);
+  });
+
+  it("closes a newly connected profile and exposes an identity collision", async () => {
+    const collision = Object.assign(new Error("That ChatGPT identity is already connected"), { code: "IDENTITY_ALREADY_CONNECTED" });
+    const { manager, client, handle } = fixture(account, undefined, undefined, undefined, () => { throw collision; });
+
+    await expect(manager.connect({ account, password: "bot-password" })).rejects.toMatchObject({ code: "IDENTITY_ALREADY_CONNECTED" });
+
+    expect(client.close).toHaveBeenCalledOnce();
+    expect(handle.stop).toHaveBeenCalledOnce();
+    expect(manager.snapshot(account)).toMatchObject({ connection: "action_required", authentication: "unauthenticated", errorCode: "IDENTITY_ALREADY_CONNECTED" });
   });
 
   it("allows the coordinator to merge normalized non-secret account status", () => {

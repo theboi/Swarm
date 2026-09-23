@@ -1,7 +1,7 @@
 import {
-  BOT_ACCOUNT_IDS,
+  LOCAL_ACCOUNT_ID,
+  type AccountId,
   type AccountSnapshot,
-  type BotAccountId,
   type DispatchRecord,
   type TaskNode,
   type ThreadSummary,
@@ -9,7 +9,7 @@ import {
 
 export interface AutoPilotLaunch {
   taskId: string;
-  accountId: BotAccountId;
+  accountId: AccountId;
 }
 
 export function shouldAutoArchive(record: Pick<DispatchRecord, "origin" | "state"> | undefined, provenComplete: boolean): boolean {
@@ -67,7 +67,7 @@ export async function settleLaunchCompletion(dependencies: {
 
 /** Refresh once, then isolate failures and recheck each original pairing without reallocating it. */
 export async function reconcileAutoPilotLaunches(dependencies: {
-  refresh(): Promise<ReadonlySet<BotAccountId>>;
+  refresh(): Promise<ReadonlySet<AccountId>>;
   snapshot(): AutoPilotSnapshot;
   launch(pair: AutoPilotLaunch): Promise<unknown>;
   log(error: Error): void;
@@ -75,7 +75,7 @@ export async function reconcileAutoPilotLaunches(dependencies: {
   const refreshedAccounts = await dependencies.refresh();
   const eligibleSnapshot = (): AutoPilotSnapshot => {
     const current = dependencies.snapshot();
-    return { ...current, accounts: current.accounts.filter((account) => refreshedAccounts.has(account.id as BotAccountId)) };
+    return { ...current, accounts: current.accounts.filter((account) => refreshedAccounts.has(account.id)) };
   };
   const launches = selectAutoPilotLaunches(eligibleSnapshot());
   const results = await Promise.allSettled(launches.map(async (pair) => {
@@ -142,14 +142,17 @@ export function selectAutoPilotLaunches(input: {
   threads: ThreadSummary[];
 }): AutoPilotLaunch[] {
   const occupied = new Set(input.threads.filter((thread) => !thread.archived).map((thread) => thread.accountId));
-  const idleBots = BOT_ACCOUNT_IDS.filter((id) => {
-    const account = input.accounts.find((candidate) => candidate.id === id);
-    return account?.connection === "connected"
-      && account.authentication === "authenticated"
-      && !occupied.has(id);
-  });
+  const idleBots = input.accounts.filter((account) => account.id !== LOCAL_ACCOUNT_ID
+    && account.connection === "connected"
+    && account.authentication === "authenticated"
+    && !occupied.has(account.id)).sort((left, right) => accountOrder(left.id) - accountOrder(right.id));
   const ready = input.tasks.filter((task) => task.readiness.state === "ready");
-  return ready.slice(0, idleBots.length).map((task, index) => ({ taskId: task.id, accountId: idleBots[index] }));
+  return ready.slice(0, idleBots.length).map((task, index) => ({ taskId: task.id, accountId: idleBots[index].id }));
+}
+
+function accountOrder(accountId: AccountId): number {
+  const match = /^bot([1-8])(?:\/acc([1-9][0-9]*))?$/.exec(accountId);
+  return match ? Number(match[1]) * 10_000 + Number(match[2] ?? 1) : Number.MAX_SAFE_INTEGER;
 }
 
 export interface AutoPilotDependencies {

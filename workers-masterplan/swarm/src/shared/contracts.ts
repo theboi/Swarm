@@ -1,10 +1,50 @@
 import type { ApiResult } from "./errors.js";
 
-export const BOT_ACCOUNT_IDS = ["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as const;
-export type BotAccountId = (typeof BOT_ACCOUNT_IDS)[number];
+export const MACOS_BOT_IDS = ["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as const;
+export type MacosBotId = (typeof MACOS_BOT_IDS)[number];
+/** @deprecated Use MacosBotId for the physical user. */
+export type BotAccountId = MacosBotId;
+/** @deprecated Use MACOS_BOT_IDS for the physical user. */
+export const BOT_ACCOUNT_IDS = MACOS_BOT_IDS;
+export type BotProfileAccountId = `${MacosBotId}/acc${number}`;
 export const LOCAL_ACCOUNT_ID = "claudiothe" as const;
 export const ACCOUNT_IDS = [LOCAL_ACCOUNT_ID, ...BOT_ACCOUNT_IDS] as const;
-export type AccountId = (typeof ACCOUNT_IDS)[number];
+/** @deprecated Legacy durable state is normalized to botN/acc1 at load boundaries. */
+export type LegacyBotAccountId = MacosBotId;
+export type AccountId = typeof LOCAL_ACCOUNT_ID | BotProfileAccountId | LegacyBotAccountId;
+
+export interface CodexAccountSlot {
+  id: BotProfileAccountId;
+  macosUser: MacosBotId;
+  accountNumber: number;
+  codexHome: string;
+  workspaceRoot: string;
+}
+
+export interface ProfileLoginChallenge {
+  accountId: BotProfileAccountId;
+  loginId: string;
+  method: "device_code" | "same_mac_browser";
+  verificationUrl: string;
+  userCode?: string;
+  expiresAt: number;
+}
+
+export interface PrimaryProfileState {
+  macosUser: MacosBotId;
+  primaryAccountId: BotProfileAccountId | null;
+  mode: "managed" | "legacy_primary" | "error";
+}
+
+export function isMacosBotId(value: unknown): value is MacosBotId {
+  return typeof value === "string" && (MACOS_BOT_IDS as readonly string[]).includes(value);
+}
+
+export function isBotProfileAccountId(value: unknown): value is BotProfileAccountId {
+  if (typeof value !== "string") return false;
+  const match = /^(bot[1-8])\/acc([1-9][0-9]*)$/.exec(value);
+  return match !== null && isMacosBotId(match[1]);
+}
 
 export type AccountConnectionState =
   | "disconnected"
@@ -39,8 +79,24 @@ export interface LocalWorkspaceSnapshot {
   gitSync: GitSyncStatus;
 }
 
+export interface AccountIdentityDisplay {
+  email?: string;
+  workspace?: string;
+  planType?: string;
+}
+
 export interface AccountSnapshot {
   id: AccountId;
+  /** Defined for logical bot profile accounts, never for the local coordinator. */
+  macosUser?: MacosBotId;
+  /** Defined for logical bot profile accounts, never for the local coordinator. */
+  accountNumber?: number;
+  /** The checkout root is public, but Codex credential paths are never exposed. */
+  workspaceRoot?: string;
+  /** Derived from the managed primary symlink or legacy primary path. */
+  isPrimary?: boolean;
+  /** Non-secret identity metadata returned by Codex after authentication. */
+  identityDisplay?: AccountIdentityDisplay;
   connection: AccountConnectionState;
   authentication: AccountAuthenticationState;
   rateLimits: RateLimitWindow[];

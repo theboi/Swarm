@@ -74,4 +74,16 @@ describe("ApprovalRouter", () => {
       pending: expect.objectContaining({ requestedPermissions }),
     }));
   });
+
+  it("binds a profile approval scope to its explicit workspace", async () => {
+    const profileRoot = "/Users/bot1/Dev/EdenMind-acc2";
+    const router = new ApprovalRouter({
+      context: createApprovalContext({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: profileRoot }),
+      journal: { append: async () => undefined, waitForDecision: async () => ({ kind: "decline" }) },
+      filesystem: { async realpath(path) { if (path !== profileRoot) throw new Error("ENOENT"); return path; } },
+    });
+
+    await expect(router.handle({ id: "profile-approval", method: "item/commandExecution/requestApproval", params: { threadId: "thread-1", command: "git pull", cwd: profileRoot } })).resolves.toEqual({ decision: "accept" });
+    expect(router.account).toBe("bot1/acc2");
+  });
 });

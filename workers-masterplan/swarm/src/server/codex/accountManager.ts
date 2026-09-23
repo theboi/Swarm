@@ -1,8 +1,6 @@
-import { ACCOUNT_IDS, type AccountId, type AccountSnapshot, type RateLimitWindow } from "../../shared/contracts.js";
+import { ACCOUNT_IDS, type AccountId, type AccountSnapshot, type CodexAccountSlot, type RateLimitWindow } from "../../shared/contracts.js";
 import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 import { codexLoginCommand } from "./terminalConsole.js";
-
-const ACCOUNTS = new Set<AccountId>(ACCOUNT_IDS);
 
 export interface ManagedAppServerClient {
   connect(): Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>;
@@ -18,6 +16,12 @@ export interface AccountManagerOptions {
   onRateLimitReadError?: (account: AccountId, error: unknown) => void;
   credentialVersion?: (account: AccountId) => Promise<string | undefined>;
   now?: () => number;
+  /** Immutable registry-derived list for this runtime; defaults only for legacy bootstraps. */
+  accountIds?: () => AccountId[];
+  resolveSlot?: (account: AccountId) => CodexAccountSlot | undefined;
+  /** Validates and registers an authenticated account before it becomes schedulable. */
+  onAuthenticated?: (account: AccountId, metadata: Record<string, unknown>) => AccountSnapshot["identityDisplay"] | undefined;
+  onDisconnected?: (account: AccountId) => void;
 }
 
 export interface ConnectAccountInput {
@@ -25,7 +29,7 @@ export interface ConnectAccountInput {
   password?: string;
 }
 
-type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient };
+type ManagedConnection = { handle: LaunchHandle; client: ManagedAppServerClient; preAuth: boolean };
 
 function isExpiredAuthentication(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -34,6 +38,12 @@ function isExpiredAuthentication(error: unknown): boolean {
   return structured.code === 401
     || /token[_ -]?expired|provided authentication token is expired/i.test(`${message} ${metadata}`)
     || /(?:\b401\b.{0,80}\bunauthorized\b|\bunauthorized\b.{0,80}\b401\b)/i.test(message);
+}
+
+function explicitErrorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
 }
 
 /** Tracks the one app-server process permitted for each macOS account. */
@@ -51,11 +61,11 @@ export class AccountManager {
 
   connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
-    if (!ACCOUNTS.has(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
+    if (!this.accountIds().includes(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
     const existing = this.connections.get(input.account);
-    if (existing?.client.isConnected() && this.requireSnapshot(input.account).authentication === "authenticated") return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing?.client.isConnected() && (this.requireSnapshot(input.account).authentication === "authenticated" || existing.preAuth)) return Promise.resolve(this.requireSnapshot(input.account));
 
     const connecting = (async () => {
       if (existing) await this.closeConnection(input.account);
@@ -71,7 +81,7 @@ export class AccountManager {
   }
 
   snapshotsList(): AccountSnapshot[] {
-    return ACCOUNT_IDS.map((account) => this.requireSnapshot(account));
+    return this.accountIds().map((account) => this.requireSnapshot(account));
   }
 
   /** Returns a live app-server client only after account authentication completed. */
@@ -80,9 +90,16 @@ export class AccountManager {
     return this.connections.get(account)?.client;
   }
 
+  /** Keeps the profile-scoped transport available while interactive login is pending. */
+  preAuthClient(account: AccountId): ManagedAppServerClient | undefined {
+    const connection = this.connections.get(account);
+    return connection?.client.isConnected() ? connection.client : undefined;
+  }
+
   async openTerminal(account: AccountId): Promise<void> {
+    const target = this.terminalTarget(account);
     if (this.connections.has(account) && this.requireSnapshot(account).authentication === "authenticated") await this.options.launcher.openTerminal(account);
-    else await this.options.launcher.openLoginTerminal(account, this.options.codexBin);
+    else await this.options.launcher.openLoginTerminal(target, this.options.codexBin);
   }
 
   onChange(listener: (snapshot: AccountSnapshot) => void): () => void {
@@ -90,7 +107,7 @@ export class AccountManager {
     return () => this.listeners.delete(listener);
   }
 
-  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange">): AccountSnapshot {
+  updateSnapshot(account: AccountId, patch: Pick<Partial<AccountSnapshot>, "rateLimits" | "activeTurns" | "lastAssignedAt" | "errorCode" | "gitSync" | "hasBreakingChange" | "identityDisplay">): AccountSnapshot {
     return this.setSnapshot(account, patch);
   }
 
@@ -104,9 +121,20 @@ export class AccountManager {
     });
   }
 
+  markAuthenticated(account: AccountId, identityDisplay: AccountSnapshot["identityDisplay"]): AccountSnapshot {
+    return this.setSnapshot(account, {
+      connection: "connected",
+      authentication: "authenticated",
+      identityDisplay,
+      terminalCommand: undefined,
+      errorCode: undefined,
+    });
+  }
+
   recordRateLimitReadFailure(account: AccountId, error: unknown): AccountSnapshot {
     this.options.onRateLimitReadError?.(account, error);
     if (!isExpiredAuthentication(error)) return this.setSnapshot(account, { errorCode: "USAGE_UNAVAILABLE" });
+    this.options.onDisconnected?.(account);
     const delay = this.recoveryRetryDelayMs.get(account) ?? 30_000;
     this.recoveryRetryAt.set(account, (this.options.now?.() ?? Date.now()) + delay);
     this.recoveryRetryDelayMs.set(account, Math.min(delay * 2, 15 * 60_000));
@@ -140,10 +168,23 @@ export class AccountManager {
     this.setSnapshot(account, { connection: "disconnected", authentication: "unknown", terminalCommand: undefined, errorCode: undefined });
   }
 
+  /** Closes a profile connection when an external identity guard rejects it. */
+  async rejectAuthentication(account: AccountId, errorCode = "IDENTITY_ALREADY_CONNECTED"): Promise<void> {
+    await this.closeConnection(account);
+    this.setSnapshot(account, {
+      connection: "action_required",
+      authentication: "unauthenticated",
+      identityDisplay: undefined,
+      errorCode,
+      terminalCommand: this.manualLoginCommand(account),
+    });
+  }
+
   private async closeConnection(account: AccountId): Promise<void> {
     const connection = this.connections.get(account);
     this.connections.delete(account);
     if (connection) {
+      this.options.onDisconnected?.(account);
       await connection.client.close();
       await connection.handle.stop();
     }
@@ -157,16 +198,28 @@ export class AccountManager {
 
   private async open(input: ConnectAccountInput): Promise<AccountSnapshot> {
     let handle: LaunchHandle | undefined;
+    let client: ManagedAppServerClient | undefined;
+    let identityRegistered = false;
     try {
       this.credentialVersions.set(input.account, await this.readCredentialVersion(input.account));
-      handle = await this.options.launcher.launch({ account: input.account, password: input.password, codexBin: this.options.codexBin });
-      const client = this.options.createClient(handle);
+      const slot = this.options.resolveSlot?.(input.account);
+      handle = await this.options.launcher.launch({ account: input.account, ...(slot ? { slot } : {}), password: input.password, codexBin: this.options.codexBin });
+      client = this.options.createClient(handle);
       const account = await client.connect();
-      if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
-      if (typeof account.account.planType === "string" && account.account.planType.trim().toLowerCase() === "free") {
-        await client.close();
-        throw new Error("PAID_PLAN_REQUIRED");
+      if (!account.account) {
+        this.connections.set(input.account, { handle, client, preAuth: true });
+        return this.setSnapshot(input.account, {
+          connection: "action_required",
+          authentication: "unauthenticated",
+          errorCode: "ACCOUNT_AUTH_REQUIRED",
+          terminalCommand: this.manualLoginCommand(input.account),
+        });
       }
+      if (typeof account.account.planType === "string" && account.account.planType.trim().toLowerCase() === "free") {
+        throw Object.assign(new Error("PAID_PLAN_REQUIRED"), { code: "PAID_PLAN_REQUIRED" });
+      }
+      const identityDisplay = this.options.onAuthenticated?.(input.account, account.account);
+      identityRegistered = true;
       let rateLimits = this.requireSnapshot(input.account).rateLimits;
       let rateLimitError: unknown;
       try {
@@ -174,36 +227,49 @@ export class AccountManager {
       } catch (error) {
         rateLimitError = error;
       }
-      this.connections.set(input.account, { handle, client });
+      this.connections.set(input.account, { handle, client, preAuth: false });
       if (rateLimitError !== undefined) {
-        this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, terminalCommand: undefined });
+        this.setSnapshot(input.account, { connection: "connected", authentication: "authenticated", rateLimits, identityDisplay, terminalCommand: undefined });
         return this.recordRateLimitReadFailure(input.account, rateLimitError);
       }
       const snapshot = this.recordRateLimitReadSuccess(input.account, rateLimits);
+      if (identityDisplay) this.updateSnapshot(input.account, { identityDisplay });
       this.recoveryRetryAt.delete(input.account);
       this.recoveryRetryDelayMs.delete(input.account);
       return snapshot;
     } catch (error) {
+      await client?.close().catch(() => undefined);
       await handle?.stop();
-      const errorCode = error instanceof Error && error.message === "PAID_PLAN_REQUIRED" ? "PAID_PLAN_REQUIRED" : "ACCOUNT_AUTH_REQUIRED";
+      if (identityRegistered) this.options.onDisconnected?.(input.account);
+      const errorCode = explicitErrorCode(error) ?? "ACCOUNT_AUTH_REQUIRED";
       this.setSnapshot(input.account, {
         connection: "action_required",
         authentication: "unauthenticated",
+        identityDisplay: undefined,
         errorCode,
         rateLimits: [],
-        terminalCommand: errorCode === "ACCOUNT_AUTH_REQUIRED" ? this.manualLoginCommand(input.account) : undefined,
+        terminalCommand: errorCode === "PAID_PLAN_REQUIRED" ? undefined : this.manualLoginCommand(input.account),
       });
-      throw new Error(errorCode);
+      if (errorCode === "IDENTITY_ALREADY_CONNECTED" || errorCode === "PAID_PLAN_REQUIRED") throw error;
+      throw new Error("ACCOUNT_AUTH_REQUIRED");
     }
   }
 
   private manualLoginCommand(account: AccountId): string {
-    return codexLoginCommand(account, this.options.codexBin);
+    return codexLoginCommand(this.terminalTarget(account), this.options.codexBin);
+  }
+
+  private terminalTarget(account: AccountId): AccountId | CodexAccountSlot {
+    return this.options.resolveSlot?.(account) ?? account;
   }
 
   private async readCredentialVersion(account: AccountId): Promise<string | undefined> {
     try { return await this.options.credentialVersion?.(account); }
     catch { return undefined; }
+  }
+
+  private accountIds(): AccountId[] {
+    return [...(this.options.accountIds?.() ?? ACCOUNT_IDS)];
   }
 
   private requireSnapshot(account: AccountId): AccountSnapshot {

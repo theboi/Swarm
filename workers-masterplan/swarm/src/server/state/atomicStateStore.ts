@@ -4,11 +4,11 @@ import { configuredSecretValues, type SwarmConfig } from "../config/config.js";
 
 const SECRET_KEY = /(?:password|secret|token|authorization|cookie|credential)/i;
 
-function containsSecret(value: unknown, secretValues: readonly string[], key = ""): boolean {
+export function containsSecretLikeValue(value: unknown, secretValues: readonly string[] = [], key = ""): boolean {
   if (SECRET_KEY.test(key)) return true;
   if (typeof value === "string" && secretValues.some((secret) => secret.length > 0 && value.includes(secret))) return true;
-  if (Array.isArray(value)) return value.some((item) => containsSecret(item, secretValues));
-  if (value && typeof value === "object") return Object.entries(value).some(([childKey, childValue]) => containsSecret(childValue, secretValues, childKey));
+  if (Array.isArray(value)) return value.some((item) => containsSecretLikeValue(item, secretValues));
+  if (value && typeof value === "object") return Object.entries(value).some(([childKey, childValue]) => containsSecretLikeValue(childValue, secretValues, childKey));
   return false;
 }
 
@@ -27,7 +27,7 @@ export class AtomicStateStore<T extends Record<string, unknown>> {
     }
   }
   async write(value: T): Promise<void> {
-    if (containsSecret(value, this.io.secretValues ?? [])) throw new Error("Refusing secret-like value in durable state");
+    if (containsSecretLikeValue(value, this.io.secretValues ?? [])) throw new Error("Refusing secret-like value in durable state");
     await mkdir(dirname(this.path), { recursive: true });
     const temporary = `${this.path}.${process.pid}.${Date.now()}.tmp`;
     const data = JSON.stringify(value);

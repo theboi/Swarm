@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { TaskNode } from "../../shared/contracts.js";
 
 import { executionLaunchMetadata, taskArtifactLaunchMetadata } from "./launchMetadata.js";
+import { launchGitMetadata } from "./launchGitMetadata.js";
 
 describe("execution launch metadata", () => {
+  it("uses a profile slot's explicit checkout for launch Git metadata", () => {
+    expect(launchGitMetadata({ id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind" })).toMatchObject({
+      edenmindClonePath: "/Users/bot1/Dev/EdenMind",
+    });
+  });
+
   it("uses the planning-gate receipt and pinned commit rather than blank placeholders", () => {
     const gate = {
       id: "G0",

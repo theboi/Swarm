@@ -14,6 +14,7 @@ function fixture() {
     throttle: new LoginThrottle(),
     verifyTotp: { verify: async () => false },
     openTerminal,
+    resolveAccountId: (value: string) => value === "bot1/acc2" ? value : value === "bot1" || value === "claudiothe" ? value : undefined,
     allowedOrigins: () => new Set(["http://127.0.0.1:4310", "http://100.90.80.70:4310"]),
   } as unknown as CoordinatorRouteServices;
   return { app: createTerminalControlApp(services), sessions, openTerminal };
@@ -32,6 +33,19 @@ describe("terminal controller", () => {
 
     expect(openTerminal).toHaveBeenNthCalledWith(1, "bot1");
     expect(openTerminal).toHaveBeenNthCalledWith(2, "claudiothe");
+  });
+
+  it("accepts a registry-backed secondary profile on the terminal control port", async () => {
+    const { app, sessions, openTerminal } = fixture();
+    const token = await sessions.createSession("claudio@example.test");
+
+    await request(app).post("/api/v1/accounts/bot1%2Facc2/terminal")
+      .set("origin", "http://127.0.0.1:4310")
+      .set("cookie", `swarm_session=${token}`)
+      .send({})
+      .expect(200, { data: {} });
+
+    expect(openTerminal).toHaveBeenCalledWith("bot1/acc2");
   });
 
   it("rejects unauthenticated, foreign-origin preflight, and unknown-account requests", async () => {

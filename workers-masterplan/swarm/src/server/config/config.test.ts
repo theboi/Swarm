@@ -42,6 +42,7 @@ describe("loadConfig", () => {
     expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
     expect(config.host).toBe("0.0.0.0");
     expect(config.codexBin).toBe("/Applications/ChatGPT.app/Contents/Resources/codex");
+    expect(config.repositoryUrl).toBe("https://github.com/theboi/EdenMind.git");
     expect(config.terminalPort).toBe(config.port + 1);
   });
 
@@ -111,6 +112,7 @@ describe("loadConfig", () => {
     });
 
     expect(config.codexBin).toBe("/custom/codex");
+    expect(config.repositoryUrl).toBe("https://github.com/theboi/EdenMind.git");
     expect(config.trustManagedProxy).toBe(false);
     expect(config.publicConfig()).not.toContain("/custom/codex");
   });

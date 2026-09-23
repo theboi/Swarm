@@ -82,4 +82,16 @@ describe("BrowserHub", () => {
     expect(code).toBe(1011);
     expect(failures).toEqual([expect.objectContaining({ message: "snapshot unavailable" })]);
   });
+
+  it("publishes all primary-switch account snapshots in one event", async () => {
+    const http = createServer();
+    const hub = new BrowserHub({ server: http, sessions: new SessionStore("session-secret"), allowedOrigins: () => new Set(["http://127.0.0.1:4310"]), snapshot: async () => snapshot });
+    const event = hub.publishAccountSnapshots([
+      { id: "bot1/acc1", macosUser: "bot1", accountNumber: 1, isPrimary: false, connection: "disconnected", authentication: "unknown", rateLimits: [], activeTurns: 0, lastAssignedAt: null },
+      { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, isPrimary: true, connection: "disconnected", authentication: "unknown", rateLimits: [], activeTurns: 0, lastAssignedAt: null },
+    ]);
+
+    expect(event).toMatchObject({ sequence: 1, type: "account", payload: { accounts: [{ id: "bot1/acc1", isPrimary: false }, { id: "bot1/acc2", isPrimary: true }] } });
+    await hub.close();
+  });
 });

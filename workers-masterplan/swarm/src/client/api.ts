@@ -1,12 +1,15 @@
 import type {
   ApiResult,
+  AccountSnapshot,
   AutoPilotState,
+  BotProfileAccountId,
   ChatExecutionSettings,
   ChatModelOption,
   CoordinatorSnapshot,
   DispatchRecord,
   LaunchAccountOption,
   PendingApproval,
+  MacosBotId,
   TaskNode,
   ThreadSummary,
   TranscriptItem,
@@ -22,12 +25,23 @@ export interface LaunchPreview {
   accounts?: LaunchAccountOption[];
 }
 export interface MarkdownDocument { filename: string; content: string; }
+export interface ProfileLoginResponse {
+  accountId: BotProfileAccountId;
+  method: "device_code" | "same_mac_browser";
+  verificationUrl: string;
+  userCode?: string;
+  expiresAt: number;
+}
 
 export interface CoordinatorApi {
   getSession(): Promise<SessionState>;
   getSnapshot(): Promise<CoordinatorSnapshot>;
   setAutoPilot(enabled: boolean): Promise<ApiResult<AutoPilotState>>;
   setLimitResumeEnabled(accountId: string, threadId: string, enabled: boolean): Promise<ApiResult<{ enabled: boolean }>>;
+  makePrimary(accountId: BotProfileAccountId): Promise<ApiResult<AccountSnapshot[]>>;
+  addAccount(bot: MacosBotId): Promise<ApiResult<AccountSnapshot>>;
+  startAccountLogin(accountId: BotProfileAccountId, method: ProfileLoginResponse["method"]): Promise<ApiResult<ProfileLoginResponse>>;
+  cancelAccountLogin(accountId: BotProfileAccountId): Promise<ApiResult<unknown>>;
   startLogin(input: { email: string; password: string }): Promise<ApiResult<LoginChallenge>>;
   completeLogin(input: { challengeId: string; code: string }): Promise<ApiResult<SessionState>>;
   previewLaunch(taskId: string, accountId?: string, pass?: "planning" | "execution"): Promise<ApiResult<LaunchPreview>>;
@@ -92,6 +106,10 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
     setAutoPilot: (enabled) => request<AutoPilotState>("/auto-pilot", { method: "POST", body: JSON.stringify({ enabled }) }),
     setLimitResumeEnabled: (accountId, threadId, enabled) => request<{ enabled: boolean }>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/limit-resume`, { method: "POST", body: JSON.stringify({ enabled }) }),
+    makePrimary: (accountId) => request<AccountSnapshot[]>(`/accounts/${encodeURIComponent(accountId)}/primary`, { method: "POST" }),
+    addAccount: (bot) => request<AccountSnapshot>(`/bots/${encodeURIComponent(bot)}/accounts`, { method: "POST" }),
+    startAccountLogin: (accountId, method) => request<ProfileLoginResponse>(`/accounts/${encodeURIComponent(accountId)}/login`, { method: "POST", body: JSON.stringify({ method }) }),
+    cancelAccountLogin: (accountId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/login/cancel`, { method: "POST" }),
     startLogin: (input) => request<LoginChallenge>("/auth/challenge", { method: "POST", body: JSON.stringify(input) }),
     completeLogin: (input) => request<SessionState>("/auth/complete", { method: "POST", body: JSON.stringify(input) }),
     previewLaunch: (taskId, accountId, pass) => request<LaunchPreview>(`/tasks/${encodeURIComponent(taskId)}/preview`, { method: "POST", body: JSON.stringify({ ...(accountId ? { accountId } : {}), ...(pass ? { pass } : {}) }) }),

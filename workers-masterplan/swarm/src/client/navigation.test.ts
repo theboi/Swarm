@@ -29,4 +29,13 @@ describe("navigation", () => {
       canonicalPath: "/?file=src%2Fclient%2FApp.tsx&account=bot3",
     });
   });
+
+  it("preserves a validated logical profile account in a file query", () => {
+    expect(parseAppRoute({ pathname: "/", search: "?file=src%2Fclient%2FApp.tsx&account=bot1%2Facc2" })).toEqual({
+      page: "chats",
+      openFilePath: "src/client/App.tsx",
+      fileAccountId: "bot1/acc2",
+      canonicalPath: "/?file=src%2Fclient%2FApp.tsx&account=bot1%2Facc2",
+    });
+  });
 });

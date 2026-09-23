@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
+async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; loginVerificationUrl?: string; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -53,6 +53,7 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
     if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
+    if (message.method === "account/login/start") reply({ loginId: "login-1", verificationUrl: options.loginVerificationUrl ?? "https://auth.example.test/device", userCode: "ABCD-EFGH" });
     if (message.method === "thread/resume" && options.threadResumeError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadResumeError } }));
     else if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
     if (message.method === "turn/start" && options.turnStartErrorOnce && !turnStartFailed) {
@@ -135,6 +136,48 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("retains an unauthenticated transport for login while rejecting all work methods", async () => {
+    const rpc = {
+      connect: vi.fn(async () => undefined),
+      initializeAndReadAccount: vi.fn(async () => ({ account: null, requiresOpenaiAuth: true })),
+      request: vi.fn(async (method: string) => {
+        if (method === "account/login/start") return { loginId: "login-1", verificationUrl: "https://auth.example.test/device", userCode: "ABCD-EFGH" };
+        if (method === "account/login/cancel") return {};
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+      close: vi.fn(async () => undefined),
+      isConnected: vi.fn(() => true),
+      installApprovalHandler: vi.fn(),
+      onDisconnect: vi.fn(),
+      onNotification: vi.fn(),
+    };
+    const router = new ApprovalRouter({
+      context: createApprovalContext(account),
+      journal: { append: async () => undefined, waitForDecision: async () => ({ kind: "cancel" as const }) },
+      filesystem: approvalFilesystem,
+    });
+    const client = new AppServerClient({ account, rpc: rpc as unknown as JsonRpcClient, approvalRouter: router });
+
+    await expect(client.connect()).resolves.toEqual({ account: null, requiresOpenaiAuth: true });
+    await expect(client.startDeviceLogin()).resolves.toMatchObject({ accountId: "bot1/acc1", loginId: "login-1", method: "device_code", userCode: "ABCD-EFGH" });
+    await expect(client.startBrowserLogin()).resolves.toMatchObject({ accountId: "bot1/acc1", loginId: "login-1", method: "same_mac_browser" });
+    await client.cancelLogin("login-1");
+    await expect(client.listModels()).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    await expect(client.startThread()).rejects.toThrow("ACCOUNT_AUTH_REQUIRED");
+    expect(() => client.readRateLimits()).toThrow("ACCOUNT_AUTH_REQUIRED");
+    expect(rpc.close).not.toHaveBeenCalled();
+    expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgptDeviceCode" });
+    expect(rpc.request).toHaveBeenCalledWith("account/login/start", { type: "chatgpt" });
+    expect(rpc.request).toHaveBeenCalledWith("account/login/cancel", { loginId: "login-1" });
+  });
+
+  it("rejects a non-HTTPS verification URL before it reaches the dashboard", async () => {
+    const client = await readyClient({ loginVerificationUrl: "javascript:alert(1)" });
+
+    await expect(client.startDeviceLogin()).rejects.toThrow("DEVICE_AUTH_UNAVAILABLE");
+    await client.close();
+  });
+
   it("installs the approval router before work and keeps a human-required v2 request within that policy boundary", async () => {
     const client = await readyClient();
     server!.send({
@@ -179,6 +222,7 @@ describe("AppServerClient", () => {
       expect(start.params).toEqual({
         ...(start.method === "thread/resume" ? { threadId: "thread-1" } : {}),
         cwd,
+        ...(start.method === "thread/start" ? { threadSource: "user" } : {}),
         approvalPolicy: "untrusted",
         approvalsReviewer: "user",
         sandbox: "workspace-write",
@@ -371,7 +415,7 @@ describe("AppServerClient", () => {
 
     const start = server!.received.find((message) => message.method === "thread/start");
     const turn = server!.received.find((message) => message.method === "turn/start");
-    expect(start?.params).toMatchObject({ cwd: localWorkspace });
+    expect(start?.params).toMatchObject({ cwd: localWorkspace, threadSource: "user" });
     expect(turn?.params).toMatchObject({ cwd: localWorkspace, sandboxPolicy: { writableRoots: [localWorkspace] } });
     await client.close();
   });

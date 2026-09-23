@@ -1,8 +1,71 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { validateTaskManifest, type AutoPilotState } from "./contracts";
+import {
+  isBotProfileAccountId,
+  isMacosBotId,
+  validateTaskManifest,
+  type AccountSnapshot,
+  type AutoPilotState,
+} from "./contracts";
+import type { SwarmErrorCode } from "./errors";
 
 const autoPilot: AutoPilotState = { enabled: false };
+
+describe("Codex profile slot contracts", () => {
+  it("accepts only allowlisted logical bot profile IDs", () => {
+    expect(isMacosBotId("bot1")).toBe(true);
+    expect(isMacosBotId("bot9")).toBe(false);
+    expect(isBotProfileAccountId("bot1/acc1")).toBe(true);
+    expect(isBotProfileAccountId("bot1")).toBe(false);
+    expect(isBotProfileAccountId("bot9/acc1")).toBe(false);
+    expect(isBotProfileAccountId("bot1/acc0")).toBe(false);
+  });
+
+  it("keeps profile path and authentication internals out of public account snapshots", () => {
+    const snapshot: AccountSnapshot = {
+      id: "bot1/acc1",
+      macosUser: "bot1",
+      accountNumber: 1,
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
+      isPrimary: true,
+      identityDisplay: { email: "operator@example.com", workspace: "Personal", planType: "plus" },
+      connection: "connected",
+      authentication: "authenticated",
+      rateLimits: [],
+      activeTurns: 0,
+      lastAssignedAt: null,
+    };
+
+    expect(snapshot).toMatchObject({
+      id: "bot1/acc1",
+      macosUser: "bot1",
+      accountNumber: 1,
+      workspaceRoot: "/Users/bot1/Dev/EdenMind",
+      isPrimary: true,
+      identityDisplay: { email: "operator@example.com", workspace: "Personal", planType: "plus" },
+    });
+    expect(snapshot).not.toHaveProperty("codexHome");
+    expectTypeOf<AccountSnapshot>().not.toHaveProperty("codexHome");
+  });
+
+  it("defines every profile-management error code exposed by the API", () => {
+    const codes: SwarmErrorCode[] = [
+      "ACCOUNT_OFFLINE",
+      "DESKTOP_APP_RUNNING",
+      "PRIMARY_PROFILE_CONFLICT",
+      "PRIMARY_SWITCH_FAILED",
+      "PROFILE_AUTH_ISOLATION_UNAVAILABLE",
+      "PROFILE_SETUP_FAILED",
+      "DEVICE_AUTH_UNAVAILABLE",
+      "LOGIN_EXPIRED",
+      "LOGIN_CANCELLED",
+      "IDENTITY_ALREADY_CONNECTED",
+      "PROFILE_REGISTRY_INVALID",
+    ];
+
+    expect(codes).toHaveLength(11);
+  });
+});
 
 const validManifest = {
   blueprintId: "2026-08-14-mvp3",

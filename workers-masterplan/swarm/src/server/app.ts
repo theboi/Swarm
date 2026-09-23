@@ -36,7 +36,7 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
   if (dependencies.staticDir) {
     const staticDir = resolve(dependencies.staticDir);
     app.use(express.static(staticDir, { index: "index.html", fallthrough: true }));
-    app.use((_request, response) => response.sendFile(resolve(staticDir, "index.html")));
+    app.use((_request, response) => response.sendFile("index.html", { root: staticDir }));
   }
   const server = createServer(app);
   const terminalServer = createServer(createTerminalControlApp(dependencies.services));

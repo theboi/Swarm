@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 
-import type { CoordinatorEvent, CoordinatorSnapshot } from "../../shared/contracts.js";
+import type { AccountSnapshot, CoordinatorEvent, CoordinatorSnapshot } from "../../shared/contracts.js";
 import { readCookie, SESSION_COOKIE } from "../http/authMiddleware.js";
 import { isAllowedDashboardOrigin } from "../http/dashboardOrigins.js";
 import type { SessionStore } from "../auth/sessionStore.js";
@@ -50,6 +50,13 @@ export class BrowserHub {
       socket.send(serialized);
     }
     return event;
+  }
+
+  /** Emits every changed profile for one atomic primary-switch transaction together. */
+  publishAccountSnapshots(accounts: AccountSnapshot[]): CoordinatorEvent {
+    return this.publish("account", {
+      accounts: accounts.map((account) => ({ ...account, rateLimits: account.rateLimits.map((window) => ({ ...window })) })),
+    });
   }
 
   async close(): Promise<void> {

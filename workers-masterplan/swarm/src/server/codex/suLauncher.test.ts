@@ -22,9 +22,12 @@ class FakeChild extends EventEmitter implements SpawnedPty {
   }
 }
 
-function launcherFixture() {
+function launcherFixture(options: { profileVisible?: boolean; autoPrompt?: boolean } = {}) {
   const child = new FakeChild();
-  const spawn = vi.fn(() => child);
+  const spawn = vi.fn(() => {
+    if (options.autoPrompt) queueMicrotask(() => child.emit("data", "Password:"));
+    return child;
+  });
   const release = vi.fn(async () => undefined);
   const kill = vi.fn();
   const waitForReady = vi.fn(async () => undefined);
@@ -33,7 +36,7 @@ function launcherFixture() {
   const launcher = new SuLauncher({
     spawnPty: spawn,
     allocatePort: async () => ({ port: 45123, release }),
-    pathExists: async (path) => path === "/Users/bot1/.codex" || path === "/Users/claudiothe/.codex",
+    pathExists: async (path) => path === "/Users/bot1/.codex" || (options.profileVisible !== false && path === "/Users/bot1/.swarm/codex-profiles/acc2") || path === "/Users/claudiothe/.codex",
     verifyCodexBinary,
     waitForReady,
     killProcessGroup: kill,
@@ -49,6 +52,38 @@ async function waitForSpawn(spawn: ReturnType<typeof vi.fn>) {
 }
 
 describe("SuLauncher", () => {
+  it("launches an isolated slot when its owner-only profile directory is not visible to the coordinator", async () => {
+    const { launcher, spawn } = launcherFixture({ profileVisible: false, autoPrompt: true });
+
+    const handle = await launcher.launch({
+      slot: { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" },
+      password: "bot-password",
+      codexBin: "/opt/homebrew/bin/codex",
+    });
+
+    expect(spawn).toHaveBeenCalledOnce();
+    await handle.stop();
+  });
+
+  it("launches bot1/acc2 through bot1 with an explicit isolated CODEX_HOME", async () => {
+    const { launcher, child, spawn } = launcherFixture();
+    const launching = launcher.launch({
+      slot: { id: "bot1/acc2", macosUser: "bot1", accountNumber: 2, codexHome: "/Users/bot1/.swarm/codex-profiles/acc2", workspaceRoot: "/Users/bot1/Dev/EdenMind-acc2" },
+      password: "bot-password",
+      codexBin: "/opt/homebrew/bin/codex",
+    });
+
+    await waitForSpawn(spawn);
+    const command = ((spawn.mock.calls[0] as unknown as [string, string[]])[1][3]) as string;
+    expect(spawn).toHaveBeenCalledWith("/usr/bin/su", ["-", "bot1", "-c", expect.any(String)], expect.any(Object));
+    expect(command).toContain("swarm-bot1-acc2");
+    expect(command).toContain("/Users/bot1/.swarm/tmux/swarm.sock");
+    expect(command).toMatch(/CODEX_HOME=.*\/Users\/bot1\/\.swarm\/codex-profiles\/acc2/);
+    expect(command).not.toContain("bot-password");
+    child.emit("data", "Password:");
+    await (await launching).stop();
+  });
+
   it("runs only an allowlisted account in a real PTY and a named tmux session, writing its password only after a prompt", async () => {
     const { launcher, child, spawn, waitForReady, verifyCodexBinary } = launcherFixture();
     const launching = launcher.launch({ account: "bot1", password: "bot-password", codexBin: "/opt/homebrew/bin/codex" });

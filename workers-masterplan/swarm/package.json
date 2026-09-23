@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "smoke:app-server": "tsx scripts/smoke-app-server.ts",
+    "profiles:migrate": "tsx scripts/migrate-profile.ts",
+    "profiles:setup": "tsx scripts/setup-profile.ts",
     "auth:hash": "tsx scripts/hash-password.ts",
     "auth:totp": "tsx scripts/generate-totp-secret.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",

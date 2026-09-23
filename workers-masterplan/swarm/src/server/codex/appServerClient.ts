@@ -1,7 +1,16 @@
-import type { AccountId, ChatExecutionSettings, ChatModelOption, RateLimitWindow } from "../../shared/contracts.js";
+import {
+  isBotProfileAccountId,
+  isMacosBotId,
+  type AccountId,
+  type BotProfileAccountId,
+  type ChatExecutionSettings,
+  type ChatModelOption,
+  type ProfileLoginChallenge,
+  type RateLimitWindow,
+} from "../../shared/contracts.js";
 import type { ApprovalRouter } from "./approvalRouter.js";
 import { JsonRpcClient } from "./jsonRpcClient.js";
-import { safeThreadSettings, safeTurnSettings, workspaceRoot } from "./protocol.js";
+import { safeThreadResumeSettings, safeThreadSettings, safeTurnSettings, workspaceRoot } from "./protocol.js";
 import {
   hydrateTranscript,
   initialTranscriptState,
@@ -52,6 +61,16 @@ export interface NormalizedAppServerEvent {
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function isHttpsVerificationUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
 }
 
 function turnLimitExhausted(value: unknown): boolean {
@@ -118,9 +137,8 @@ export class AppServerClient {
     try {
       await this.rpc.connect();
       const account = await this.rpc.initializeAndReadAccount<AccountReadResult>();
-      if (!account.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
       this.accountInfo = account;
-      await this.recoverTrackedTranscripts();
+      if (account.account) await this.recoverTrackedTranscripts();
       return account;
     } catch (error) {
       await this.rpc.close().catch(() => undefined);
@@ -142,6 +160,30 @@ export class AppServerClient {
   onEvent(listener: (event: NormalizedAppServerEvent) => void): () => void {
     this.eventListeners.add(listener);
     return () => this.eventListeners.delete(listener);
+  }
+
+  /** Re-reads authentication after an account/login notification without starting work. */
+  async readAccount(): Promise<AccountReadResult> {
+    this.requireTransport();
+    const account = await this.rpc.request<AccountReadResult>("account/read", {});
+    this.accountInfo = account;
+    return account;
+  }
+
+  async startDeviceLogin(): Promise<ProfileLoginChallenge> {
+    const response = await this.rpc.request<unknown>("account/login/start", { type: "chatgptDeviceCode" });
+    return this.normalizeLoginChallenge(response, "device_code");
+  }
+
+  async startBrowserLogin(): Promise<ProfileLoginChallenge> {
+    const response = await this.rpc.request<unknown>("account/login/start", { type: "chatgpt" });
+    return this.normalizeLoginChallenge(response, "same_mac_browser");
+  }
+
+  async cancelLogin(loginId: string): Promise<void> {
+    this.requireTransport();
+    if (!loginId || /[\r\n\0]/.test(loginId)) throw new Error("LOGIN_CANCELLED");
+    await this.rpc.request("account/login/cancel", { loginId });
   }
 
   async listAllThreads(): Promise<Array<Record<string, unknown>>> {
@@ -200,7 +242,7 @@ export class AppServerClient {
 
   async resumeThread(threadId: string): Promise<Record<string, unknown>> {
     this.requireReady();
-    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadSettings(this.account, this.workspaceRootOverride) });
+    const response = await this.rpc.request<Record<string, unknown>>("thread/resume", { threadId, ...safeThreadResumeSettings(this.account, this.workspaceRootOverride) });
     this.assertSafeThreadEcho(response);
     this.unloadedThreadIds.delete(threadId);
     return response;
@@ -336,6 +378,27 @@ export class AppServerClient {
 
   private requireReady(): void {
     if (!this.accountInfo) throw new Error("App-server client is not initialized");
+    if (!this.accountInfo.account) throw new Error("ACCOUNT_AUTH_REQUIRED");
+  }
+
+  private requireTransport(): void {
+    if (!this.accountInfo || !this.rpc.isConnected()) throw new Error("ACCOUNT_AUTH_REQUIRED");
+  }
+
+  private normalizeLoginChallenge(value: unknown, method: ProfileLoginChallenge["method"]): ProfileLoginChallenge {
+    this.requireTransport();
+    const response = object(value);
+    const loginId = typeof response?.loginId === "string" ? response.loginId : undefined;
+    const verificationUrl = typeof response?.verificationUrl === "string"
+      ? response.verificationUrl
+      : typeof response?.url === "string" ? response.url : undefined;
+    const userCode = typeof response?.userCode === "string" ? response.userCode : undefined;
+    if (!loginId || !isHttpsVerificationUrl(verificationUrl) || (method === "device_code" && !userCode)) throw new Error("DEVICE_AUTH_UNAVAILABLE");
+    const accountId = isBotProfileAccountId(this.account)
+      ? this.account
+      : isMacosBotId(this.account) ? `${this.account}/acc1` as BotProfileAccountId : undefined;
+    if (!accountId) throw new Error("DEVICE_AUTH_UNAVAILABLE");
+    return { accountId, loginId, method, verificationUrl, ...(userCode ? { userCode } : {}), expiresAt: Date.now() + 600_000 };
   }
 
   private assertSafeThreadEcho(response: Record<string, unknown>): void {
@@ -408,6 +471,7 @@ export class AppServerClient {
     else if (notification.method.startsWith("thread/")) this.emit({ type: "thread", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, state: notification.method.slice("thread/".length) });
     else if (notification.method === "account/rateLimits/updated") this.emit({ type: "rate_limit", accountId: this.account, state: "updated" });
     else if (notification.method === "account/updated") this.emit({ type: "account", accountId: this.account, state: "updated" });
+    else if (notification.method === "account/login/completed") this.emit({ type: "account", accountId: this.account, state: "login_completed" });
     if (notification.method === "item/completed" && isBreakingChangeHandoff(recordParams.item)) this.emit({ type: "breaking_change", accountId: this.account, threadId: typeof threadId === "string" ? threadId : undefined, turnId, state: "reported" });
     if (typeof threadId !== "string" || !this.trackedThreadIds.has(threadId)) return;
     this.transcript = reduceTranscriptEvent(this.transcript, {

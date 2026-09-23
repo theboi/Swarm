@@ -1,8 +1,13 @@
+import { normalizePersistedAccountIds } from "../accounts/legacyAccountMigration.js";
+
 /** A single in-memory durable document with one mutation queue shared by every runtime service. */
 export class CoordinatorState<T extends Record<string, unknown> = Record<string, unknown>> {
   private queue = Promise.resolve();
+  private readonly data: T;
 
-  constructor(private readonly data: T, private readonly write: (value: T) => Promise<void>) {}
+  constructor(data: T, private readonly write: (value: T) => Promise<void>) {
+    this.data = normalizePersistedAccountIds(data);
+  }
 
   root(): T { return this.data; }
   snapshot(): T { return structuredClone(this.data); }

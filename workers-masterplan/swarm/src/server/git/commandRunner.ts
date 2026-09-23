@@ -2,8 +2,10 @@ import { spawn as spawnChildProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
 import { fileURLToPath } from "node:url";
 
-import { LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId } from "../../shared/contracts.js";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type BotAccountId, type CodexAccountSlot } from "../../shared/contracts.js";
+import { PROFILE_WORKER_READY } from "../accounts/profileWorkerProtocol.js";
 import { GitMergeConflictError } from "./sync.js";
+import { JSON_RESULT_PREFIX, JSON_RESULT_WORKER_READY } from "./jsonResultWorkerProtocol.js";
 
 function quote(value: string): string {
   if (!value || value.includes("\0")) throw new Error("Invalid Git command value");
@@ -35,6 +37,15 @@ export interface BotPtyProcess {
 
 export type SpawnBotPty = (file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }) => BotPtyProcess;
 export type RunBotCommand = (account: BotAccountId, password: string, command: string) => Promise<number>;
+
+function legacyWorkspaceRoot(macosUser: BotAccountId): string {
+  return `/Users/${macosUser}/Dev/EdenMind`;
+}
+
+function botWorkspace(account: Exclude<AccountId, typeof LOCAL_ACCOUNT_ID> | CodexAccountSlot): { macosUser: BotAccountId; workspaceRoot: string } | undefined {
+  if (typeof account !== "string") return { macosUser: account.macosUser, workspaceRoot: account.workspaceRoot };
+  return isMacosBotId(account) ? { macosUser: account, workspaceRoot: legacyWorkspaceRoot(account) } : undefined;
+}
 
 const spawnManagedBotPty: SpawnBotPty = (file, args, options) => {
   const child = spawnPty(file, args, options);
@@ -96,6 +107,132 @@ export function runBotPtyCommand(account: BotAccountId, password: string, comman
   });
 }
 
+/**
+ * Starts a fixed worker as the bot user. The password is sent only to su's PTY
+ * prompt; worker input is a separate JSON line and must not contain the password.
+ */
+export function runBotPtyJsonWorker(account: BotAccountId, password: string, workerPath: string, payload: { codexHome: string; workspaceRoot: string; repositoryUrl: string }, spawnBotPty: SpawnBotPty = spawnManagedBotPty): Promise<void> {
+  if (!workerPath.startsWith("/") || !password) return Promise.reject(new Error("Profile setup could not start"));
+  const input = JSON.stringify(payload);
+  if (input.includes(password)) return Promise.reject(new Error("Profile setup input must not contain a password"));
+  const command = `${quote(process.execPath)} ${quote(workerPath)}`;
+  return new Promise((resolve, reject) => {
+    let prompted = false;
+    let inputSent = false;
+    let settled = false;
+    let tail = "";
+    let timer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const child = spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: "/tmp",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      try { child.dispose(); } catch { /* descriptor already closed */ }
+      if (error) reject(error);
+      else resolve();
+    };
+    timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } finally { finish(new Error("Profile setup timed out")); }
+    }, 120_000);
+    timer.unref();
+    dataSubscription = child.onData((data) => {
+      tail = `${tail}${data}`.slice(-256);
+      if (!prompted) {
+        if (!/Password:/i.test(tail)) return;
+        prompted = true;
+        tail = "";
+        child.write(`${password}\r`);
+        return;
+      }
+      if (inputSent || !tail.includes(PROFILE_WORKER_READY)) return;
+      inputSent = true;
+      child.write(`${input}\n`);
+    });
+    exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 ? undefined : new Error(exitCode === 65 ? "PROFILE_AUTH_ISOLATION_UNAVAILABLE" : "Profile setup failed")));
+  });
+}
+
+/** Runs a fixed bot-owned worker and captures exactly one marker-prefixed JSON result. */
+export function runBotPtyJsonResultWorker(account: BotAccountId, password: string, workerPath: string, payload: Record<string, unknown>, spawnBotPty: SpawnBotPty = spawnManagedBotPty): Promise<unknown> {
+  if (!workerPath.startsWith("/") || !password) return Promise.reject(new Error("Bot worker could not start"));
+  const input = JSON.stringify(payload);
+  if (input.includes(password)) return Promise.reject(new Error("Bot worker input must not contain a password"));
+  const command = `${quote(process.execPath)} ${quote(workerPath)}`;
+  return new Promise((resolve, reject) => {
+    let prompted = false;
+    let inputSent = false;
+    let settled = false;
+    let hasResult = false;
+    let result: unknown;
+    let output = "";
+    let tail = "";
+    let timer: NodeJS.Timeout | undefined;
+    let dataSubscription: { dispose(): void } | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const child = spawnBotPty("/usr/bin/su", ["-", account, "-c", command], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: "/tmp",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      dataSubscription?.dispose();
+      exitSubscription?.dispose();
+      try { child.dispose(); } catch { /* descriptor already closed */ }
+      if (error) reject(error);
+      else resolve(result);
+    };
+    timer = setTimeout(() => {
+      try { child.kill("SIGTERM"); } finally { finish(new Error("Bot worker timed out")); }
+    }, 30_000);
+    timer.unref();
+    dataSubscription = child.onData((data) => {
+      tail = `${tail}${data}`.slice(-512);
+      if (!prompted) {
+        if (!/Password:/i.test(tail)) return;
+        prompted = true;
+        tail = "";
+        child.write(`${password}\r`);
+        return;
+      }
+      if (!inputSent) {
+        if (!tail.includes(JSON_RESULT_WORKER_READY)) return;
+        inputSent = true;
+        tail = "";
+        child.write(`${input}\n`);
+        return;
+      }
+      output += data.replaceAll("\r", "");
+      if (output.length > 70 * 1024 * 1024) return finish(new Error("Bot worker result is too large"));
+      const marker = output.indexOf(JSON_RESULT_PREFIX);
+      if (marker < 0) return;
+      const end = output.indexOf("\n", marker);
+      if (end < 0) return;
+      try {
+        result = JSON.parse(output.slice(marker + JSON_RESULT_PREFIX.length, end));
+        hasResult = true;
+      } catch {
+        finish(new Error("Bot worker returned invalid JSON"));
+      }
+    });
+    exitSubscription = child.onExit(({ exitCode }) => finish(exitCode === 0 && hasResult ? undefined : new Error("Bot worker failed")));
+  });
+}
+
 const runBotCommandInIsolatedProcess: RunBotCommand = (account, password, command) => new Promise((resolve, reject) => {
   const worker = spawnChildProcess(process.execPath, [fileURLToPath(new URL("./botGitWorker.js", import.meta.url))], { stdio: ["pipe", "ignore", "ignore"] });
   let settled = false;
@@ -144,20 +281,22 @@ export class GitCommandRunner {
     throw new Error("Git synchronization failed");
   }
 
-  async pullAccount(account: AccountId): Promise<void | "skipped"> {
+  async pullAccount(account: AccountId | CodexAccountSlot): Promise<void | "skipped"> {
     if (account === LOCAL_ACCOUNT_ID) return this.pullLocal();
-    const password = this.passwords[account];
+    const target = botWorkspace(account);
+    if (!target) return "skipped";
+    const password = this.passwords[target.macosUser];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");
-    const root = quote(`/Users/${account}/Dev/EdenMind`);
+    const root = quote(target.workspaceRoot);
     const command = `${git} -C ${root} pull --no-rebase --no-edit origin main; pull_code=$?; if [ "$pull_code" -eq 0 ]; then exit 0; fi; ${git} -C ${root} diff --quiet --diff-filter=U; conflict_code=$?; if [ "$conflict_code" -eq 1 ]; then exit 86; fi; exit "$pull_code"`;
-    const exitCode = await this.runAsBotExitCode(account, password, command);
+    const exitCode = await this.runAsBotExitCode(target.macosUser, password, command);
     if (exitCode === 86) throw new GitMergeConflictError();
     if (exitCode !== 0) throw new Error("Git synchronization failed");
   }
 
   /** Checkpoints all workspace changes and pushes them before a limit stop or account handoff. */
-  async checkpointAndPush(account: AccountId): Promise<void | "skipped"> {
+  async checkpointAndPush(account: AccountId | CodexAccountSlot): Promise<void | "skipped"> {
     const message = "chore: checkpoint swarm handoff";
     if (account === LOCAL_ACCOUNT_ID) {
       await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "add", "-A"], { stdio: "ignore" }));
@@ -176,18 +315,20 @@ export class GitCommandRunner {
       await waitForExit(spawnChildProcess("/usr/bin/git", ["-C", this.workspaceRoot, "push", "origin", "HEAD:main"], { stdio: "ignore" }));
       return;
     }
-    const password = this.passwords[account];
+    const target = botWorkspace(account);
+    if (!target) return "skipped";
+    const password = this.passwords[target.macosUser];
     if (!password) return "skipped";
     const git = quote("/usr/bin/git");
-    const root = quote(`/Users/${account}/Dev/EdenMind`);
+    const root = quote(target.workspaceRoot);
     const checkpoint = `${git} -C ${root} add -A && (${git} -C ${root} diff --cached --quiet || ${git} -C ${root} commit -m ${quote(message)})`;
     const rebase = `${git} -C ${root} fetch origin main && (${git} -C ${root} rebase origin/main || { ${git} -C ${root} rebase --abort >/dev/null 2>&1 || true; exit 86; })`;
-    await this.runAsBot(account, password, `${checkpoint} && ${rebase} && ${git} -C ${root} push origin HEAD:main`);
+    await this.runAsBot(target.macosUser, password, `${checkpoint} && ${rebase} && ${git} -C ${root} push origin HEAD:main`);
   }
 
   async pushBot(account: BotAccountId): Promise<void | "skipped"> {
     const password = this.passwords[account];
     if (!password) return "skipped";
-    await this.runAsBot(account, password, `${quote("/usr/bin/git")} -C ${quote(`/Users/${account}/Dev/EdenMind`)} push origin main`);
+    await this.runAsBot(account, password, `${quote("/usr/bin/git")} -C ${quote(legacyWorkspaceRoot(account))} push origin main`);
   }
 }

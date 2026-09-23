@@ -1,15 +1,8 @@
-import { execFile } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
+import { gunzipSync } from "node:zlib";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
-import { LocalJsonlHandoffTransport } from "./localHandoffTransport.js";
 import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
-
-const run = promisify(execFile);
 
 function summary(accountId: AccountId, id: string): ThreadSummary {
   return {
@@ -25,9 +18,10 @@ function summary(accountId: AccountId, id: string): ThreadSummary {
 function target(startTurn: JsonlContinuationTarget["startTurn"] = vi.fn(async () => ({}))): JsonlContinuationTarget & { startTurn: typeof startTurn } {
   return {
     startThread: vi.fn(async () => ({ id: "target-thread" })),
+    writeFile: vi.fn(async () => undefined),
     setThreadName: vi.fn(async () => undefined),
     startTurn,
-  } as JsonlContinuationTarget & { startTurn: typeof startTurn };
+  };
 }
 
 function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonlInput {
@@ -39,8 +33,7 @@ function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonl
     targetAccountId: "bot1",
     targetWorkspace: "/Users/bot1/Dev/EdenMind",
     clientUserMessageId: "handoff-message",
-    readJsonl: vi.fn(async () => Buffer.from("{\"type\":\"session_meta\"}\n")),
-    copyJsonl: vi.fn(async () => ({ filename: "swarm-handoff-bot3-0123456789ab.jsonl", path: "/Users/bot1/Dev/EdenMind/swarm-handoff-bot3-0123456789ab.jsonl" })),
+    readJsonl: vi.fn(async () => "{\"type\":\"session_meta\"}\n"),
     target: vi.fn(async () => continuationTarget),
     normalizeThread: (source) => summary("bot1", String(source.id)),
     claimResume: vi.fn(async () => undefined),
@@ -54,10 +47,24 @@ function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonl
 }
 
 describe("createJsonlContinuation", () => {
-  it("creates a target-only continuation from a local handoff file without app-server file writes", async () => {
+  it("attaches a large rollout as compressed base64 text without dropping content", async () => {
+    const sourceJsonl = '{"type":"event_msg","payload":{"text":"large chat"}}\n'.repeat(40_000);
     const continuationTarget = target();
-    const sourceJsonl = Buffer.from("{\"type\":\"session_meta\"}\n");
-    const copyJsonl = vi.fn(async () => ({ filename: "swarm-handoff-bot3-0123456789ab.jsonl", path: "/Users/bot5/Dev/EdenMind/swarm-handoff-bot3-0123456789ab.jsonl" }));
+    await createJsonlContinuation({
+      sourceAccountId: "bot1/acc1", sourceThreadId: "source-thread", sourceName: "Large chat",
+      targetAccountId: "bot3/acc1", targetWorkspace: "/Users/bot3/Dev/EdenMind",
+      jsonl: sourceJsonl, clientUserMessageId: "handoff-large", target: continuationTarget,
+      normalizeThread: (source) => summary("bot3/acc1", String(source.id)),
+    });
+    const [path, compressed] = (continuationTarget.writeFile as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string];
+    expect(path).toMatch(/\.jsonl\.gz\.b64$/);
+    expect(compressed.length).toBeLessThan(sourceJsonl.length / 10);
+    expect(gunzipSync(Buffer.from(compressed, "base64")).toString("utf8")).toBe(sourceJsonl);
+    expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Decode"), attachments: [{ name: expect.stringMatching(/\.jsonl\.gz\.b64$/), path }] }));
+  });
+  it("creates a target-only continuation with the exact source JSONL attached", async () => {
+    const continuationTarget = target();
+    const sourceJsonl = "{\"type\":\"session_meta\"}\n";
 
     const result = await createJsonlContinuation({
       sourceAccountId: "bot3",
@@ -67,17 +74,19 @@ describe("createJsonlContinuation", () => {
       targetWorkspace: "/Users/bot5/Dev/EdenMind",
       jsonl: sourceJsonl,
       clientUserMessageId: "handoff-message",
-      copyJsonl,
       target: continuationTarget,
       normalizeThread: (source) => summary("bot5", String(source.id)),
     });
 
-    expect(copyJsonl).toHaveBeenCalledWith(expect.objectContaining({ jsonl: sourceJsonl }));
+    expect(continuationTarget.writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(/swarm-handoff-bot3-[a-f0-9]{12}\.jsonl$/),
+      sourceJsonl,
+    );
     expect(continuationTarget.setThreadName).toHaveBeenCalledWith("target-thread", "(Handoff) Build the release");
     expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       threadId: "target-thread",
       clientUserMessageId: "handoff-message",
-      attachments: [{ name: "swarm-handoff-bot3-0123456789ab.jsonl", path: "/Users/bot5/Dev/EdenMind/swarm-handoff-bot3-0123456789ab.jsonl" }],
+      attachments: [expect.objectContaining({ name: expect.stringMatching(/\.jsonl$/) })],
       text: expect.stringContaining("source account bot3"),
     }));
     expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({
@@ -95,9 +104,8 @@ describe("createJsonlContinuation", () => {
       sourceName: null,
       targetAccountId: "bot5",
       targetWorkspace: "/Users/bot5/Dev/EdenMind",
-      jsonl: Buffer.from("{\"type\":\"session_meta\"}\n"),
+      jsonl: "{\"type\":\"session_meta\"}\n",
       clientUserMessageId: "handoff-message",
-      copyJsonl: vi.fn(async () => ({ filename: "handoff.jsonl", path: "/Users/bot5/Dev/EdenMind/handoff.jsonl" })),
       target: continuationTarget,
       normalizeThread: (source) => summary("bot5", String(source.id)),
       queuedMessages: "Please run the release checks.",
@@ -106,6 +114,25 @@ describe("createJsonlContinuation", () => {
     expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       text: expect.stringContaining("Please run the release checks."),
     }));
+  });
+
+  it("keeps a profile ID in handoff attribution without placing its slash in the attachment filename", async () => {
+    const continuationTarget = target();
+
+    await createJsonlContinuation({
+      sourceAccountId: "bot1/acc2",
+      sourceThreadId: "source-thread",
+      sourceName: null,
+      targetAccountId: "bot1/acc1",
+      targetWorkspace: "/Users/bot1/Dev/EdenMind",
+      jsonl: "{\"type\":\"session_meta\"}\n",
+      clientUserMessageId: "handoff-message",
+      target: continuationTarget,
+      normalizeThread: (source) => summary("bot1/acc1", String(source.id)),
+    });
+
+    expect(continuationTarget.writeFile).toHaveBeenCalledWith(expect.stringMatching(/swarm-handoff-bot1-acc2-[a-f0-9]{12}\.jsonl$/), expect.any(String));
+    expect(continuationTarget.startTurn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("source account bot1/acc2") }));
   });
 
   it("propagates a target start-turn error", async () => {
@@ -118,101 +145,17 @@ describe("createJsonlContinuation", () => {
       sourceName: "Build the release",
       targetAccountId: "bot5",
       targetWorkspace: "/Users/bot5/Dev/EdenMind",
-      jsonl: Buffer.from("{\"type\":\"session_meta\"}\n"),
+      jsonl: "{\"type\":\"session_meta\"}\n",
       clientUserMessageId: "handoff-message",
-      copyJsonl: vi.fn(async () => ({ filename: "handoff.jsonl", path: "/Users/bot5/Dev/EdenMind/handoff.jsonl" })),
       target: continuationTarget,
       normalizeThread: (source) => summary("bot5", String(source.id)),
     })).rejects.toBe(targetError);
-  });
-
-  it("removes local staging but retains the target handoff when target startup fails", async () => {
-    const root = await mkdtemp(join(tmpdir(), "swarm-continuation-"));
-    const localWorkspace = join(root, "coordinator");
-    const stagingRoot = join(localWorkspace, ".data", "handoffs");
-    const targetWorkspace = join(root, "bot5", "Dev", "EdenMind");
-    await mkdir(localWorkspace, { recursive: true });
-    await mkdir(targetWorkspace, { recursive: true });
-    await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
-    await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
-    const targetError = new Error("target turn rejected");
-    const transport = new LocalJsonlHandoffTransport({
-      stagingRoot,
-      workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
-      passwords: { bot5: "target-password" },
-      copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
-      grantTargetAccess: async () => undefined,
-      revokeTargetAccess: async () => undefined,
-    });
-
-    try {
-      await expect(createJsonlContinuation({
-        sourceAccountId: "bot3",
-        sourceThreadId: "source-thread",
-        sourceName: "Build the release",
-        targetAccountId: "bot5",
-        targetWorkspace,
-        jsonl: Buffer.from("{\"type\":\"session_meta\"}\n"),
-        clientUserMessageId: "handoff-message",
-        copyJsonl: (input) => transport.copyJsonl(input),
-        target: target(vi.fn(async () => { throw targetError; })),
-        normalizeThread: (source) => summary("bot5", String(source.id)),
-      })).rejects.toBe(targetError);
-
-      expect(await readdir(stagingRoot)).toEqual([]);
-      expect(await readdir(targetWorkspace)).toContainEqual(expect.stringMatching(/^swarm-handoff-bot3-[a-f0-9]{12}-[a-f0-9-]{36}\.jsonl$/));
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("retries a continuation after target startup failure with a fresh target-owned handoff", async () => {
-    const root = await mkdtemp(join(tmpdir(), "swarm-continuation-retry-"));
-    const localWorkspace = join(root, "coordinator");
-    const stagingRoot = join(localWorkspace, ".data", "handoffs");
-    const targetWorkspace = join(root, "bot5", "Dev", "EdenMind");
-    await mkdir(localWorkspace, { recursive: true });
-    await mkdir(targetWorkspace, { recursive: true });
-    await run("/usr/bin/git", ["init", "-q", targetWorkspace]);
-    await writeFile(join(targetWorkspace, ".gitignore"), "swarm-handoff-*.jsonl\n");
-    const transport = new LocalJsonlHandoffTransport({
-      stagingRoot,
-      workspaceFor: (account) => account === "claudiothe" ? localWorkspace : targetWorkspace,
-      passwords: { bot5: "target-password" },
-      copyAsTarget: async ({ sourcePath, targetPath }) => copyFile(sourcePath, targetPath),
-      grantTargetAccess: async () => undefined,
-      revokeTargetAccess: async () => undefined,
-    });
-
-    const continuationInput = (continuationTarget: JsonlContinuationTarget) => ({
-      sourceAccountId: "bot3" as const,
-      sourceThreadId: "source-thread",
-      sourceName: "Build the release",
-      targetAccountId: "bot5" as const,
-      targetWorkspace,
-      jsonl: Buffer.from("{\"type\":\"session_meta\"}\n"),
-      clientUserMessageId: "handoff-message",
-      copyJsonl: (input: { sourceAccountId: AccountId; sourceThreadId: string; targetAccountId: AccountId; targetWorkspace: string; jsonl: Buffer }) => transport.copyJsonl(input),
-      target: continuationTarget,
-      normalizeThread: (source: Record<string, unknown>) => summary("bot5", String(source.id)),
-    });
-
-    try {
-      await expect(createJsonlContinuation(continuationInput(target(vi.fn(async () => { throw new Error("target turn rejected"); }))))).rejects.toThrow("target turn rejected");
-      await expect(createJsonlContinuation(continuationInput(target()))).resolves.toEqual(expect.objectContaining({ accountId: "bot5" }));
-
-      const handoffs = (await readdir(targetWorkspace)).filter((filename) => filename.startsWith("swarm-handoff-bot3-"));
-      expect(handoffs).toHaveLength(2);
-      expect(handoffs[0]).not.toBe(handoffs[1]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
   });
 });
 
 describe("moveWithJsonl", () => {
   it("moves from cached source metadata with the source rollout read directly from JSONL", async () => {
-    const readJsonl = vi.fn(async () => Buffer.from("{\"type\":\"session_meta\"}\n"));
+    const readJsonl = vi.fn(async () => "{\"type\":\"session_meta\"}\n");
 
     await expect(moveWithJsonl(moveFixture({
       sourceAccountId: "bot3",
