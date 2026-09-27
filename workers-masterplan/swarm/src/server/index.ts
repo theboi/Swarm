@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { spawn as spawnPty } from "node-pty";
 
 import { isBotProfileAccountId, isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type AutoPilotState, type BotProfileAccountId, type ChatExecutionSettings, type CodexAccountSlot, type CoordinatorSnapshot, type DispatchRecord, type HealthSnapshot, type LimitResumeRecord, type LocalWorkspaceSnapshot, type MacosBotId, type ManifestPass, type RateLimitWindow, type TaskManifest, type TaskNode, type TaskReadiness, type ThreadSummary, type WorkerAssignmentRecord } from "../shared/contracts.js";
+import { DESKTOP_APPLICATION_PROCESS_PATTERN } from "./accounts/desktopProcessDetector.js";
 import { LoginCoordinator } from "./accounts/loginCoordinator.js";
 import { PrimaryProfileManager } from "./accounts/primaryProfileManager.js";
 import { restorePrimaryProfileState } from "./accounts/primaryProfileState.js";
@@ -97,7 +98,7 @@ function responseThread(value: unknown): Record<string, unknown> { const respons
 /** Fails closed: an indeterminate Desktop process state must never permit a primary symlink swap. */
 async function desktopRunningFor(bot: MacosBotId): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync("/usr/bin/pgrep", ["-u", bot, "-fl", "/Applications/(ChatGPT|Codex)\\.app/"]);
+    const { stdout } = await execFileAsync("/usr/bin/pgrep", ["-u", bot, "-fl", DESKTOP_APPLICATION_PROCESS_PATTERN]);
     return stdout.trim().length > 0;
   } catch (error) {
     return Number((error as NodeJS.ErrnoException).code) === 1 ? false : true;
