@@ -97,6 +97,31 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
 }
 
 describe("AppServerClient", () => {
+  it("hydrates a tracked transcript once and serves later live refreshes from its incremental cache", async () => {
+    const client = await readyClient();
+
+    await expect(client.readTranscript("thread-1")).resolves.toEqual([
+      expect.objectContaining({ id: "item-1", type: "agentMessage" }),
+    ]);
+    server!.send({
+      method: "item/completed",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        completedAtMs: 11_000,
+        item: { id: "item-2", type: "agentMessage", text: "live update" },
+      },
+    });
+    await vi.waitFor(() => expect(client.transcriptSnapshot().items).toContainEqual(expect.objectContaining({ id: "item-2" })));
+
+    await expect(client.readTranscript("thread-1")).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "item-1" }),
+      expect.objectContaining({ id: "item-2", payload: expect.objectContaining({ text: "live update" }) }),
+    ]));
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(1);
+    await client.close();
+  });
+
   it("replaces tracked transcripts from full history after reconnect without replaying stale output", async () => {
     threadHistory = [{
       id: "turn-1",

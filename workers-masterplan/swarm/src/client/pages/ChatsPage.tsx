@@ -332,6 +332,25 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, []);
 
   useEffect(() => {
+    const summaries = new Map(snapshot.threads.map((thread) => [`${thread.accountId}\u0000${thread.id}`, thread]));
+    setThreadsByAccount((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [candidateAccountId, accountThreads] of Object.entries(current) as Array<[AccountId, ThreadSummary[] | undefined]>) {
+        if (!accountThreads) continue;
+        const reconciled = accountThreads.map((thread) => {
+          const summary = summaries.get(`${candidateAccountId}\u0000${thread.id}`);
+          if (!summary || JSON.stringify(summary) === JSON.stringify(thread)) return thread;
+          changed = true;
+          return summary;
+        });
+        if (changed) next[candidateAccountId] = reconciled;
+      }
+      return changed ? next : current;
+    });
+  }, [snapshot.threads]);
+
+  useEffect(() => {
     if (!initialTarget) return;
     setPendingTarget(initialTarget);
     setAccountId(initialTarget.accountId);

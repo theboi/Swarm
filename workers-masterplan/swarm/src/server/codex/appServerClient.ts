@@ -233,6 +233,14 @@ export class AppServerClient {
     return response;
   }
 
+  async readTranscript(threadId: string) {
+    const scope = { accountId: this.account, threadId };
+    if (!this.trackedThreadIds.has(threadId) || transcriptRecoveryState(this.transcript, scope) !== "complete") {
+      await this.readThread(threadId, { includeTurns: true });
+    }
+    return this.transcriptSnapshot().items.filter((item) => item.threadId === threadId);
+  }
+
   async startThread(): Promise<Record<string, unknown>> {
     this.requireReady();
     const response = await this.rpc.request<Record<string, unknown>>("thread/start", safeThreadSettings(this.account, this.workspaceRootOverride));

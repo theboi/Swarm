@@ -21,7 +21,17 @@ describe("recoverThreadActivity", () => {
     expect(recovered).toMatchObject({ id: "thread-1", activity: "active", activeTurnId: "turn-live" });
   });
 
-  it("preserves authoritative app-server activity when rollout evidence is idle or unavailable", async () => {
+  it("clears stale app-server activity when the rollout definitively completed", async () => {
+    const recovered = await recoverThreadActivity(
+      { ...idleThread, activity: "active", activeTurnId: "turn-finished" },
+      { readRecentActivity: vi.fn(async () => ({ activity: "idle" as const, terminal: true })) },
+    );
+
+    expect(recovered).toMatchObject({ activity: "idle" });
+    expect(recovered).not.toHaveProperty("activeTurnId");
+  });
+
+  it("preserves authoritative app-server activity when rollout evidence is only stale or unavailable", async () => {
     const readRecentActivity = vi.fn(async () => ({ activity: "idle" as const }));
 
     await expect(recoverThreadActivity({ ...idleThread, activity: "active" }, { readRecentActivity })).resolves.toMatchObject({ activity: "active" });

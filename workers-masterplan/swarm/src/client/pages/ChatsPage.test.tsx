@@ -253,6 +253,21 @@ describe("ChatsPage", () => {
     expect(screen.getByText("Thinking", { selector: ".thread-picker__copy small" })).toBeVisible();
   });
 
+  it("reconciles the local chat summary when a completed turn changes the coordinator snapshot to idle", async () => {
+    setViewport(1440);
+    const activeSnapshot = { ...chatSnapshot, threads: chatSnapshot.threads.map((thread) => thread.id === "thread-1" ? { ...thread, activity: "active" as const, activeTurnId: "turn-live" } : thread) };
+    const idleSnapshot = { ...activeSnapshot, threads: activeSnapshot.threads.map((thread) => thread.id === "thread-1" ? { ...thread, activity: "idle" as const, activeTurnId: undefined } : thread) };
+    const chatApi = { ...api, listThreads: async (accountId: string) => ({ data: activeSnapshot.threads.filter((thread) => thread.accountId === accountId) }) };
+    const view = render(<ChatsPage snapshot={activeSnapshot} api={chatApi} />);
+    await screen.findByLabelText("Codex is thinking");
+
+    view.rerender(<ChatsPage snapshot={idleSnapshot} api={chatApi} />);
+
+    await waitFor(() => expect(screen.queryByLabelText("Codex is thinking")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", "Write a message…");
+  });
+
   it("steers an externally owned active turn using the turn ID recovered from its rollout", async () => {
     setViewport(1440);
     const user = userEvent.setup();

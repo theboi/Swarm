@@ -32,6 +32,7 @@ import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
 import { openMacOsTerminal } from "./codex/terminalConsole.js";
 import { workspaceRoot } from "./codex/protocol.js";
 import { normalizeThreadActivity, normalizeThreadCapabilities } from "./codex/threadCapabilities.js";
+import { applyThreadActivityEvent } from "./codex/threadActivityCache.js";
 import { recoverThreadActivity } from "./codex/threadActivityRecovery.js";
 import { createApprovalContext } from "./safety/approvalPolicy.js";
 import { loadConfig, type SwarmConfig } from "./config/config.js";
@@ -189,6 +190,11 @@ async function createRuntime(config: SwarmConfig) {
     log: (entry) => logger.info("suLauncher", entry),
   });
   const rolloutReaders = new Map<AccountId, LocalRolloutTranscriptReader>(accountIds.map((account) => [account, new LocalRolloutTranscriptReader(codexHomeForAccount(account))]));
+  const threadCache = new Map<AccountId, ThreadSummary[]>();
+  const cacheThreads = (id: AccountId, next: ThreadSummary[]) => {
+    threadCache.set(id, next.map((thread) => ({ ...thread, capabilities: { ...thread.capabilities } })));
+    return next;
+  };
   const privateRolloutWorkerPath = fileURLToPath(new URL("./codex/privateRolloutWorker.js", import.meta.url));
   const readRolloutJsonl = async (account: AccountId, threadId: string): Promise<string> => {
     const slot = slotFor(account);
@@ -283,6 +289,9 @@ async function createRuntime(config: SwarmConfig) {
       const client = new AppServerClient({ account: handle.account, workspaceRoot: localWorkspaceRoot, rpc: new JsonRpcClient({ launch: handle }), approvalRouter: new ApprovalRouter({ context: createApprovalContext(handle.account, localWorkspaceRoot), journal }), readLockedThread: (threadId: string) => rolloutReaders.get(handle.account)!.readThread(threadId) });
       client.onEvent((event) => {
         if (event.type === "breaking_change") recordBreakingChange(event.accountId);
+        if (event.type === "turn" && event.threadId) {
+          cacheThreads(event.accountId, applyThreadActivityEvent(threadCache.get(event.accountId) ?? [], event));
+        }
         if (event.type === "turn" && event.threadId && event.turnId && event.state === "started") {
           activeTurnIds.set(activeTurnKey(event.accountId, event.threadId), event.turnId);
           void assignments.markAssigned(event.accountId, event.threadId).catch((error) => logger.warn("assignments", { event: "mark_assigned_failed", error: error instanceof Error ? error.message : "failed" }));
@@ -447,11 +456,6 @@ async function createRuntime(config: SwarmConfig) {
     token: (id) => accounts.client(id),
   });
   const updateRateLimits = async (id: AccountId) => rateLimitRefresher.refresh(id);
-  const threadCache = new Map<AccountId, ThreadSummary[]>();
-  const cacheThreads = (id: AccountId, next: ThreadSummary[]) => {
-    threadCache.set(id, next.map((thread) => ({ ...thread, capabilities: { ...thread.capabilities } })));
-    return next;
-  };
   const upsertCachedThread = (thread: ThreadSummary) => {
     const current = threadCache.get(thread.accountId) ?? [];
     cacheThreads(thread.accountId, [thread, ...current.filter((candidate) => candidate.id !== thread.id)]);
@@ -764,7 +768,7 @@ async function createRuntime(config: SwarmConfig) {
       return outbox.get(record.id);
     },
     listThreads: threads,
-    readTranscript: async (id, threadId) => { const client = await liveClient(id); await client.readThread(threadId, { includeTurns: true }); return client.transcriptSnapshot().items.filter((item) => item.threadId === threadId); },
+    readTranscript: async (id, threadId) => (await liveClient(id)).readTranscript(threadId),
     startThread: async (id) => {
       const thread = asThread(id, responseThread(await (await liveClient(id)).startThread()), projectWorkspaceFor(id));
       upsertCachedThread(thread);

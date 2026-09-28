@@ -79,7 +79,7 @@ describe("LocalRolloutTranscriptReader", () => {
     await expect(new LocalRolloutTranscriptReader(root).readRecentActivity(threadId, now)).resolves.toEqual({ activity: "active", turnId: "turn-live" });
   });
 
-  it("does not recover aborted or stale rollout activity", async () => {
+  it("distinguishes definitive terminal rollout evidence from merely stale activity", async () => {
     const root = await mkdtemp(join(tmpdir(), "swarm-rollout-"));
     roots.push(root);
     const sessions = join(root, "sessions", "2026", "09", "09");
@@ -95,7 +95,7 @@ describe("LocalRolloutTranscriptReader", () => {
     await utimes(stalePath, (now - 10 * 60_000) / 1_000, (now - 10 * 60_000) / 1_000);
     const reader = new LocalRolloutTranscriptReader(root);
 
-    await expect(reader.readRecentActivity(abortedId, now)).resolves.toEqual({ activity: "idle" });
+    await expect(reader.readRecentActivity(abortedId, now)).resolves.toEqual({ activity: "idle", terminal: true });
     await expect(reader.readRecentActivity(staleId, now)).resolves.toEqual({ activity: "idle" });
   });
 

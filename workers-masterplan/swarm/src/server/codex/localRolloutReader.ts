@@ -95,11 +95,11 @@ export class LocalRolloutTranscriptReader {
     return readFile(await this.rolloutPath(threadId), "utf8");
   }
 
-  async readRecentActivity(threadId: string, now = Date.now()): Promise<{ activity: "active" | "idle"; turnId?: string } | undefined> {
+  async readRecentActivity(threadId: string, now = Date.now()): Promise<{ activity: "active" | "idle"; turnId?: string; terminal?: boolean } | undefined> {
     const result = await this.readThread(threadId);
     const latest = result.thread.turns.at(-1);
     if (!latest) return undefined;
-    if (latest.status !== "inProgress") return { activity: "idle" };
+    if (latest.status !== "inProgress") return { activity: "idle", terminal: true };
     const cached = this.cache.get(threadId);
     if (!cached) return undefined;
     const modifiedAt = (await stat(cached.path)).mtimeMs;
