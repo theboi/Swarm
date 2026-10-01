@@ -6,7 +6,6 @@ export function launchGitMetadata(accountId: AccountId | CodexAccountSlot, local
   return {
     checkoutMode: "independent_main_clone" as const,
     mainMutationLock: "not-applicable-for-independent-clones",
-    mainPushQueue: "swarm-main-push-queue",
     edenmindClonePath: workspaceRoot(accountId, localWorkspaceRoot),
   };
 }

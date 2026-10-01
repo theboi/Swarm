@@ -211,7 +211,7 @@ describe("task authority", () => {
   });
 
   it("renders the canonical template with exact worker values", async () => {
-    const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", plannedPrerequisites: "none", uiRequirementsPath: "not applicable", uiHandoffPath: "not applicable", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", mainPushQueue: "swarm-main-push-queue", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
+    const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", plannedPrerequisites: "none", uiRequirementsPath: "not applicable", uiHandoffPath: "not applicable", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
     expect(prompt).toContain("You are WORKER T0.");
     expect(prompt).toContain("finished WRITING SPEC AND IMPLEMENTATION PLANS");
     expect(prompt).toContain("Terra High/Xhigh");
@@ -233,7 +233,6 @@ describe("task authority", () => {
       implementationPlanPath: "docs/superpowers/plans/2026-08-14-mvp3/2026-08-26-c3-curriculum-ui.md",
       checkoutMode: "independent_main_clone" as const,
       mainMutationLock: "not-applicable-for-independent-clones",
-      mainPushQueue: "swarm-main-push-queue",
       edenmindClonePath: "/Users/bot8/Dev/EdenMind",
       ownedSurfaces: "Assigned task surfaces only",
       excludedSurfaces: "Other workers' owned surfaces",
@@ -278,7 +277,6 @@ describe("task authority", () => {
       uiHandoffPath: "docs/design/handoffs/pd.md",
       checkoutMode: "independent_main_clone" as const,
       mainMutationLock: "not-applicable-for-independent-clones",
-      mainPushQueue: "swarm-main-push-queue",
       edenmindClonePath: "/Users/bot3/Dev/EdenMind",
       ownedSurfaces: "src/p3",
       excludedSurfaces: "src/other",
@@ -296,11 +294,36 @@ describe("task authority", () => {
     }
   });
 
-  it("uses the independent-clone queue for separate macOS-account workspaces", () => {
+  it.each(["planning", "execution", "ui"] as const)("renders frequent direct-main reconciliation without a push queue for %s launches", async (phase) => {
+    const prompt = await renderWorkerPrompt(phase, {
+      workerId: "T0",
+      accountId: "bot3",
+      taskId: "T0",
+      taskTitle: "Assigned task",
+      phase,
+      phaseTerminalCondition: "Finish the assigned phase.",
+      blueprintPath: "docs/blueprint.md",
+      masterplanPath: "docs/blueprint.md",
+      coordinationRoot: "docs/workers/mvp3",
+      statusPath: "docs/workers/mvp3/T0.md",
+      ...launchGitMetadata("bot3"),
+      ownedSurfaces: "src/owned",
+      excludedSurfaces: "src/other",
+    });
+
+    expect.soft(prompt).not.toMatch(/push[- ]queue|MAIN_PUSH_QUEUE|{{[A-Z_]+}}/i);
+    expect.soft(prompt).toMatch(/independent_main_clone[^\n]+do not impose global edit or push locks or queues/);
+    expect.soft(prompt).toMatch(/frequently fetch and merge newer `origin\/main`/i);
+    expect.soft(prompt).toMatch(/focused affected verification[^\n]+stage only owned paths[^\n]+commit directly to `main`[^\n]+push[^\n]+fetch[^\n]+remote ancestry/);
+    expect.soft(prompt).toMatch(/non-fast-forward[^\n]+fetch[^\n]+merge[^\n]+rerun affected checks[^\n]+retry/i);
+    expect.soft(prompt).toContain("Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.");
+    expect.soft(prompt).toContain("In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock before every filesystem or Git/index mutation and hold it through remote-reachability proof.");
+  });
+
+  it("omits push-queue metadata for separate macOS-account workspaces", () => {
     expect(launchGitMetadata("bot3")).toEqual({
       checkoutMode: "independent_main_clone",
       mainMutationLock: "not-applicable-for-independent-clones",
-      mainPushQueue: "swarm-main-push-queue",
       edenmindClonePath: "/Users/bot3/Dev/EdenMind",
     });
   });

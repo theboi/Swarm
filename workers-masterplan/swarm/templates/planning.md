@@ -32,10 +32,11 @@ Do not implement product code, UI, migrations, or runtime behavior in this phase
 
 ## Direct-main lifecycle
 
-- Checkout mode: `{{CHECKOUT_MODE}}`; shared-checkout lock: `{{MAIN_MUTATION_LOCK}}`; cross-clone push queue: `{{MAIN_PUSH_QUEUE}}`.
+- Checkout mode: `{{CHECKOUT_MODE}}`; shared-checkout lock: `{{MAIN_MUTATION_LOCK}}`.
 - In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock before every filesystem or Git/index mutation and hold it through remote-reachability proof.
-- In `independent_main_clone` mode, do not impose a global edit lock; use the named push queue for reconciliation, affected verification, push, and remote ancestry proof.
-- At each independently testable planning checkpoint, run focused verification, stage only owned paths (staging only owned paths), commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability.
+- In `independent_main_clone` mode, do not impose global edit or push locks or queues.
+- Frequently fetch and merge newer `origin/main` throughout the task. At each independently testable planning checkpoint, fetch and merge newer `origin/main`, run focused affected verification, stage only owned paths (staging only owned paths), commit directly to `main`, push to `origin/main`, fetch again, and prove remote ancestry with `git merge-base --is-ancestor HEAD origin/main`.
+- If a push is rejected as non-fast-forward, fetch and merge newer `origin/main`, rerun affected checks, and retry the push, then fetch and prove remote ancestry again.
 - Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.
 - Before the final response, update only `{{COMPLETION_RECEIPT_PATH}}` so its `{{ACTIVE_PASS}}` pass is explicitly `complete`, record this macOS account and the current UTC time, commit it with the finished handoff, and push it to `origin/main`. Status wording does not complete the worker.
 
