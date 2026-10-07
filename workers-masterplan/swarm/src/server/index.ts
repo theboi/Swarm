@@ -264,6 +264,7 @@ async function createRuntime(config: SwarmConfig) {
   accounts = new AccountManager({
     launcher,
     codexBin: config.codexBin,
+    isLoginPending: (account) => isBotProfileAccountId(account) && Boolean(loginCoordinator?.challengeState(account)),
     onRateLimitReadError: (account, error) => logger.warn("accounts", { event: "rate_limits_read_failed", account, error: error instanceof Error ? error.message : "failed" }),
     credentialVersion: async (account) => {
       try {
@@ -932,8 +933,16 @@ async function createRuntime(config: SwarmConfig) {
   });
   const gitStartTimer = setTimeout(() => gitSynchronizer.start(), 60_000);
   gitStartTimer.unref();
+  let accountRefreshRunning = false;
   const credentialRefreshTimer = setInterval(() => {
-    void Promise.allSettled(accountIds.map((id) => accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) })));
+    if (shuttingDown || accountRefreshRunning) return;
+    accountRefreshRunning = true;
+    void Promise.allSettled(accountIds.map((id) => accounts.snapshot(id).authentication === "authenticated"
+      ? updateRateLimits(id)
+      : accounts.snapshot(id).connection === "disconnected"
+        ? accounts.connect({ account: id, password: passwordFor(id) })
+        : accounts.recoverChangedCredentials({ account: id, password: passwordFor(id) })))
+      .finally(() => { accountRefreshRunning = false; });
   }, 15_000);
   credentialRefreshTimer.unref();
   const connectInitialAccount = async (id: AccountId): Promise<void> => {

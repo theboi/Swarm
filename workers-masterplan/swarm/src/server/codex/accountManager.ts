@@ -5,6 +5,7 @@ import { codexLoginCommand } from "./terminalConsole.js";
 export interface ManagedAppServerClient {
   connect(): Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>;
   isConnected(): boolean;
+  readAccount?(): Promise<{ account: Record<string, unknown> | null; requiresOpenaiAuth: boolean }>;
   readRateLimitWindows(): Promise<RateLimitWindow[]>;
   close(): Promise<void>;
 }
@@ -16,6 +17,7 @@ export interface AccountManagerOptions {
   onRateLimitReadError?: (account: AccountId, error: unknown) => void;
   credentialVersion?: (account: AccountId) => Promise<string | undefined>;
   now?: () => number;
+  isLoginPending?: (account: AccountId) => boolean;
   /** Immutable registry-derived list for this runtime; defaults only for legacy bootstraps. */
   accountIds?: () => AccountId[];
   resolveSlot?: (account: AccountId) => CodexAccountSlot | undefined;
@@ -59,13 +61,13 @@ export class AccountManager {
 
   constructor(private readonly options: AccountManagerOptions) {}
 
-  connect(input: ConnectAccountInput): Promise<AccountSnapshot> {
+  connect(input: ConnectAccountInput, options: { recheckAuthentication?: boolean } = {}): Promise<AccountSnapshot> {
     if (this.shuttingDown) return Promise.reject(new Error("ACCOUNT_OFFLINE"));
     if (!this.accountIds().includes(input.account)) return Promise.reject(new Error("Only allowlisted Swarm accounts may be connected"));
     const pending = this.inFlight.get(input.account);
     if (pending) return pending;
     const existing = this.connections.get(input.account);
-    if (existing?.client.isConnected() && (this.requireSnapshot(input.account).authentication === "authenticated" || existing.preAuth)) return Promise.resolve(this.requireSnapshot(input.account));
+    if (existing?.client.isConnected() && (this.requireSnapshot(input.account).authentication === "authenticated" || (existing.preAuth && !options.recheckAuthentication))) return Promise.resolve(this.requireSnapshot(input.account));
 
     const connecting = (async () => {
       if (existing) await this.closeConnection(input.account);
@@ -153,14 +155,25 @@ export class AccountManager {
     if (snapshot.errorCode === "PAID_PLAN_REQUIRED" && !options.force) return snapshot;
     const current = await this.readCredentialVersion(input.account);
     const changed = current !== undefined && current !== this.credentialVersions.get(input.account);
-    if (!options.force && !changed) {
+    const existing = this.connections.get(input.account);
+    let authenticatedOnRead = false;
+    if (!changed && existing?.preAuth && existing.client.isConnected() && existing.client.readAccount) {
+      try {
+        // Keep an interactive login transport alive, but never freeze its initial auth result.
+        authenticatedOnRead = Boolean((await existing.client.readAccount()).account);
+        if (!authenticatedOnRead && this.options.isLoginPending?.(input.account)) return this.requireSnapshot(input.account);
+      } catch {
+        // A failed transport needs the same bounded reconnect as other stale servers.
+      }
+    }
+    if (!options.force && !changed && !authenticatedOnRead) {
       const now = this.options.now?.() ?? Date.now();
       if (now < (this.recoveryRetryAt.get(input.account) ?? 0)) return snapshot;
       const delay = this.recoveryRetryDelayMs.get(input.account) ?? 30_000;
       this.recoveryRetryAt.set(input.account, now + delay);
       this.recoveryRetryDelayMs.set(input.account, Math.min(delay * 2, 15 * 60_000));
     }
-    return this.connect(input);
+    return this.connect(input, { recheckAuthentication: true });
   }
 
   async disconnect(account: AccountId): Promise<void> {

@@ -5,7 +5,7 @@ import type { LaunchHandle, SuLauncher } from "./suLauncher.js";
 
 const account = "bot1" as const;
 
-function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot, onAuthenticated?: (account: AccountId, metadata: Record<string, unknown>) => Record<string, string> | undefined) {
+function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (account: AccountId, error: unknown) => void, now?: () => number, profileSlot?: CodexAccountSlot, onAuthenticated?: (account: AccountId, metadata: Record<string, unknown>) => Record<string, string> | undefined, isLoginPending?: (account: AccountId) => boolean) {
   const handle: LaunchHandle = { account: selectedAccount, endpoint: "ws://127.0.0.1:42001", capabilityToken: "transient", stop: vi.fn(async () => undefined) };
   const launch = vi.fn(async () => handle);
   const openTerminal = vi.fn(async () => undefined);
@@ -22,6 +22,7 @@ function fixture(selectedAccount: AccountId = account, onRateLimitReadError?: (a
     credentialVersion,
     now,
     onAuthenticated,
+    isLoginPending,
     ...(profileSlot ? { accountIds: () => [profileSlot.id], resolveSlot: (candidate: AccountId) => candidate === profileSlot.id ? profileSlot : undefined } : {}),
   });
   return { manager, handle, launch, openTerminal, openLoginTerminal, client, createClient, credentialVersion };
@@ -196,6 +197,29 @@ describe("AccountManager", () => {
     expect(handle.stop).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledTimes(2);
     expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("rechecks a live pre-auth server when credentials become authenticated", async () => {
+    const { manager, client } = fixture("bot8");
+    client.connect.mockResolvedValueOnce({ account: null, requiresOpenaiAuth: true });
+    await manager.connect({ account: "bot8" });
+    expect(manager.snapshot("bot8").authentication).toBe("unauthenticated");
+    await manager.recoverChangedCredentials({ account: "bot8" }, { force: true });
+    expect(manager.snapshot("bot8")).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("keeps pending login alive while polling authentication", async () => {
+    const { manager, client, handle } = fixture("bot8", undefined, undefined, undefined, undefined, () => true);
+    client.connect.mockResolvedValueOnce({ account: null, requiresOpenaiAuth: true });
+    const readAccount = vi.fn(async () => ({ account: null as Record<string, unknown> | null, requiresOpenaiAuth: true }));
+    Object.assign(client, { readAccount });
+    await manager.connect({ account: "bot8" });
+    await manager.recoverChangedCredentials({ account: "bot8" });
+    expect(handle.stop).not.toHaveBeenCalled();
+    expect(manager.preAuthClient("bot8")).toBe(client);
+    readAccount.mockResolvedValue({ account: { type: "chatgpt" }, requiresOpenaiAuth: false });
+    await manager.recoverChangedCredentials({ account: "bot8" });
+    expect(manager.snapshot("bot8").authentication).toBe("authenticated");
   });
 
   it("forces an authentication recheck when the operator reloads unchanged credentials", async () => {

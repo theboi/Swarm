@@ -1,6 +1,8 @@
 import type { ApiResult } from "./errors.js";
 
 export const MACOS_BOT_IDS = ["bot1", "bot2", "bot3", "bot4", "bot5", "bot6", "bot7", "bot8"] as const;
+/** Physical users currently available; legacy IDs remain readable in historical state. */
+export const ACTIVE_MACOS_BOT_IDS = ["bot1", "bot3", "bot6", "bot7", "bot8"] as const;
 export type MacosBotId = (typeof MACOS_BOT_IDS)[number];
 /** @deprecated Use MacosBotId for the physical user. */
 export type BotAccountId = MacosBotId;

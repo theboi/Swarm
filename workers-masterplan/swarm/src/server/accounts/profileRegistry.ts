@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, normalize, parse, resolve } from "node:path"
 import {
   isBotProfileAccountId,
   isMacosBotId,
-  MACOS_BOT_IDS,
+  ACTIVE_MACOS_BOT_IDS,
   type BotProfileAccountId,
   type CodexAccountSlot,
   type MacosBotId,
@@ -55,7 +55,7 @@ function defaultSlot(macosUser: MacosBotId): CodexAccountSlot {
 }
 
 function defaultRegistry(): ProfileRegistryFile {
-  return { schemaVersion: 1, profiles: MACOS_BOT_IDS.map(defaultSlot) };
+  return { schemaVersion: 1, profiles: ACTIVE_MACOS_BOT_IDS.map(defaultSlot) };
 }
 
 function isCanonicalAbsolutePath(value: unknown): value is string {
@@ -110,8 +110,8 @@ function validateRegistry(value: unknown): ProfileRegistryFile {
     ids.add(slot.id);
     codexHomes.add(slot.codexHome);
   }
-  for (const bot of MACOS_BOT_IDS) if (!ids.has(`${bot}/acc1`)) fail(`Missing required primary slot for ${bot}`);
-  return { schemaVersion: 1, profiles: profiles.sort(compareSlots) };
+  for (const bot of ACTIVE_MACOS_BOT_IDS) if (!ids.has(`${bot}/acc1`)) fail(`Missing required primary slot for ${bot}`);
+  return { schemaVersion: 1, profiles: profiles.filter((slot) => (ACTIVE_MACOS_BOT_IDS as readonly string[]).includes(slot.macosUser)).sort(compareSlots) };
 }
 
 async function assertNoSymlinkedRegistryParent(path: string): Promise<void> {

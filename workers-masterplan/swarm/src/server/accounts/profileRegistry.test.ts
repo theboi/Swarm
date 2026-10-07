@@ -36,10 +36,17 @@ describe("ProfileRegistry", () => {
   it("synthesizes legacy acc1 profiles for every macOS bot when the registry is absent", async () => withRegistry(async (path) => {
     const registry = await ProfileRegistry.load(path);
 
-    expect(registry.list()).toHaveLength(8);
+    expect(registry.list()).toHaveLength(5);
     expect(registry.resolve("bot1/acc1")).toEqual(legacySlot("bot1"));
     expect(registry.nextId("bot1")).toBe("bot1/acc2");
     expect(registry.forBot("bot3")).toEqual([legacySlot("bot3")]);
+  }));
+
+  it("omits deleted bots from a persisted legacy registry", async () => withRegistry(async (path) => {
+    await writeFile(path, JSON.stringify({ schemaVersion: 1, profiles: MACOS_BOT_IDS.map(legacySlot) }));
+    const registry = await ProfileRegistry.load(path);
+    expect(registry.list().map((slot) => slot.macosUser)).toEqual(["bot1", "bot3", "bot6", "bot7", "bot8"]);
+    expect(JSON.parse(await readFile(path, "utf8")).profiles).toEqual(registry.list());
   }));
 
   it("rejects malformed, secret-like, colliding, or incomplete registry records", async () => withRegistry(async (path) => {
@@ -47,7 +54,7 @@ describe("ProfileRegistry", () => {
     const invalidFiles = [
       { ...valid, profiles: [...valid.profiles, legacySlot("bot1")] },
       { ...valid, profiles: valid.profiles.map((slot) => slot.macosUser === "bot1" ? { ...slot, codexHome: "/Users/bot1/.codex/../.codex" } : slot) },
-      { ...valid, profiles: valid.profiles.filter((slot) => slot.macosUser !== "bot4") },
+      { ...valid, profiles: valid.profiles.filter((slot) => slot.macosUser !== "bot7") },
       { ...valid, profiles: valid.profiles.map((slot) => slot.macosUser === "bot2" ? { ...slot, id: "bot9/acc1", macosUser: "bot9" } : slot) },
       { ...valid, profiles: valid.profiles.map((slot) => slot.macosUser === "bot5" ? { ...slot, accountNumber: 2 } : slot) },
       { ...valid, profiles: valid.profiles.map((slot) => slot.macosUser === "bot6" ? { ...slot, workspaceRoot: "/Users/bot6/Dev/EdenMind-acc2" } : slot) },
