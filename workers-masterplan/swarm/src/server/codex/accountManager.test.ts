@@ -265,6 +265,31 @@ describe("AccountManager", () => {
     expect(clients[1].close).not.toHaveBeenCalled();
   });
 
+  it("detects sign-in within one minute after a prolonged authentication outage", async () => {
+    let clock = 1_000;
+    const { manager, client, credentialVersion } = fixture(account, undefined, () => clock);
+    credentialVersion.mockResolvedValue(undefined);
+    client.connect.mockResolvedValue({ account: null, requiresOpenaiAuth: true });
+    await manager.connect({ account });
+    for (const wait of [30_000, 60_000, 120_000, 240_000, 480_000]) {
+      clock += wait;
+      await manager.recoverChangedCredentials({ account });
+    }
+    client.connect.mockResolvedValue({ account: { type: "chatgpt", planType: "plus" }, requiresOpenaiAuth: false });
+    clock += 60_000;
+    await manager.recoverChangedCredentials({ account });
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
+  it("rechecks a formerly free account after credentials change", async () => {
+    const { manager, client, credentialVersion } = fixture();
+    client.connect.mockResolvedValueOnce({ account: { type: "chatgpt", planType: "free" }, requiresOpenaiAuth: false });
+    await expect(manager.connect({ account })).rejects.toThrow("PAID_PLAN_REQUIRED");
+    credentialVersion.mockResolvedValue("credential-v2");
+    await manager.recoverChangedCredentials({ account });
+    expect(manager.snapshot(account)).toMatchObject({ connection: "connected", authentication: "authenticated" });
+  });
+
   it("backs off repeated automatic rechecks when credential metadata is unavailable", async () => {
     let clock = 1_000;
     const { manager, launch, client, credentialVersion } = fixture(account, undefined, () => clock);

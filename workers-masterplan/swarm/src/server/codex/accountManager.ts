@@ -139,7 +139,7 @@ export class AccountManager {
     this.options.onDisconnected?.(account);
     const delay = this.recoveryRetryDelayMs.get(account) ?? 30_000;
     this.recoveryRetryAt.set(account, (this.options.now?.() ?? Date.now()) + delay);
-    this.recoveryRetryDelayMs.set(account, Math.min(delay * 2, 15 * 60_000));
+    this.recoveryRetryDelayMs.set(account, Math.min(delay * 2, 60_000));
     return this.setSnapshot(account, {
       connection: "action_required",
       authentication: "unauthenticated",
@@ -152,7 +152,6 @@ export class AccountManager {
   async recoverChangedCredentials(input: ConnectAccountInput, options: { force?: boolean } = {}): Promise<AccountSnapshot> {
     const snapshot = this.requireSnapshot(input.account);
     if (snapshot.authentication !== "unauthenticated" || snapshot.activeTurns > 0) return snapshot;
-    if (snapshot.errorCode === "PAID_PLAN_REQUIRED" && !options.force) return snapshot;
     const current = await this.readCredentialVersion(input.account);
     const changed = current !== undefined && current !== this.credentialVersions.get(input.account);
     const existing = this.connections.get(input.account);
@@ -171,7 +170,7 @@ export class AccountManager {
       if (now < (this.recoveryRetryAt.get(input.account) ?? 0)) return snapshot;
       const delay = this.recoveryRetryDelayMs.get(input.account) ?? 30_000;
       this.recoveryRetryAt.set(input.account, now + delay);
-      this.recoveryRetryDelayMs.set(input.account, Math.min(delay * 2, 15 * 60_000));
+      this.recoveryRetryDelayMs.set(input.account, Math.min(delay * 2, 60_000));
     }
     return this.connect(input, { recheckAuthentication: true });
   }
@@ -255,6 +254,7 @@ export class AccountManager {
       await handle?.stop();
       if (identityRegistered) this.options.onDisconnected?.(input.account);
       const errorCode = explicitErrorCode(error) ?? "ACCOUNT_AUTH_REQUIRED";
+      if (errorCode === "PAID_PLAN_REQUIRED") this.recoveryRetryAt.set(input.account, (this.options.now?.() ?? Date.now()) + 60_000);
       this.setSnapshot(input.account, {
         connection: "action_required",
         authentication: "unauthenticated",

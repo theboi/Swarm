@@ -141,7 +141,7 @@ export class JsonRpcClient {
   async initializeAndReadAccount<T = unknown>(): Promise<T> {
     await this.request("initialize", { clientInfo: { name: "EdenMind Swarm Coordinator", version: "0.1.0" }, capabilities: null });
     this.notify("initialized");
-    return this.request<T>("account/read", {});
+    return this.request<T>("account/read", { refreshToken: true });
   }
 
   private receive(raw: string): void {

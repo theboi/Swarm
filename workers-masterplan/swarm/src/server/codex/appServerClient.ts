@@ -165,7 +165,7 @@ export class AppServerClient {
   /** Re-reads authentication after an account/login notification without starting work. */
   async readAccount(): Promise<AccountReadResult> {
     this.requireTransport();
-    const account = await this.rpc.request<AccountReadResult>("account/read", {});
+    const account = await this.rpc.request<AccountReadResult>("account/read", { refreshToken: true });
     this.accountInfo = account;
     return account;
   }

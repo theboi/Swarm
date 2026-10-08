@@ -43,7 +43,7 @@ function safeThreadEcho(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function readyClient(options: { account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; loginVerificationUrl?: string; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
+async function readyClient(options: { requireCredentialRefresh?: boolean; account?: AccountId; workspaceRoot?: string; requiresOpenaiAuth?: boolean; loginVerificationUrl?: string; threadStartNetworkAccess?: boolean; threadStartWritableRoots?: string[]; threadNameError?: string; threadReadError?: string; threadResumeError?: string; turnStartErrorOnce?: string; threadStatus?: "notLoaded" | "idle" | "active"; readLockedThread?: (threadId: string) => Promise<{ thread: Record<string, unknown> }>; rateLimitResponse?: Record<string, unknown> } = {}) {
   const clientAccount = options.account ?? account;
   const clientCwd = options.workspaceRoot ?? cwd;
   server = createFakeAppServer(tokenDigest);
@@ -52,7 +52,10 @@ async function readyClient(options: { account?: AccountId; workspaceRoot?: strin
   server.onMessage((message, peer) => {
     const reply = (result: unknown) => peer.send(JSON.stringify({ id: message.id, result }));
     if (message.method === "initialize") reply({ codexHome: "/Users/bot1/.codex" });
-    if (message.method === "account/read") reply({ account: { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: options.requiresOpenaiAuth ?? false });
+    if (message.method === "account/read") {
+      const stale = options.requireCredentialRefresh && (message.params as { refreshToken?: boolean }).refreshToken !== true;
+      reply({ account: stale ? null : { type: "chatgpt", email: `${clientAccount}@example.test` }, requiresOpenaiAuth: stale || (options.requiresOpenaiAuth ?? false) });
+    }
     if (message.method === "account/login/start") reply({ loginId: "login-1", verificationUrl: options.loginVerificationUrl ?? "https://auth.example.test/device", userCode: "ABCD-EFGH" });
     if (message.method === "thread/resume" && options.threadResumeError) peer.send(JSON.stringify({ id: message.id, error: { code: -32000, message: options.threadResumeError } }));
     else if (message.method === "thread/start" || message.method === "thread/resume") reply(safeThreadEcho({ cwd: clientCwd, sandbox: { type: "workspaceWrite", writableRoots: options.threadStartWritableRoots ?? [clientCwd], networkAccess: options.threadStartNetworkAccess ?? false, excludeTmpdirEnvVar: false, excludeSlashTmp: false } }));
@@ -150,6 +153,13 @@ describe("AppServerClient", () => {
 
     expect(client.accountInfo).toEqual({ account: { type: "chatgpt", email: "bot1@example.test" }, requiresOpenaiAuth: false });
     expect(server!.received.map((message) => message.method)).toEqual(["initialize", "initialized", "account/read"]);
+    await client.close();
+  });
+
+  it("refreshes stale credentials when connecting and rechecking sign-in", async () => {
+    const client = await readyClient({ requireCredentialRefresh: true });
+    expect(client.accountInfo?.account).toMatchObject({ type: "chatgpt" });
+    await expect(client.readAccount()).resolves.toMatchObject({ account: { type: "chatgpt" }, requiresOpenaiAuth: false });
     await client.close();
   });
 
