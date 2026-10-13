@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { gunzipSync } from "node:zlib";
+import { randomBytes } from "node:crypto";
 
 import type { AccountId, ThreadSummary } from "../../shared/contracts.js";
 import { createJsonlContinuation, moveWithJsonl, type JsonlContinuationTarget, type MoveWithJsonlInput } from "./threadHandoff.js";
@@ -47,6 +48,28 @@ function moveFixture(overrides: Partial<MoveWithJsonlInput> = {}): MoveWithJsonl
 }
 
 describe("createJsonlContinuation", () => {
+  it("transfers an incompressible history through bounded writes and ordered attachments", async () => {
+    const jsonl = JSON.stringify({ text: randomBytes(2 * 1024 * 1024).toString("base64") });
+    const written: Array<{ name: string; path: string }> = [];
+    const contents: string[] = [];
+    const continuationTarget = target(async (input) => {
+      expect(input.attachments).toEqual(written);
+      expect(input.text).toContain("Concatenate");
+    });
+    continuationTarget.writeFile = async (path, content) => {
+      if (Buffer.byteLength(content) > 1024 * 1024) throw new Error("RPC frame too large");
+      written.push({ name: path.split("/").at(-1)!, path });
+      contents.push(content);
+    };
+    await createJsonlContinuation({
+      sourceAccountId: "bot3/acc1", sourceThreadId: "source-thread", sourceName: null,
+      targetAccountId: "bot8/acc1", targetWorkspace: "/Users/bot8/Dev/EdenMind",
+      jsonl, clientUserMessageId: "large-transfer", target: continuationTarget,
+      normalizeThread: (source) => summary("bot8/acc1", String(source.id)),
+    });
+    expect(contents.length).toBeGreaterThan(1);
+    expect(gunzipSync(Buffer.from(contents.join(""), "base64")).toString("utf8")).toBe(jsonl);
+  });
   it("attaches a large rollout as compressed base64 text without dropping content", async () => {
     const sourceJsonl = '{"type":"event_msg","payload":{"text":"large chat"}}\n'.repeat(40_000);
     const continuationTarget = target();

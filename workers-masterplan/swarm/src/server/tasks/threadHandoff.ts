@@ -5,10 +5,12 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import type { AccountId, ChatExecutionSettings, ThreadSummary } from "../../shared/contracts.js";
 import { handoffThreadName } from "./handoff.js";
 
+export const MAX_ROLLOUT_BYTES = 128 * 1024 * 1024;
+
 export function decodePrivateRollout(value: unknown): string {
   const encoded = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).jsonlGzipBase64 : undefined;
   if (typeof encoded !== "string" || !encoded || encoded.length > 64 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new Error("Source rollout payload is invalid");
-  try { return gunzipSync(Buffer.from(encoded, "base64"), { maxOutputLength: 48 * 1024 * 1024 }).toString("utf8"); }
+  try { return gunzipSync(Buffer.from(encoded, "base64"), { maxOutputLength: MAX_ROLLOUT_BYTES }).toString("utf8"); }
   catch { throw new Error("Source rollout payload is invalid"); }
 }
 
@@ -75,14 +77,23 @@ export async function createJsonlContinuation(input: JsonlContinuationInput): Pr
   const thread = input.normalizeThread(rawThread);
   const compressed = Buffer.byteLength(input.jsonl, "utf8") > 1024 * 1024;
   const filename = `${handoffFilename(input.sourceAccountId, input.sourceThreadId)}${compressed ? ".gz.b64" : ""}`;
-  const path = resolve(input.targetWorkspace, filename);
-  await input.target.writeFile(path, compressed ? gzipSync(Buffer.from(input.jsonl, "utf8")).toString("base64") : input.jsonl);
+  const contents = compressed ? gzipSync(Buffer.from(input.jsonl, "utf8")).toString("base64") : input.jsonl;
+  const partSize = 1024 * 1024;
+  const multipart = compressed && contents.length > partSize;
+  const attachments: Array<{ name: string; path: string }> = [];
+  for (let offset = 0; offset < contents.length || offset === 0; offset += multipart ? partSize : contents.length || 1) {
+    const name = multipart ? `${filename}.part-${String(offset / partSize + 1).padStart(3, "0")}` : filename;
+    const path = resolve(input.targetWorkspace, name);
+    await input.target.writeFile(path, multipart ? contents.slice(offset, offset + partSize) : contents);
+    attachments.push({ name, path });
+  }
 
   const threadName = handoffThreadName(input.sourceName);
   await input.target.setThreadName(thread.id, threadName);
   const queuedMessages = input.queuedMessages ?? "";
   const prompt = [
     `Continue the previous chat from source account ${input.sourceAccountId} and source thread ${input.sourceThreadId}.`,
+    ...(multipart ? [`Concatenate the ${attachments.length} attached parts in numbered order to reconstruct ${filename} before decoding it.`] : []),
     compressed
       ? `The attached ${filename} is the exact source rollout JSONL, gzip-compressed and base64-encoded. Decode it with base64 -D followed by gunzip, then continue from where the source session left off on target account ${input.targetAccountId}.`
       : `The attached ${filename} contains the exact source rollout JSONL. Continue from where the source session left off on target account ${input.targetAccountId}.`,
@@ -92,7 +103,7 @@ export async function createJsonlContinuation(input: JsonlContinuationInput): Pr
     threadId: thread.id,
     clientUserMessageId: input.clientUserMessageId,
     text: prompt,
-    attachments: [{ name: filename, path }],
+    attachments,
     ...(input.settings ? { settings: input.settings } : {}),
   });
 

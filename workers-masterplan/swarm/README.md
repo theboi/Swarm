@@ -251,11 +251,18 @@ not accumulating:
 
 ```sh
 SWARM_PID=$(lsof -nP -iTCP:4310 -sTCP:LISTEN -t | head -1)
-lsof -nP -p "$SWARM_PID" | awk '$9 == "/dev/ptmx" { count++ } END { print count + 0 }'
+lsof -nP -p "$SWARM_PID" | awk '/\/dev\/ptmx$/ { masters++ } /\/dev\/ttys[^ ]*$/ { slaves++ } /\(revoked\)$/ { revoked++ } END { print "masters:", masters + 0, "slaves:", slaves + 0, "revoked:", revoked + 0 }'
 ```
 
-The count should stay near the number of connected accounts and must not grow
-across failed reconnects. Rebuild and restart only the Swarm LaunchAgent before
+Masters should stay near the number of connected accounts. The parent should
+retain no slaves or revoked descriptors, including after failed reconnects,
+private rollout reads, and Git helpers. These helpers create temporary PTYs;
+their count is unrelated to the number of chats. Chat archival uses Codex's
+`thread/archive` request; the account connection remains available for other
+chats. `npm install` patches and rebuilds node-pty to close temporary descriptors
+and exit-monitor queues on macOS. Run `node scripts/prepare-node-pty.mjs` when
+repairing an existing installation, then restart the service so it loads the
+rebuilt native module. Rebuild and restart only the Swarm LaunchAgent before
 rechecking if the deployed bundle predates the current source:
 
 ```sh

@@ -124,10 +124,14 @@ describe("GitCommandRunner", () => {
     dataListener?.("SWARM_JSON_RESULT_WORKER_READY\n");
     const workerInput = write.mock.calls.flat().find((value) => value.includes('"threadId"'));
     expect(workerInput).not.toContain("correct horse");
-    dataListener?.('SWARM_JSON_RESULT:{"jsonlBase64":"eyJ0eXBlIjoic2Vzc2lvbl9tZXRhIn0K"}\r\n');
+    const payload = "x".repeat(8 * 1024 * 1024);
+    const wire = `SWARM_JSON_RESULT:${JSON.stringify({ jsonlBase64: payload })}\r\n`;
+    const started = performance.now();
+    for (let offset = 0; offset < wire.length; offset += 1024) dataListener?.(wire.slice(offset, offset + 1024));
+    expect(performance.now() - started).toBeLessThan(1000);
     exitListener?.({ exitCode: 0 });
 
-    await expect(result).resolves.toEqual({ jsonlBase64: "eyJ0eXBlIjoic2Vzc2lvbl9tZXRhIn0K" });
+    await expect(result).resolves.toEqual({ jsonlBase64: payload });
   });
 
   it("delegates bot Git pulls to the isolated runner", async () => {

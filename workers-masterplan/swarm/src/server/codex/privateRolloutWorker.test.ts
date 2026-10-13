@@ -4,6 +4,10 @@ import { encodePrivateRollout, validatePrivateRolloutInput } from "./privateRoll
 import { decodePrivateRollout } from "../tasks/threadHandoff.js";
 
 describe("private rollout worker", () => {
+  it("restores an 84 MiB conversation without hitting the former 48 MiB limit", () => {
+    const jsonl = "x".repeat(84 * 1024 * 1024);
+    expect(decodePrivateRollout(encodePrivateRollout(jsonl))).toBe(jsonl);
+  });
   it("compresses a large rollout across the bot PTY and restores the exact JSONL", () => {
     const jsonl = '{"type":"event_msg","payload":{"text":"repeated text"}}\n'.repeat(100_000);
     const encoded = encodePrivateRollout(jsonl);

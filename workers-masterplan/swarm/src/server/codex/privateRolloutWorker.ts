@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 
 import { JSON_RESULT_PREFIX, JSON_RESULT_WORKER_READY } from "../git/jsonResultWorkerProtocol.js";
 import { LocalRolloutTranscriptReader } from "./localRolloutReader.js";
+import { MAX_ROLLOUT_BYTES } from "../tasks/threadHandoff.js";
 
 interface PrivateRolloutInput {
   codexHome: string;
@@ -12,7 +13,6 @@ interface PrivateRolloutInput {
 }
 
 const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_ROLLOUT_BYTES = 48 * 1024 * 1024;
 
 export function encodePrivateRollout(jsonl: string): { jsonlGzipBase64: string } {
   return { jsonlGzipBase64: gzipSync(Buffer.from(jsonl, "utf8")).toString("base64") };

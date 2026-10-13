@@ -174,7 +174,8 @@ export function runBotPtyJsonResultWorker(account: BotAccountId, password: strin
     let settled = false;
     let hasResult = false;
     let result: unknown;
-    let output = "";
+    let outputChunks: string[] = [];
+    let outputLength = 0;
     let tail = "";
     let timer: NodeJS.Timeout | undefined;
     let dataSubscription: { dispose(): void } | undefined;
@@ -216,8 +217,14 @@ export function runBotPtyJsonResultWorker(account: BotAccountId, password: strin
         child.write(`${input}\n`);
         return;
       }
-      output += data.replaceAll("\r", "");
-      if (output.length > 70 * 1024 * 1024) return finish(new Error("Bot worker result is too large"));
+      const chunk = data.replaceAll("\r", "");
+      outputChunks.push(chunk);
+      outputLength += chunk.length;
+      if (outputLength > 70 * 1024 * 1024) return finish(new Error("Bot worker result is too large"));
+      // Avoid repeatedly flattening and scanning a large, fragmented PTY line.
+      if (!chunk.includes("\n")) return;
+      const output = outputChunks.join("");
+      outputChunks = [output];
       const marker = output.indexOf(JSON_RESULT_PREFIX);
       if (marker < 0) return;
       const end = output.indexOf("\n", marker);
