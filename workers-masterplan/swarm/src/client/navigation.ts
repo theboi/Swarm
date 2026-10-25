@@ -11,7 +11,7 @@ export interface AppRoute {
 const paths: Record<AppPage, string> = {
   home: "/home",
   accounts: "/accounts",
-  flowchart: "/flowchart",
+  "queued-tasks": "/queued-tasks",
   chats: "/chats",
 };
 

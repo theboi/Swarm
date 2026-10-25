@@ -20,7 +20,7 @@ export interface TranscriptScope {
 export interface RawThreadTurn {
   id: string;
   startedAt: number | null;
-  status?: "inProgress" | "completed" | "failed";
+  status?: TranscriptItem["turnStatus"];
   error?: Record<string, unknown>;
   /** Stable id supplied with the first user message that started this turn. */
   clientUserMessageId?: string;
@@ -146,6 +146,7 @@ export function replaceTranscriptFromThreadRead(state: TranscriptState, history:
     const createdAt = turn.startedAt === null ? null : turn.startedAt * 1_000;
     for (const rawItem of turn.items) {
       const item = normalizeItem(history, turn.id, rawItem, toMillis(rawItem.createdAtMs) ?? createdAt);
+      if (turn.status) item.turnStatus = turn.status;
       const key = itemKey(item);
       const index = indexes.get(key);
       if (index === undefined) {
@@ -176,10 +177,18 @@ export function reduceTranscriptEvent(state: TranscriptState, event: { method: s
   const recovery = transcriptRecoveryState(state, typedScope);
   if (recovery === "disconnected" || recovery === "recovering") return state;
 
+  if (event.method === "turn/completed") {
+    const turn = asRecord(params.turn);
+    const completedTurnId = turnId ?? (typeof turn.id === "string" ? turn.id : null);
+    if (!completedTurnId) return state;
+    const status = turn.status === "failed" || turn.status === "interrupted" ? turn.status : "completed";
+    return { ...state, items: state.items.map((item) => item.accountId === typedScope.accountId && item.threadId === typedScope.threadId && item.turnId === completedTurnId ? { ...item, turnStatus: status } : item) };
+  }
+
   if (event.method === "item/started" || event.method === "item/completed") {
     const item = asRecord(params.item);
     const timestamp = toMillis(event.method === "item/started" ? params.startedAtMs : params.completedAtMs);
-    return upsert(state, normalizeItem(typedScope, turnId, item, timestamp));
+    return upsert(state, normalizeItem(typedScope, turnId, { ...item, status: item.status ?? (event.method === "item/completed" ? "completed" : "inProgress") }, timestamp));
   }
 
   if (event.method === "item/commandExecution/outputDelta") {

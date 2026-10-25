@@ -305,6 +305,8 @@ export interface LaunchAccountOption {
 }
 
 export interface TranscriptItem {
+  /** Authoritative turn lifecycle, distinct from an individual item finishing. */
+  turnStatus?: "inProgress" | "completed" | "failed" | "interrupted";
   id: string;
   accountId: AccountId;
   threadId: string;

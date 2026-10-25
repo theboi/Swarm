@@ -115,35 +115,9 @@ npm run profiles:migrate -- --bot bot1 --dry-run
 Do not run `--apply`, sign in, or test Desktop until a new explicit canary
 authorization has been recorded. `bot2` through `bot8` are outside that canary.
 
-`manifests/mvp3.json` is the production default. It is the 32-task **Pass 1**
-projection of the approved MVP3 Blueprint Masterplan: 26 ordinary planning
-workers across six four-step paths plus six UI-design workers. Optional `pathId`
-and `pathStep` metadata control graph layout only; `dependsOn` remains the
-scheduling authority. A UI-design task becomes planning-ready from its Layer 2
-worker's approved specification, implementation plan, authority/no-impact
-finding, and planning status on `origin/main`; it does not wait for Layer 2
-implementation. It writes a separate UI requirements contract and presentation
-handoff with fixture/mock-backed presentation only. Each existing Layer 3 worker
-plans against both documents in Pass 1 and performs the live wiring in Pass 2.
-
-Completion is repository-authoritative under
-`docs/workers/2026-08-14-mvp3/completion-manifest/`. Each worker owns one
-lower-case task receipt and marks `planning` and `execution` independently.
-The coordinator pulls these receipts and never infers completion from phrases
-in a status document or chat response. Because receipts are split by task,
-workers can finish concurrently without editing one shared state file.
-
-`docs/workers/2026-08-14-mvp3/PLANNING_GATE.md` is one coordinator-owned global
-receipt, not a 33rd dispatchable task. No execution projection is imported or
-launchable while that receipt is open. After it passes, later execution
-projections keep the existing IDs and still require their hard implemented
-predecessors; planned evidence never substitutes for runtime implementation.
-
-Worker-owned specification, implementation-plan, UI requirements, and
-presentation-handoff destinations may be absent before their owner authors
-them. The blueprint, coordination root, and worker status files must already
-exist, and all paths remain repository-contained. `manifests/example-ready.json`
-is a fixture-only graph for tests; never select it as the production manifest.
+The dashboard uses a plain queued task list. Each todo stores a title, prompt,
+and completion state in `manifests/queued-tasks.json`. Tasks are not assigned
+to accounts automatically.
 
 ## Run and verify
 
@@ -186,9 +160,10 @@ multiple chats subject only to that account's own Codex usage limits.
 
 ### Dashboard routes
 
-- `/home` is the launch and readiness dashboard.
+- `/home` shows account usage and pending approvals.
 - `/accounts` shows connection, authentication, Git, and usage state.
-- `/flowchart` shows the active task graph and its auto-pilot switch.
+- `/queued-tasks` shows a plain todo list with title, prompt, and completion checkbox.
+  Todos are saved atomically to `manifests/queued-tasks.json` and survive restarts.
 - `/chats` is the multi-account chat workspace.
 - `/chats?open=docs/path/file.md` opens a repository Markdown file in the
   Chats reader; the file path is URL encoded in links.
@@ -196,15 +171,14 @@ multiple chats subject only to that account's own Codex usage limits.
 Browser Back, Forward, and refresh preserve the selected screen. The Markdown
 reader is closed when a route no longer contains `open`.
 
-### Auto-pilot and account moves
+### Queued tasks and account moves
 
-Auto-pilot dispatches only to connected, authenticated bot accounts with zero
-unarchived chats. It refreshes task receipts and account thread lists before
-each run, rechecks every candidate immediately before launch, and resumes a
-rate-limited turn on its original account. Only completion receipts on
-`origin/main` prove task completion. A receipt-proven auto-pilot chat is
-archived after completion; an approval problem, a completion problem, or an
-uncertain receipt leaves the chat unarchived for review.
+Add a todo with a title and prompt on Queued tasks. Check it off when finished.
+Each row has Delete, Edit, and Send to bot icon buttons. Send to bot lets you
+select a connected bot, creates a chat named after the todo, and sends its prompt
+through the chat send/queue path. The todo stays on the list.
+The queue does not assign workers automatically. Manifest-based scheduling and its
+launch endpoints are retired.
 
 **Move to another account** creates a new target chat with the exact source
 rollout JSONL attached. It does not require the source account to be connected,

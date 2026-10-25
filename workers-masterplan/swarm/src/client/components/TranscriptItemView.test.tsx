@@ -7,6 +7,13 @@ import { TranscriptItemView } from "./TranscriptItemView";
 afterEach(cleanup);
 
 describe("TranscriptItemView", () => {
+  it("does not parse collapsed reasoning as Markdown until it is expanded", () => {
+    render(<TranscriptItemView item={{ id: "large-reason", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: ["**Detailed** reasoning\n\n".repeat(100)] } }} onOpenMarkdown={() => undefined} />);
+    expect(document.querySelector(".transcript-item__markdown")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Thinking" }));
+    expect(document.querySelector(".transcript-item__markdown strong")).not.toBeNull();
+  });
+
   it.each([
     ["userMessage", "You"],
     ["agentMessage", "Codex"],

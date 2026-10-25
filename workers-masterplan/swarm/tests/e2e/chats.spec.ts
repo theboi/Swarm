@@ -103,11 +103,14 @@ test.describe("Chats", () => {
     const transcript = page.getByTestId("transcript-scroll");
     await expect.poll(async () => transcript.evaluate((element) => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(2);
     const command = transcript.getByRole("article", { name: "commandExecution" });
+    await command.getByRole("button", { name: "Expand Command" }).click();
     await expect(command.locator("pre").nth(0)).toHaveText("git status --short");
     await expect(command.locator("pre").nth(1)).toHaveText(" M workers-masterplan/swarm/src/client/App.tsx\n");
     await transcript.evaluate((element) => { element.scrollTop = 72; });
+    const runbookLink = page.getByRole("link", { name: "docs/runbook.md" });
+    await runbookLink.scrollIntoViewIfNeeded();
     const scrollBeforeViewer = await transcript.evaluate((element) => element.scrollTop);
-    await page.getByRole("link", { name: "docs/runbook.md" }).click();
+    await runbookLink.click();
     await expect(page).toHaveURL(/\/\?file=docs%2Frunbook\.md&account=bot3$/);
     const viewer = page.getByRole("dialog", { name: "runbook.md" });
     await expect(viewer).toBeVisible();

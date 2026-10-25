@@ -1,3 +1,5 @@
+import { QueuedTasks } from "../../src/server/tasks/queuedTasks.js";
+import { tmpdir } from "node:os";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -213,6 +215,7 @@ function fixtureLoginChallenge(accountId: BotProfileAccountId, method: "device_c
 
 function attachFixtureApi(app: Express, state: FixtureState): void {
   app.use(express.json());
+  const queue = new QueuedTasks(resolve(tmpdir(), `swarm-e2e-${randomUUID()}.json`));
   const challengeId = "fixture-login-challenge";
   const createdProfiles = new Set<BotProfileAccountId>();
 
@@ -230,6 +233,11 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
   });
 
   app.use("/api/v1", (request, response, next) => requireFixtureSession(request, response) ? next() : undefined);
+  app.get("/api/v1/queued-tasks", async (_request, response) => sendData(response, await queue.list()));
+  app.post("/api/v1/queued-tasks", async (request, response) => sendData(response, await queue.add(request.body.title, request.body.prompt)));
+  app.put("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.edit(request.params.id, request.body.title, request.body.prompt)));
+  app.delete("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.remove(request.params.id)));
+  app.patch("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.complete(request.params.id, request.body.completed)));
   app.get("/api/v1/snapshot", (_request, response) => sendData(response, state.snapshot));
   app.post("/api/v1/accounts/rate-limits/refresh", (_request, response) => sendData(response, state.snapshot.accounts));
   app.post("/api/v1/accounts/:accountId/primary", (request, response) => {
@@ -306,6 +314,12 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
     const thread = selectedThread(state, request.params.accountId as AccountId, request.params.threadId);
     if (!thread || !thread.capabilities.canArchive) return sendError(response, 409, "ARCHIVE_NOT_AVAILABLE");
     thread.archived = true;
+    sendData(response, {});
+  });
+  app.post("/api/v1/accounts/:accountId/threads/:threadId/name", (request, response) => {
+    const thread = selectedThread(state, request.params.accountId as AccountId, request.params.threadId);
+    if (!thread) return sendError(response, 404, "THREAD_NOT_FOUND");
+    thread.name = request.body.name;
     sendData(response, {});
   });
   app.post("/api/v1/accounts/:accountId/threads/:threadId/turns", (request, response) => {

@@ -15,6 +15,11 @@ class TestResizeObserver {
 Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: TestResizeObserver });
 
 const api: CoordinatorApi = {
+  listQueuedTasks: async () => ({ data: [] }),
+  addQueuedTask: async () => ({ data: [] }),
+  editQueuedTask: async () => ({ data: [] }),
+  deleteQueuedTask: async () => ({ data: [] }),
+  completeQueuedTask: async () => ({ data: [] }),
   getSession: async () => ({ authenticated: true }),
   getSnapshot: async () => snapshot,
   setAutoPilot: async () => ({ data: { enabled: false } }),
@@ -50,15 +55,15 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("navigates between the labeled Home, Flowchart, and Chats screens by keyboard", async () => {
+  it("navigates between the labeled Home, Queued tasks, and Chats screens by keyboard", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<App api={api} />);
 
     await screen.findByRole("heading", { name: "Home" });
-    screen.getByRole("link", { name: "Flowchart" }).focus();
+    screen.getByRole("link", { name: "Queued tasks" }).focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("region", { name: "Flowchart" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Queued tasks" })).toBeVisible();
 
     screen.getByRole("link", { name: "Chats" }).focus();
     await user.keyboard("{Enter}");
@@ -103,29 +108,33 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    const flowchart = await screen.findByRole("link", { name: "Flowchart" });
-    expect(flowchart).toHaveAttribute("href", "/flowchart");
-    await user.click(flowchart);
+    const queue = await screen.findByRole("link", { name: "Queued tasks" });
+    expect(queue).toHaveAttribute("href", "/queued-tasks");
+    await user.click(queue);
 
-    expect(screen.getByRole("region", { name: "Flowchart" })).toBeVisible();
-    expect(window.location.pathname).toBe("/flowchart");
+    expect(screen.getByRole("region", { name: "Queued tasks" })).toBeVisible();
+    expect(window.location.pathname).toBe("/queued-tasks");
   });
 
-  it("passes auto-pilot changes from the flowchart to the coordinator API", async () => {
+  it("adds a todo with its title and prompt", async () => {
     const user = userEvent.setup();
-    const setAutoPilot = vi.fn(async () => ({ data: { enabled: true } }));
-    render(<App api={{ ...api, setAutoPilot }} />);
-
-    await user.click(await screen.findByRole("link", { name: "Flowchart" }));
-    await user.click(screen.getByRole("switch", { name: "Auto-pilot" }));
-
-    expect(setAutoPilot).toHaveBeenCalledWith(true);
+    const task = { id: "todo-1", title: "Fix login", prompt: "Investigate the login error", completed: false };
+    const addQueuedTask = vi.fn(async () => ({ data: [task] }));
+    render(<App api={{ ...api, addQueuedTask }} />);
+    await user.click(await screen.findByRole("link", { name: "Queued tasks" }));
+    await screen.findByText("No queued tasks yet.");
+    await user.type(screen.getByLabelText("Title"), task.title);
+    await user.type(screen.getByLabelText("Prompt"), task.prompt);
+    await user.click(screen.getByRole("button", { name: "Add todo" }));
+    expect(addQueuedTask).toHaveBeenCalledWith(task.title, task.prompt);
+    expect(await screen.findByText(task.title)).toBeVisible();
+    expect(screen.getByText(task.prompt)).toBeVisible();
   });
 
   it("uses popstate to restore a prior canonical page", async () => {
-    window.history.replaceState(null, "", "/flowchart");
+    window.history.replaceState(null, "", "/queued-tasks");
     render(<App api={api} />);
-    await screen.findByRole("region", { name: "Flowchart" });
+    await screen.findByRole("region", { name: "Queued tasks" });
 
     await act(async () => {
       window.history.replaceState(null, "", "/accounts");

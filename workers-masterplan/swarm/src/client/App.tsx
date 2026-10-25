@@ -4,7 +4,7 @@ import type { CoordinatorApi } from "./api.js";
 import { AppShell, type AppPage } from "./components/AppShell.js";
 import { HomePage, type ChatTarget } from "./pages/HomePage.js";
 import { AccountsPage } from "./pages/AccountsPage.js";
-import { FlowchartPage } from "./pages/FlowchartPage.js";
+import { QueuedTasksPage } from "./pages/QueuedTasksPage.js";
 import { ChatsPage } from "./pages/ChatsPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { CoordinatorStoreProvider, useCoordinatorStore } from "./store/coordinatorStore.js";
@@ -16,15 +16,15 @@ type ChatSelection = { accountId: AccountId; threadId?: string };
 import "./styles.css";
 
 function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat, selectedChat, onNavigate, onOpenFilePathChange }: { route: AppRoute; api: CoordinatorApi; onOpenAccountChat: (accountId: AccountId) => void; onOpenThread: (threadId: string) => void; onOpenLaunchedChat: (target: ChatTarget) => void; selectedChat: ChatSelection | null; onNavigate: (page: AppPage) => void; onOpenFilePathChange: (path: string | null, accountId?: AccountId) => void }) {
-  const { snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
+  const { snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const { page } = route;
-  const title = page === "home" ? "Home" : page === "flowchart" ? "Flowchart" : page === "chats" ? "Chats" : "Accounts";
+  const title = page === "home" ? "Home" : page === "queued-tasks" ? "Queued tasks" : page === "chats" ? "Chats" : "Accounts";
   if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
   if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ addAccount: api.addAccount, cancelAccountLogin: api.cancelAccountLogin, connectAccount: api.connectAccount, makePrimary: api.makePrimary, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits, startAccountLogin: api.startAccountLogin }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
-  if (page === "flowchart" && snapshot) return <FlowchartPage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels, setAutoPilot: api.setAutoPilot }} onOpenChat={onOpenThread} onOpenLaunchedChat={onOpenLaunchedChat} />;
-  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={!route.openFilePath && selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={route.fileAccountId ?? selectedChat?.accountId ?? (route.openFilePath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openFilePath} onOpenMarkdownPathChange={onOpenFilePathChange} transcriptRevision={transcriptRevision} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
+  if (page === "queued-tasks") return <QueuedTasksPage api={api} onOpenChat={onOpenLaunchedChat} />;
+  if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={!route.openFilePath && selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={route.fileAccountId ?? selectedChat?.accountId ?? (route.openFilePath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openFilePath} onOpenMarkdownPathChange={onOpenFilePathChange} transcriptRevisions={transcriptRevisions} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
   return (
-    <section className="page" aria-labelledby="page-title">
+    <section className="page" aria-label={title}>
       <h1 id="page-title">{title}</h1>
       {snapshot ? <p className="page-status">Coordinator snapshot updated.</p> : error ? <Toast tone="error">{error}</Toast> : <p role="status" className="page-status">Loading coordinator snapshot.</p>}
     </section>

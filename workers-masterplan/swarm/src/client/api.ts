@@ -1,3 +1,4 @@
+import type { QueuedTask } from "../shared/queuedTasks.js";
 import type {
   ApiResult,
   AccountSnapshot,
@@ -34,6 +35,11 @@ export interface ProfileLoginResponse {
 }
 
 export interface CoordinatorApi {
+  listQueuedTasks(): Promise<ApiResult<QueuedTask[]>>;
+  addQueuedTask(title: string, prompt: string): Promise<ApiResult<QueuedTask[]>>;
+  editQueuedTask(id: string, title: string, prompt: string): Promise<ApiResult<QueuedTask[]>>;
+  deleteQueuedTask(id: string): Promise<ApiResult<QueuedTask[]>>;
+  completeQueuedTask(id: string, completed: boolean): Promise<ApiResult<QueuedTask[]>>;
   getSession(): Promise<SessionState>;
   getSnapshot(): Promise<CoordinatorSnapshot>;
   setAutoPilot(enabled: boolean): Promise<ApiResult<AutoPilotState>>;
@@ -55,7 +61,7 @@ export interface CoordinatorApi {
   moveThreadToAccount(sourceAccountId: string, threadId: string, targetAccountId: string, settings?: ChatExecutionSettings): Promise<ApiResult<ThreadSummary>>;
   renameThread(accountId: string, threadId: string, name: string): Promise<ApiResult<unknown>>;
   archiveThread(accountId: string, threadId: string): Promise<ApiResult<unknown>>;
-  startTurn(accountId: string, threadId: string, text: string, settings?: ChatExecutionSettings): Promise<ApiResult<unknown>>;
+  startTurn(accountId: string, threadId: string, text: string, settings?: ChatExecutionSettings, clientUserMessageId?: string): Promise<ApiResult<unknown>>;
   steerTurn(accountId: string, threadId: string, turnId: string, text: string): Promise<ApiResult<unknown>>;
   interruptTurn(accountId: string, threadId: string, turnId: string): Promise<ApiResult<unknown>>;
   readTranscript(accountId: string, threadId: string): Promise<ApiResult<TranscriptItem[]>>;
@@ -101,7 +107,34 @@ async function terminalRequest<T>(path: string): Promise<ApiResult<T>> {
 }
 
 export function createHttpCoordinatorApi(): CoordinatorApi {
+  const transcripts = new Map<string, { etag: string; result: ApiResult<TranscriptItem[]> }>();
+  const readTranscript = async (accountId: string, threadId: string): Promise<ApiResult<TranscriptItem[]>> => {
+    const path = `/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}`;
+    const cached = transcripts.get(path);
+    const response = await fetch(`/api/v1${path}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+      // Prevent fetch's no-store mode from adding Cache-Control: no-cache,
+      // which makes Express ignore If-None-Match. Validate our memory cache.
+      headers: { "content-type": "application/json", "cache-control": "max-age=0", ...(cached ? { "if-none-match": cached.etag } : {}) },
+    });
+    if (response.status === 304 && cached) return cached.result;
+    const result = await response.json() as ApiResult<TranscriptItem[]>;
+    if (!response.ok && !("error" in result)) throw new Error("Coordinator request failed");
+    const etag = response.headers.get("etag");
+    if (response.ok && etag && !("error" in result)) {
+      transcripts.delete(path);
+      transcripts.set(path, { etag, result });
+      if (transcripts.size > 8) transcripts.delete(transcripts.keys().next().value!);
+    } else transcripts.delete(path);
+    return result;
+  };
   return {
+    listQueuedTasks: () => request<QueuedTask[]>("/queued-tasks"),
+    addQueuedTask: (title, prompt) => request<QueuedTask[]>("/queued-tasks", { method: "POST", body: JSON.stringify({ title, prompt }) }),
+    editQueuedTask: (id, title, prompt) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ title, prompt }) }),
+    deleteQueuedTask: (id) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({}) }),
+    completeQueuedTask: (id, completed) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
     getSession: () => read<SessionState>("/auth/session"),
     getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
     setAutoPilot: (enabled) => request<AutoPilotState>("/auto-pilot", { method: "POST", body: JSON.stringify({ enabled }) }),
@@ -123,10 +156,10 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     moveThreadToAccount: (sourceAccountId, threadId, targetAccountId, settings) => request<ThreadSummary>(`/accounts/${encodeURIComponent(sourceAccountId)}/threads/${encodeURIComponent(threadId)}/move`, { method: "POST", body: JSON.stringify({ targetAccountId, ...(settings ? { settings } : {}) }) }),
     renameThread: (accountId, threadId, name) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/name`, { method: "POST", body: JSON.stringify({ name }) }),
     archiveThread: (accountId, threadId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/archive`, { method: "POST" }),
-    startTurn: (accountId, threadId, text, settings) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/turns`, { method: "POST", body: JSON.stringify({ text, ...(settings ? { settings } : {}) }) }),
+    startTurn: (accountId, threadId, text, settings, clientUserMessageId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/turns`, { method: "POST", body: JSON.stringify({ text, ...(settings ? { settings } : {}), ...(clientUserMessageId ? { clientUserMessageId } : {}) }) }),
     steerTurn: (accountId, threadId, turnId, text) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/steer`, { method: "POST", body: JSON.stringify({ turnId, text }) }),
     interruptTurn: (accountId, threadId, turnId) => request<unknown>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}/interrupt`, { method: "POST", body: JSON.stringify({ turnId }) }),
-    readTranscript: (accountId, threadId) => request<TranscriptItem[]>(`/accounts/${encodeURIComponent(accountId)}/threads/${encodeURIComponent(threadId)}`),
+    readTranscript,
     readMarkdown: (accountId, path) => request<MarkdownDocument>(`/accounts/${encodeURIComponent(accountId)}/files/read`, { method: "POST", body: JSON.stringify({ path }) }),
     decideApproval: (approval, decision, permissions) => request<unknown>(`/approvals/${encodeURIComponent(approval.id)}`, { method: "POST", body: JSON.stringify({ decision, ...(permissions ? { permissions } : {}) }) }),
   };

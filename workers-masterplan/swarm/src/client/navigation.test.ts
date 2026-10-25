@@ -6,7 +6,7 @@ describe("navigation", () => {
   it.each([
     ["/home", "", "home"],
     ["/accounts", "", "accounts"],
-    ["/flowchart", "", "flowchart"],
+    ["/queued-tasks", "", "queued-tasks"],
     ["/chats", "?open=docs%2Frunbook.md", "chats"],
     ["/", "", "home"],
     ["/unknown", "", "home"],

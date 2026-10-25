@@ -24,6 +24,29 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("does not poll an idle chat but refreshes it when the tab becomes visible", async () => {
+    vi.useFakeTimers();
+    const readTranscript = vi.fn(async () => ({ data: chatTranscript }));
+    try {
+      render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(readTranscript).toHaveBeenCalledTimes(1);
+      await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+      expect(readTranscript).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("ignores transcript revisions from other chats", async () => {
+    const readTranscript = vi.fn(async () => ({ data: chatTranscript }));
+    const chatApi = { ...api, readTranscript };
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevisions={new Map()} />);
+    await screen.findByText("I found the coordinator runbook.");
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevisions={new Map([["bot3\u0000other-chat", 1]])} />);
+    expect(readTranscript).toHaveBeenCalledTimes(1);
+    view.rerender(<ChatsPage snapshot={chatSnapshot} api={chatApi} transcriptRevisions={new Map([["bot3\u0000thread-1", 1]])} />);
+    await waitFor(() => expect(readTranscript).toHaveBeenCalledTimes(2));
+  });
+
   it("shows automatic resume off by default and lets the user enable it", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -169,7 +192,7 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "bot1" })).toBeVisible();
   });
 
-  it("selects the owning account when Flowchart opens a mapped chat", async () => {
+  it("selects the owning account when Queued tasks opens a mapped chat", async () => {
     setViewport(390);
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialThreadId="thread-3" />);
 
@@ -383,7 +406,7 @@ describe("ChatsPage", () => {
       .mockResolvedValue({ data: chatTranscript });
     try {
       setViewport(1440);
-      render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} />);
+      render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} activeTurnKeys={new Set(["bot3\u0000thread-1"])} />);
       expect(readTranscript).toHaveBeenCalledTimes(1);
 
       await act(async () => { await vi.advanceTimersByTimeAsync(7_500); });
@@ -422,7 +445,7 @@ describe("ChatsPage", () => {
       render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript }} />);
       expect(readTranscript).toHaveBeenCalledTimes(1);
 
-      await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
 
       expect(readTranscript).toHaveBeenCalledTimes(2);
     } finally {

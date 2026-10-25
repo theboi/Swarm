@@ -20,7 +20,7 @@
     "postinstall": "node scripts/prepare-node-pty.mjs"
   },
   "dependencies": {
-    "@xyflow/react": "^12.8.5",
+    "compression": "^1.8.2",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
@@ -37,6 +37,7 @@
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.8",

@@ -1,4 +1,8 @@
 import express from "express";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { QueuedTasks } from "../tasks/queuedTasks.js";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
@@ -19,6 +23,7 @@ async function fixture() {
   const openTerminal = vi.fn(async () => undefined);
   const origins = new Set(["http://127.0.0.1:4310", "http://localhost:4310"]);
   const services: CoordinatorRouteServices = {
+    queuedTasks: new QueuedTasks(join(await mkdtemp(join(tmpdir(), "swarm-route-")), "tasks.json")),
     config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310, terminalPort: 4311 },
     sessions: sessionStore,
     throttle: new LoginThrottle(),
@@ -64,9 +69,45 @@ describe("coordinator HTTP routes", () => {
     const session = await services.sessions.createSession("claudio@example.test");
     await request(app).post("/api/v1/tasks/T0/launch")
       .set("origin", "http://127.0.0.1:4310").set("Cookie", `swarm_session=${session}`)
-      .send({ accountId: "bot1", origin: "auto_pilot" }).expect(200);
-    expect(services.launch).toHaveBeenCalledWith("T0", { accountId: "bot1", prompt: undefined });
+      .send({ accountId: "bot1", origin: "auto_pilot" }).expect(404);
+    expect(services.launch).not.toHaveBeenCalled();
   });
+  it("authenticates, validates and persists the plain todo list", async () => {
+    const { app, services } = await fixture();
+    const origin = "http://127.0.0.1:4310";
+    await request(app).get("/api/v1/queued-tasks").expect(401);
+    await request(app).post("/api/v1/queued-tasks").set("origin", origin).send({ title: "Title", prompt: "Prompt" }).expect(401);
+    const session = await services.sessions.createSession("claudio@example.test");
+    const cookie = `swarm_session=${session}`;
+    await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", "https://wrong.test").send({ title: "Title", prompt: "Prompt" }).expect(403);
+    await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: " ", prompt: "Prompt" }).expect(400);
+    const added = await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: "Title", prompt: "Prompt" }).expect(200);
+    const id = added.body.data[0].id;
+    await request(app).patch(`/api/v1/queued-tasks/${id}`).set("Cookie", cookie).set("origin", origin).send({ completed: true }).expect(200);
+    const loaded = await request(app).get("/api/v1/queued-tasks").set("Cookie", cookie).expect(200);
+    expect(loaded.body.data).toEqual([{ id, title: "Title", prompt: "Prompt", completed: true }]);
+    await request(app).patch("/api/v1/queued-tasks/missing").set("Cookie", cookie).set("origin", origin).send({ completed: true }).expect(404);
+  });
+
+  it("protects todo editing and deletion and persists the result", async () => {
+    const { app, services } = await fixture();
+    const origin = "http://127.0.0.1:4310";
+    const session = await services.sessions.createSession("claudio@example.test");
+    const cookie = `swarm_session=${session}`;
+    const added = await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: "Original", prompt: "Prompt" });
+    const path = `/api/v1/queued-tasks/${added.body.data[0].id}`;
+    await request(app).put(path).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(401);
+    await request(app).delete(path).set("origin", origin).send({}).expect(401);
+    await request(app).put(path).set("Cookie", cookie).set("origin", "https://wrong.test").send({ title: "Edited", prompt: "New prompt" }).expect(403);
+    await request(app).delete(path).set("Cookie", cookie).set("origin", "https://wrong.test").send({}).expect(403);
+    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: " ", prompt: "New prompt" }).expect(400);
+    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(200);
+    expect((await request(app).get("/api/v1/queued-tasks").set("Cookie", cookie)).body.data[0]).toMatchObject({ title: "Edited", prompt: "New prompt", completed: false });
+    await request(app).delete(path).set("Cookie", cookie).set("origin", origin).send({}).expect(200, { data: [] });
+    await request(app).delete(path).set("Cookie", cookie).set("origin", origin).send({}).expect(404);
+    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(404);
+  });
+
   it("uses a generic two-step login and a strict session cookie", async () => {
     const { app } = await fixture();
     const agent = request.agent(app);
@@ -89,19 +130,10 @@ describe("coordinator HTTP routes", () => {
     expect(result.body.error).toMatchObject({ code: "AUTH_INVALID" });
   });
 
-  it("sets auto-pilot only for an authenticated boolean request", async () => {
-    const { app, services } = await fixture();
-    const agent = request.agent(app);
-    const origin = "http://127.0.0.1:4310";
-    const challenge = await agent.post("/api/v1/auth/challenge").set("origin", origin).send({ email: "claudio@example.test", password: "correct password" }).expect(200);
-    await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) }).expect(200);
-
-    await agent.post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: true }).expect(200, { data: { enabled: true } });
-    await agent.post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: "true" }).expect(400, { error: { code: "INVALID_REQUEST", message: "Auto-pilot enabled must be a boolean" } });
-    await request(app).post("/api/v1/auto-pilot").set("origin", origin).send({ enabled: true }).expect(401, { error: { code: "AUTH_INVALID", message: "Authentication required" } });
-
-    expect(services.setAutoPilot).toHaveBeenCalledOnce();
-    expect(services.setAutoPilot).toHaveBeenCalledWith(true);
+  it("retires automatic assignment and graph launch endpoints", async () => {
+    const { app } = await fixture();
+    await request(app).post("/api/v1/auto-pilot").send({ enabled: true }).expect(404);
+    await request(app).post("/api/v1/tasks/T1/launch").send({}).expect(404);
   });
 
   it("sets automatic resume only for an authenticated boolean request", async () => {
@@ -223,7 +255,7 @@ describe("coordinator HTTP routes", () => {
     expect(openTerminal).not.toHaveBeenCalled();
   });
 
-  it("refreshes every connected account's usage, forwards an edited prompt, and rejects caller-supplied dispatch origin", async () => {
+  it("refreshes every connected account's usage", async () => {
     const { app, services } = await fixture();
     const agent = request.agent(app);
     const origin = "http://127.0.0.1:4310";
@@ -231,13 +263,7 @@ describe("coordinator HTTP routes", () => {
     await agent.post("/api/v1/auth/complete").set("origin", origin).send({ challengeId: challenge.body.data.challengeId, code: totpAt("JBSWY3DPEHPK3PXP", Date.now()) });
 
     await agent.post("/api/v1/accounts/rate-limits/refresh").set("origin", origin).send({}).expect(200);
-    await agent.post("/api/v1/tasks/T1/preview").set("origin", origin).send({ accountId: "bot1" }).expect(200);
-    const settings = { model: "gpt-5.3-codex", effort: "high", serviceTier: "priority", permissionMode: "full_access" };
-    await agent.post("/api/v1/tasks/T1/launch").set("origin", origin).send({ accountId: "bot1", prompt: "Use this edited worker prompt.", settings, origin: "auto_pilot" }).expect(200);
-
     expect(services.refreshAllRateLimits).toHaveBeenCalledOnce();
-    expect(services.previewLaunch).toHaveBeenCalledWith("T1", "bot1");
-    expect(services.launch).toHaveBeenCalledWith("T1", { accountId: "bot1", prompt: "Use this edited worker prompt.", settings });
   });
 
   it("forwards only valid explicit chat execution settings", async () => {

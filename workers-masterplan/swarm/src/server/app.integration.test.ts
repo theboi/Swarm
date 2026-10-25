@@ -26,6 +26,18 @@ async function servicesFixture(): Promise<CoordinatorRouteServices> {
 }
 
 describe("coordinator application composition", () => {
+  it("compresses large static assets for remote browsers", async () => {
+    const staticDir = await mkdtemp(join(tmpdir(), ".swarm-compression-"));
+    await writeFile(join(staticDir, "bundle.js"), "const message = 'Swarm';\n".repeat(500));
+    const coordinator = createCoordinatorApp({ services: await servicesFixture(), staticDir, flush: async () => undefined, shutdown: async () => undefined });
+    stop = coordinator.shutdown;
+    try {
+      const response = await request(coordinator.app).get("/bundle.js").set("Accept-Encoding", "gzip").expect(200);
+      expect(response.headers["content-encoding"]).toBe("gzip");
+      expect(response.headers.vary).toContain("Accept-Encoding");
+    } finally { await rm(staticDir, { recursive: true, force: true }); }
+  });
+
   it("mounts only the versioned API and flushes runtime dependencies before closing", async () => {
     const services = await servicesFixture();
     const flush = vi.fn(async () => undefined);
@@ -47,7 +59,7 @@ describe("coordinator application composition", () => {
     stop = coordinator.shutdown;
     try {
       await request(coordinator.app).get("/").expect(200, "<main>Swarm client</main>");
-      await request(coordinator.app).get("/flowchart").expect(200, "<main>Swarm client</main>");
+      await request(coordinator.app).get("/queued-tasks").expect(200, "<main>Swarm client</main>");
       await request(coordinator.app).get("/api/v1/not-found").expect(404);
     } finally {
       await rm(staticDir, { recursive: true, force: true });

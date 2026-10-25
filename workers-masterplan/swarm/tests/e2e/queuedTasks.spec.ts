@@ -1,0 +1,70 @@
+import { expect, test } from "@playwright/test";
+
+test("adds, reloads and completes a queued todo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByLabel("Email").fill("operator@fixture.test");
+  await page.getByLabel("Password").fill("fixture-only-password");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Authentication code").fill("123456");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Queued tasks" }).click();
+  const title = `Browser todo ${Date.now()}`;
+  await page.getByLabel("Title", { exact: true }).fill(title);
+  await page.getByLabel("Prompt", { exact: true }).fill("Investigate and describe the issue.\nKeep the original prompt.");
+  await page.getByRole("button", { name: "Add todo" }).click();
+  await expect(page.getByText(title, { exact: true })).toBeVisible();
+  await page.reload();
+  const checkbox = page.getByRole("checkbox", { name: `Complete ${title}` });
+  await expect(checkbox).not.toBeChecked();
+  await checkbox.click();
+  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toBeEnabled();
+  await page.reload();
+  await expect(checkbox).toBeChecked();
+  await page.getByRole("button", { name: `Edit ${title}` }).click();
+  await expect(page.getByLabel("Edit title")).toBeFocused();
+  await page.getByLabel("Edit title").fill(`${title} edited`);
+  await page.getByLabel("Edit prompt").fill("An edited prompt.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("button", { name: `Edit ${title} edited` })).toBeFocused();
+  await page.reload();
+  await expect(page.getByText("An edited prompt.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: `Delete ${title} edited` }).click();
+  await expect(page.getByText(`${title} edited`, { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText(`${title} edited`, { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+for (const width of [390, 1440]) {
+  test(`sends a todo to a selected bot in a new chat at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await page.getByLabel("Email").fill("operator@fixture.test");
+    await page.getByLabel("Password").fill("fixture-only-password");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Authentication code").fill("123456");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("link", { name: "Queued tasks" }).click();
+    const title = `Send todo ${width} ${Date.now()}`;
+    await page.getByLabel("Title", { exact: true }).fill(title);
+    await page.getByLabel("Prompt", { exact: true }).fill("Use this exact prompt.");
+    await page.getByRole("button", { name: "Add todo" }).click();
+    await page.getByRole("button", { name: `Send ${title} to bot` }).click();
+    await expect(page.getByLabel("Bot", { exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: `Send ${title} to bot` })).toBeFocused();
+    await page.getByRole("button", { name: `Send ${title} to bot` }).click();
+    await page.getByLabel("Bot", { exact: true }).selectOption("bot3");
+    const sent = page.waitForRequest(request => request.method() === "POST" && /accounts\/bot3\/threads\/[^/]+\/turns$/.test(new URL(request.url()).pathname));
+    await page.getByRole("button", { name: "Send prompt" }).click();
+    expect((await sent).postDataJSON()).toMatchObject({ text: "Use this exact prompt.", clientUserMessageId: expect.any(String) });
+    await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Queued tasks" }).click();
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (width === 390) await page.screenshot({ path: "/tmp/swarm-todo-actions-mobile.png", fullPage: true });
+  });
+}

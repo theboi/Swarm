@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { QueuedTasks } from "../tasks/queuedTasks.js";
 import { randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
 
@@ -9,6 +11,7 @@ import type { InterruptRequestAuditContext } from "../audit/interruptAudit.js";
 import { apiError, readCookie, requireAllowedOrigin, requireJson, requireSession, SESSION_COOKIE } from "./authMiddleware.js";
 
 export interface CoordinatorRouteServices {
+  queuedTasks?: QueuedTasks;
   config: { loginEmail: string; loginPasswordHash: string; trustManagedProxy: boolean; host: string; port: number; terminalPort: number; secureCookies?: boolean };
   sessions: SessionStore;
   throttle: LoginThrottle;
@@ -135,6 +138,7 @@ function secureCookie(request: Request, config: CoordinatorRouteServices["config
 /** Versioned browser API. The only unwrapped internal values are immediately enveloped at this boundary. */
 export function createApiRouter(services: CoordinatorRouteServices) {
   const router = express.Router();
+  const queuedTasks = services.queuedTasks ?? new QueuedTasks(resolve(process.cwd(), "manifests", "queued-tasks.json"));
   const mutation = [requireAllowedOrigin(services.allowedOrigins), requireJson] as const;
   const securedMutation = [requireSession(services.sessions), ...mutation] as const;
   const account = (value: unknown): AccountId | undefined => typeof value === "string" ? services.resolveAccountId(value) : undefined;
@@ -199,13 +203,34 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   }));
   router.get("/snapshot", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.snapshot())));
   router.get("/health", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.health())));
-  router.post("/auto-pilot", ...securedMutation, asyncRoute(async (request, response) => {
-    const enabled = record(request.body).enabled;
-    if (typeof enabled !== "boolean") {
-      apiError(response, 400, "INVALID_REQUEST", "Auto-pilot enabled must be a boolean");
-      return;
+  router.get("/queued-tasks", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await queuedTasks.list())));
+  router.post("/queued-tasks", ...securedMutation, asyncRoute(async (request, response) => {
+    const { title, prompt } = record(request.body);
+    if (typeof title !== "string" || !title.trim() || title.length > 200 || typeof prompt !== "string" || !prompt.trim() || prompt.length > 32000) {
+      apiError(response, 400, "INVALID_REQUEST", "A title (up to 200 characters) and prompt (up to 32000 characters) are required"); return;
     }
-    sendData(response, await services.setAutoPilot(enabled));
+    sendData(response, await queuedTasks.add(title, prompt));
+  }));
+  router.put("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
+    const { title, prompt } = record(request.body);
+    if (typeof title !== "string" || !title.trim() || title.length > 200 || typeof prompt !== "string" || !prompt.trim() || prompt.length > 32000) {
+      apiError(response, 400, "INVALID_REQUEST", "A title (up to 200 characters) and prompt (up to 32000 characters) are required"); return;
+    }
+    const id = param(request.params.id);
+    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
+    sendData(response, await queuedTasks.edit(id, title, prompt));
+  }));
+  router.delete("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
+    const id = param(request.params.id);
+    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
+    sendData(response, await queuedTasks.remove(id));
+  }));
+  router.patch("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
+    const { completed } = record(request.body);
+    if (typeof completed !== "boolean") { apiError(response, 400, "INVALID_REQUEST", "Completed must be a boolean"); return; }
+    const id = param(request.params.id);
+    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
+    sendData(response, await queuedTasks.complete(id, completed));
   }));
 
   router.post("/accounts/rate-limits/refresh", ...securedMutation, asyncRoute(async (_request, response) => sendData(response, await services.refreshAllRateLimits())));
@@ -266,8 +291,6 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   }));
   router.post("/accounts/:account/files/read", ...securedMutation, asyncRoute(async (request, response) => { const id = account(request.params.account); const path = text(record(request.body).path, "path"); if (!id || !path) { apiError(response, 400, "INVALID_REQUEST", "A known account and file path are required"); return; } sendData(response, await services.readMarkdown(id, path)); }));
 
-  router.post("/tasks/:task/preview", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const pass = body.pass === undefined ? undefined : manifestPass(body.pass); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.pass !== undefined && !pass) { apiError(response, 400, "INVALID_REQUEST", "Unknown worker pass"); return; } sendData(response, pass ? await services.previewLaunch(param(request.params.task), accountId, pass) : await services.previewLaunch(param(request.params.task), accountId)); }));
-  router.post("/tasks/:task/launch", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const accountId = body.accountId === undefined ? undefined : account(body.accountId); const prompt = body.prompt === undefined ? undefined : text(body.prompt, "prompt"); const settings = executionSettings(body.settings); const pass = body.pass === undefined ? undefined : manifestPass(body.pass); if (body.accountId !== undefined && !accountId) { apiError(response, 400, "INVALID_REQUEST", "Unknown account"); return; } if (body.pass !== undefined && !pass) { apiError(response, 400, "INVALID_REQUEST", "Unknown worker pass"); return; } if (body.prompt !== undefined && !prompt) { apiError(response, 400, "INVALID_REQUEST", "A non-empty prompt is required"); return; } if (settings === null) { apiError(response, 400, "INVALID_REQUEST", "Invalid chat execution settings"); return; } sendData(response, await services.launch(param(request.params.task), { accountId, prompt, ...(settings ? { settings } : {}), ...(pass ? { pass } : {}) })); }));
   router.post("/approvals/:approval", ...securedMutation, asyncRoute(async (request, response) => { const body = record(request.body); const decision = text(body.decision, "decision"); if (!decision) { apiError(response, 400, "INVALID_REQUEST", "An approval decision is required"); return; } await services.decideApproval(param(request.params.approval), { decision, permissions: record(body.permissions) }); sendData(response, {}); }));
   router.use((_request, response) => apiError(response, 404, "NOT_FOUND", "API route not found"));
   return router;

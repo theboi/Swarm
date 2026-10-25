@@ -4,6 +4,16 @@ import { extractMarkdownPaths, hydrateTranscript, initialTranscriptState, reduce
 const scope = { accountId: "bot1" as const, threadId: "thread-1" };
 
 describe("transcriptReducer", () => {
+  it("preserves turn completion on history and live completion without confusing item completion", () => {
+    let state = hydrateTranscript(initialTranscriptState, { ...scope, turns: [{ id: "turn-1", status: "completed", startedAt: 1, itemsView: "full", items: [{ id: "reply", type: "agentMessage", text: "Done" }] }] });
+    expect(state.items[0]).toMatchObject({ turnStatus: "completed" });
+    state = reduceTranscriptEvent(state, { method: "item/completed", params: { ...scope, turnId: "turn-2", item: { id: "progress", type: "agentMessage", text: "Checking", phase: "commentary" } } });
+    expect(state.items[1].status).toBe("completed");
+    expect(state.items[1].turnStatus).not.toBe("completed");
+    state = reduceTranscriptEvent(state, { method: "turn/completed", params: { ...scope, turn: { id: "turn-2", status: "completed" } } });
+    expect(state.items[1].turnStatus).toBe("completed");
+  });
+
   it("hydrates a long authoritative transcript without quadratic rescanning", () => {
     const items = Array.from({ length: 8_000 }, (_, index) => ({
       type: "agentMessage",

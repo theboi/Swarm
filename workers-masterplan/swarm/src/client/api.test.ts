@@ -5,6 +5,18 @@ import { createHttpCoordinatorApi } from "./api.js";
 describe("HTTP coordinator API", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("reuses an unchanged transcript without downloading or parsing its body again", async () => {
+    const result = { data: [{ id: "reply" }] };
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(result), { headers: { etag: '"version-1"' } })).mockResolvedValueOnce(new Response(null, { status: 304 }));
+    vi.stubGlobal("fetch", fetch);
+    const api = createHttpCoordinatorApi();
+    const first = await api.readTranscript("bot3", "thread-1");
+    expect(await api.readTranscript("bot3", "thread-1")).toBe(first);
+    expect(fetch.mock.calls[1][1].headers["if-none-match"]).toBe('"version-1"');
+    expect(fetch.mock.calls[1][1].headers["cache-control"]).toBe("max-age=0");
+  });
+
+
   it("unwraps every read envelope while retaining action result envelopes and credentials", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ data: { authenticated: true } }), { headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
@@ -149,4 +161,17 @@ describe("HTTP coordinator API", () => {
       body: JSON.stringify({ enabled: true }),
     }));
   });
+});
+
+
+it("uses JSON for todo deletion and preserves a retry message ID when sending", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { headers: { "content-type": "application/json" } }));
+  vi.stubGlobal("fetch", fetch);
+  const api = createHttpCoordinatorApi();
+  await api.editQueuedTask("todo/1", "Title", "Prompt");
+  await api.deleteQueuedTask("todo/1");
+  await api.startTurn("bot3/acc1", "new-chat", "Prompt", undefined, "stable-message-id");
+  expect(fetch).toHaveBeenCalledWith("/api/v1/queued-tasks/todo%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ title: "Title", prompt: "Prompt" }) }));
+  expect(fetch).toHaveBeenCalledWith("/api/v1/queued-tasks/todo%2F1", expect.objectContaining({ method: "DELETE", body: "{}" }));
+  expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3%2Facc1/threads/new-chat/turns", expect.objectContaining({ body: JSON.stringify({ text: "Prompt", clientUserMessageId: "stable-message-id" }) }));
 });

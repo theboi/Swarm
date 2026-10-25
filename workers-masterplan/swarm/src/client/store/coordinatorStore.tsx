@@ -10,7 +10,7 @@ interface CoordinatorStoreValue {
   error: string | null;
   refresh: () => Promise<void>;
   refreshUsage: () => Promise<void>;
-  transcriptRevision: number;
+  transcriptRevisions: ReadonlyMap<string, number>;
   activeTurnKeys: ReadonlySet<string>;
   activeTurnIds: ReadonlyMap<string, string>;
   limitExhaustedTurnKeys: ReadonlySet<string>;
@@ -91,7 +91,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const [snapshot, setSnapshot] = useState<CoordinatorSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sequence = useRef(0);
-  const [transcriptRevision, setTranscriptRevision] = useState(0);
+  const [transcriptRevisions, setTranscriptRevisions] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [activeTurnKeys, setActiveTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [activeTurnIds, setActiveTurnIds] = useState<ReadonlyMap<string, string>>(() => new Map());
   const activeTurnIdsRef = useRef<ReadonlyMap<string, string>>(activeTurnIds);
@@ -153,6 +153,28 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
     let disposed = false;
     let socket: WebSocket | undefined;
     let retry: number | undefined;
+    let transcriptTimer: number | undefined;
+    let refreshTimer: number | undefined;
+    const pendingTranscripts = new Set<string>();
+    const flushTranscripts = () => {
+      transcriptTimer = undefined;
+      if (disposed || !pendingTranscripts.size) return;
+      const keys = [...pendingTranscripts];
+      pendingTranscripts.clear();
+      setTranscriptRevisions((current) => {
+        const next = new Map(current);
+        for (const key of keys) next.set(key, (next.get(key) ?? 0) + 1);
+        return next;
+      });
+    };
+    const queueTranscript = (accountId: string, threadId: string) => {
+      pendingTranscripts.add(`${accountId}\u0000${threadId}`);
+      if (transcriptTimer === undefined) transcriptTimer = window.setTimeout(flushTranscripts, 250);
+    };
+    const queueRefresh = () => {
+      if (refreshTimer !== undefined) return;
+      refreshTimer = window.setTimeout(() => { refreshTimer = undefined; void refresh(); }, 250);
+    };
     const connect = () => {
       if (disposed) return;
       try { socket = new WebSocket(browserWebSocketUrl()); } catch { retry = window.setTimeout(connect, 1_000); return; }
@@ -178,10 +200,11 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
           const accountId = typeof eventPayload?.accountId === "string" ? eventPayload.accountId : undefined;
           const threadId = typeof eventPayload?.threadId === "string" ? eventPayload.threadId : undefined;
           if (message.type === "transcript" && accountId && threadId) {
-            setTranscriptRevision((revision) => revision + 1);
+            queueTranscript(accountId, threadId);
             return;
           }
           if (message.type === "turn" && accountId && threadId) {
+            queueTranscript(accountId, threadId);
             const key = `${accountId}\u0000${threadId}`;
             setUnreadTurnKeys((current) => {
               const update = completionNotificationUpdate(current, notifiedCompletionIdsRef.current, key, eventPayload?.turnId, eventPayload?.state, eventPayload?.historical === true);
@@ -227,17 +250,17 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
               if (eventPayload?.state === "limit_exhausted") setLimitExhaustedTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
             }
           }
-          void refresh();
+          queueRefresh();
         }
       };
       socket.onclose = () => { if (!disposed) retry = window.setTimeout(connect, 1_000); };
       socket.onerror = () => socket?.close();
     };
     connect();
-    return () => { disposed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
+    return () => { disposed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); if (transcriptTimer !== undefined) window.clearTimeout(transcriptTimer); if (refreshTimer !== undefined) window.clearTimeout(refreshTimer); };
   }, [refresh]);
 
-  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevision, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, attentionTurnKeys, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevision, unreadTurnKeys]);
+  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, attentionTurnKeys, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevisions, unreadTurnKeys]);
   return <CoordinatorStore.Provider value={value}>{children}</CoordinatorStore.Provider>;
 }
 

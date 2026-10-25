@@ -6,7 +6,7 @@ import type { CoordinatorApi, MarkdownDocument } from "../api.js";
 import type { ChatTarget } from "./HomePage.js";
 import { MarkdownViewer } from "../components/MarkdownViewer.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
-import { TranscriptItemView } from "../components/TranscriptItemView.js";
+import { TranscriptTurns, reconcileTranscript, type TranscriptHandle } from "../components/TranscriptTurns.js";
 import { AccountUsageBar } from "../components/AccountSummaryPanel.js";
 import { AccountStatusIndicator } from "../components/AccountStatusIndicator.js";
 import { TurnOptions } from "../components/TurnOptions.js";
@@ -15,7 +15,6 @@ import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionS
 
 type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval" | "setLimitResumeEnabled"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount" | "renameThread">>;
 const EMPTY_TURN_KEYS: ReadonlySet<string> = new Set<string>();
-const TRANSCRIPT_RENDER_BATCH = 100;
 const noopMarkThreadRead = () => undefined;
 
 interface SubagentReference {
@@ -176,19 +175,32 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
 
   useEffect(() => {
     let live = true;
-    void api.readTranscript(accountId, reference.threadId).then((result) => {
-      if (!live) return;
-      setLoading(false);
-      if ("error" in result && result.error) return reportError(result.error.message);
-      setItems(result.data);
-      onTranscript(reference.threadId, result.data);
-    }).catch(() => {
-      if (!live) return;
-      setLoading(false);
-      reportError("Unable to load this subagent.");
-    });
-    return () => { live = false; };
-  }, [accountId, api, onTranscript, reference.threadId, reportError, revision]);
+    let timer: number | undefined;
+    const read = async () => {
+      try {
+        const result = await api.readTranscript(accountId, reference.threadId);
+        if (!live) return;
+        setLoading(false);
+        if ("error" in result && result.error) { reportError(result.error.message); return; }
+        setItems((previous) => reconcileTranscript(previous, result.data));
+        onTranscript(reference.threadId, result.data);
+      } catch {
+        if (live) { setLoading(false); reportError("Unable to load this subagent."); }
+      } finally {
+        if (live) schedule();
+      }
+    };
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        if (globalThis.document.visibilityState === "visible") void read();
+        else schedule();
+      }, thinking ? 2_500 : 30_000);
+    };
+    const refreshVisible = () => { if (globalThis.document.visibilityState === "visible") setRevision((current) => current + 1); };
+    void read();
+    globalThis.document.addEventListener("visibilitychange", refreshVisible);
+    return () => { live = false; if (timer !== undefined) window.clearTimeout(timer); globalThis.document.removeEventListener("visibilitychange", refreshVisible); };
+  }, [accountId, api, onTranscript, reference.threadId, reportError, revision, thinking]);
 
   useLayoutEffect(() => {
     if (loading || opened.current || !scrollRef.current) return;
@@ -202,12 +214,6 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
     return () => priorFocus?.focus();
   }, []);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (globalThis.document.visibilityState === "visible") setRevision((current) => current + 1);
-    }, 2_500);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const send = async () => {
     const text = draft.trim();
@@ -245,10 +251,10 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   };
 
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="subagent-dialog" role="dialog" aria-modal="true" aria-labelledby="subagent-dialog-title" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+    <section className="subagent-dialog" role="dialog" aria-modal="true" aria-label={`Subagent ${reference.label}`} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
       <header className="subagent-dialog__header"><div><span>{accountId}</span><h2 id="subagent-dialog-title">Subagent {reference.label}</h2></div>{thinking ? <span className="chat-thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}<OverlayCloseButton ref={closeRef} onClick={onClose} /></header>
       <div className="transcript-scroll subagent-dialog__transcript" ref={scrollRef} aria-label={`Conversation with ${reference.label}`}>
-        {loading ? <div className="transcript-working"><span className="loading-spinner" aria-hidden="true" /><span>Loading subagent…</span></div> : items.length ? items.map((item) => <TranscriptItemView item={item} key={item.id} active={thinking && item.turnId === latestTurnId && item.type === "reasoning"} onOpenMarkdown={onOpenMarkdown} />) : <div className="transcript-empty"><p>No messages in this subagent yet.</p></div>}
+        {loading ? <div className="transcript-working"><span className="loading-spinner" aria-hidden="true" /><span>Loading subagent…</span></div> : items.length ? <TranscriptTurns items={items} activeReasoningId={thinking ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning")?.id : undefined} onOpenMarkdown={onOpenMarkdown} /> : <div className="transcript-empty"><p>No messages in this subagent yet.</p></div>}
       </div>
       <form className="chat-compose subagent-dialog__composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
         <div className="chat-compose__field"><textarea aria-label="Message" rows={2} placeholder={thinking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
@@ -259,7 +265,7 @@ function SubagentChatDialog({ accountId, reference, api, models, settings, activ
   </div>;
 }
 
-export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, openMarkdownPath = null, onOpenMarkdownPathChange, transcriptRevision: liveTranscriptRevision = 0, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; openMarkdownPath?: string | null; onOpenMarkdownPathChange?: (path: string | null, accountId?: AccountId) => void; transcriptRevision?: number; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
+export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, openMarkdownPath = null, onOpenMarkdownPathChange, transcriptRevision: liveTranscriptRevision = 0, transcriptRevisions, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; openMarkdownPath?: string | null; onOpenMarkdownPathChange?: (path: string | null, accountId?: AccountId) => void; transcriptRevision?: number; transcriptRevisions?: ReadonlyMap<string, number>; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
   const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
@@ -271,7 +277,6 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [loadingAccountId, setLoadingAccountId] = useState<AccountId | null>(null);
   const [pendingTarget, setPendingTarget] = useState<ChatTarget | null>(initialTarget ?? null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
-  const [visibleItemCount, setVisibleItemCount] = useState(TRANSCRIPT_RENDER_BATCH);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const [scrollRequest, setScrollRequest] = useState(0);
   const [draft, setDraft] = useState("");
@@ -294,6 +299,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [subagentGraph, setSubagentGraph] = useState<ReadonlyMap<string, SubagentReference[]>>(() => new Map());
   const [clock, setClock] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<TranscriptHandle>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const lastOpenedChatKey = useRef<string | null>(null);
   const scrollPosition = useRef(0);
@@ -310,6 +316,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const transcriptRequestsRef = useRef(new Map<string, { running: boolean; pending: boolean; scrollOnSuccess: boolean }>());
   itemsRef.current = items;
   selectedTranscriptKeyRef.current = accountId && threadId && !isDraftChat ? `${accountId}\u0000${threadId}` : null;
+  const scopedTranscriptRevision = transcriptRevisions?.get(`${accountId}\u0000${threadId}`) ?? 0;
   const compact = useCompactPicker();
   const threads = useMemo(() => {
     const listed = accountId ? threadsByAccount[accountId] ?? [] : [];
@@ -396,7 +403,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const result = await api.readTranscript(accountId, threadId);
             if (selectedTranscriptKeyRef.current !== openedKey) continue;
             if ("error" in result && result.error) { if (itemsRef.current.length === 0) setError(result.error.message); continue; }
-            setItems(result.data);
+            setItems((previous) => reconcileTranscript(previous, result.data));
             rememberSubagents(threadId, result.data);
             markThreadRead(accountId, threadId);
             if (state.scrollOnSuccess) {
@@ -413,9 +420,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       }
     };
     void drain();
-  }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision]);
-
-  useEffect(() => setVisibleItemCount(TRANSCRIPT_RENDER_BATCH), [accountId, threadId]);
+  }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision, scopedTranscriptRevision]);
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat) return;
@@ -678,8 +683,6 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const subagentThinking = Boolean(accountId && threadId && (subagents.some((subagent) => activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`)) || hasActiveDescendant(threadId, accountId, subagentGraph, activeTurnKeys, activeThreadIds)));
   const isThinking = Boolean(activeTurnKey && (activeTurnKeys.has(activeTurnKey) || selectedThread?.activity === "active" || subagentThinking));
   const isWorking = isThinking;
-  const visibleItems = items.slice(-visibleItemCount);
-  const hiddenItemCount = items.length - visibleItems.length;
   const canSteer = Boolean(selectedThread && accountId && activeTurnId && (isThinking || selectedThread.capabilities.canSteer));
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
@@ -689,8 +692,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
   const scrollToLatestUserMessage = () => {
-    const messages = scrollRef.current?.querySelectorAll<HTMLElement>('[data-transcript-type="userMessage"]');
-    messages?.item(messages.length - 1)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    transcriptRef.current?.showLatestUserMessage();
   };
   const exhaustedLimit = selectedAccount?.rateLimits.filter((limit) => limit.usedPercent !== null && limit.usedPercent >= 100).sort((left, right) => (left.resetsAt ?? Number.MAX_SAFE_INTEGER) - (right.resetsAt ?? Number.MAX_SAFE_INTEGER))[0];
   const limitExhausted = Boolean(threadId && accountId && isWaitingForLimit(snapshot, limitExhaustedTurnKeys, accountId, threadId));
@@ -728,11 +730,17 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   useEffect(() => {
     if (!accountId || !threadId || isDraftChat) return;
-    const timer = window.setInterval(() => {
+    const refreshVisible = () => {
       if (globalThis.document.visibilityState === "visible") setTranscriptRevision((revision) => revision + 1);
-    }, 2_500);
-    return () => window.clearInterval(timer);
-  }, [accountId, isDraftChat, threadId]);
+    };
+    // Realtime drives updates; a slow idle check also recovers missed starts.
+    const timer = window.setInterval(refreshVisible, isThinking ? 2_500 : 30_000);
+    globalThis.document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      globalThis.document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [accountId, isDraftChat, isThinking, threadId]);
 
   useEffect(() => {
     if (!limitExhausted) return;
@@ -846,7 +854,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             return <button key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</button>;
           })}</div></section>)}</div> : null}
           {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <button className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><Network aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) || activeThreadIds.has(subagent.threadId) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</button>)}</nav> : null}
-          <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{hiddenItemCount ? <button className="transcript-load-earlier" type="button" aria-label={`Show ${Math.min(TRANSCRIPT_RENDER_BATCH, hiddenItemCount)} earlier messages`} onClick={() => setVisibleItemCount((count) => count + TRANSCRIPT_RENDER_BATCH)}>Show earlier messages</button> : null}{items.length ? visibleItems.map((item) => <TranscriptItemView active={item.id === liveReasoningId} item={item} key={item.id} onOpenMarkdown={(path) => void openMarkdown(path)} />) : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
+          <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? <TranscriptTurns ref={transcriptRef} key={`${accountId}:${threadId}`} items={items} activeReasoningId={liveReasoningId} onOpenMarkdown={openMarkdown} /> : <div className="transcript-empty"><MessageSquarePlus aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><button type="button" aria-label="Scroll to latest message you sent" title="Latest message you sent" disabled={!items.some((item) => item.type === "userMessage")} onClick={scrollToLatestUserMessage}><UserRound aria-hidden="true" size={15} /></button><button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><ArrowDown aria-hidden="true" size={16} /></button></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>{resumeStatus}</p></section> : null}
           {resumeNeedsSignIn && !limitExhausted && accountId ? <section className="chat-limit-notice" aria-label="Account sign-in required" role="status"><p>{`Sign in to ${accountId} to send messages.`}</p></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>

@@ -1,15 +1,15 @@
-import { ChartNoAxesCombined, House, MessagesSquare, UsersRound } from "lucide-react";
+import { ListTodo, House, MessagesSquare, UsersRound } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import "../styles.css";
 import { pagePath } from "../navigation.js";
 
-export type AppPage = "home" | "flowchart" | "chats" | "accounts";
+export type AppPage = "home" | "queued-tasks" | "chats" | "accounts";
 
 const navigation = [
   { id: "home" as const, label: "Home", icon: House },
   { id: "accounts" as const, label: "Accounts", icon: UsersRound },
-  { id: "flowchart" as const, label: "Flowchart", icon: ChartNoAxesCombined },
+  { id: "queued-tasks" as const, label: "Queued tasks", icon: ListTodo },
   { id: "chats" as const, label: "Chats", icon: MessagesSquare },
 ];
 

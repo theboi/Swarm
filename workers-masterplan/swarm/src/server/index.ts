@@ -130,7 +130,7 @@ async function createRuntime(config: SwarmConfig) {
   const state = new CoordinatorState(await store.read(), async (value) => store.write(value));
   const root = state.root();
   root.auth ??= {};
-  root.autoPilot ??= { enabled: false };
+  root.autoPilot = { enabled: false };
   root.notifications ??= {};
   root.notifications.breakingChangeAccounts ??= [];
   root.interruptAudit ??= [];
@@ -383,46 +383,12 @@ async function createRuntime(config: SwarmConfig) {
   const refreshTasks = async (force = true) => {
     if (!force && Date.now() - tasksRefreshedAt < 15_000) return;
     if (taskRefreshPromise) return taskRefreshPromise;
-    taskRefreshPromise = (async () => {
-      const priorProjection = JSON.stringify({ nodesByPass, manifestError, activePass: manifest?.lifecycle?.activePass });
-      if (!config.masterplanPath) { manifest = undefined; nodes = []; manifestError = "MASTERPLAN_NOT_READY"; tasksRefreshedAt = Date.now(); return; }
-      let candidatePasses: Record<ManifestPass, TaskNode[]> | undefined;
-      let candidateCompleted: Record<ManifestPass, Set<string>> | undefined;
-      const refreshed = await refreshTaskGraphAtomically({ manifest, nodes }, async () => {
-        const fullManifest = await loadManifest(config.masterplanPath!, resolve(config.coordinationRoot ?? process.cwd()));
-        const completion = await loadCompletionManifest(fullManifest, coordinationWorkspaceRoot);
-        const passEntries = await Promise.all((["planning", "execution"] as const).map(async (pass) => {
-          const candidateManifest = projectManifestToPass(fullManifest, pass);
-          const receiptCompleted = completedTaskIdsForPass(completion, pass);
-          const readiness = applyCompletionManifest(candidateManifest, { ...completion, completedTaskIds: receiptCompleted });
-          return [pass, { nodes: taskNode(candidateManifest, readiness), completed: receiptCompleted }] as const;
-        }));
-        candidatePasses = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.nodes])) as Record<ManifestPass, TaskNode[]>;
-        candidateCompleted = Object.fromEntries(passEntries.map(([pass, value]) => [pass, value.completed])) as Record<ManifestPass, Set<string>>;
-        const activePass = fullManifest.lifecycle?.activePass ?? "planning";
-        const retainedCompletedTaskIds = candidateCompleted[activePass];
-        const candidateNodes = candidatePasses[activePass];
-        const completionChanged = retainedCompletedTaskIds.size !== completedTaskIds.size
-          || [...retainedCompletedTaskIds].some((taskId) => !completedTaskIds.has(taskId))
-          || completedTaskPass !== activePass;
-        if (completionChanged || !root.completedTaskIds) {
-          await state.mutate((value) => { value.completedTaskIds = [...retainedCompletedTaskIds]; value.completedTaskPass = activePass; });
-          completedTaskIds.clear();
-          for (const taskId of retainedCompletedTaskIds) completedTaskIds.add(taskId);
-          completedTaskPass = activePass;
-        }
-        return { manifest: fullManifest, nodes: candidateNodes };
-      }, (error) => error instanceof Error && error.message.includes("MASTERPLAN") ? "MASTERPLAN_NOT_READY" : "MANIFEST_INVALID");
-      manifest = refreshed.manifest;
-      nodes = refreshed.nodes;
-      if (!refreshed.manifestError && candidatePasses && candidateCompleted) { nodesByPass = candidatePasses; completedByPass = candidateCompleted; }
-      manifestError = refreshed.manifestError;
-      tasksRefreshedAt = Date.now();
-      // Only a changed refresh requests another run, so the controller's own
-      // force-refresh cannot turn its coalesced request queue into a busy loop.
-      if (JSON.stringify({ nodesByPass, manifestError, activePass: manifest?.lifecycle?.activePass }) !== priorProjection) requestAutoPilot();
-    })();
-    try { await taskRefreshPromise; } finally { taskRefreshPromise = undefined; }
+    // Manifest-driven assignment has been retired; todos are stored separately.
+    manifest = undefined;
+    nodes = [];
+    nodesByPass = { planning: [], execution: [] };
+    manifestError = undefined;
+    tasksRefreshedAt = Date.now();
   };
   await refreshTasks();
   const passwordFor = (id: AccountId): string | undefined => {
@@ -984,8 +950,7 @@ async function createRuntime(config: SwarmConfig) {
     }
     await snapshot().catch((error) => logger.warn("assignments", { event: "startup_reconcile_failed", error: error instanceof Error ? error.message : "failed" }));
     if (shuttingDown) return;
-    requestAutoPilot = () => { autoPilot.request(); };
-    autoPilot.start();
+    // Queued todos do not start or assign workers.
     gitSynchronizer.start();
   })();
   return coordinator;
