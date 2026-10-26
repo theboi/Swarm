@@ -7,7 +7,7 @@ async function readTemplate(name: string): Promise<string> {
 }
 
 describe("canonical worker prompts", () => {
-  const recommendedDecisionRecovery = "Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.";
+  const recommendedDecisionRecovery = "When blocked by a routine decision, use the recommended option within the approved scope. Take over upstream work only when inspected evidence proves that its attempt ended without a concrete required deliverable; complete and verify only that bounded prerequisite, then resume your assignment. Never take over active or uncertain work.";
   const legacyDocumentLock = "Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.";
   const hardLockOverride = "This hard lock overrides every authority-sync, propagation, status, acceptance, and recovery instruction";
   const onDemandAuthorityLookup = "Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document.";
@@ -24,17 +24,17 @@ describe("canonical worker prompts", () => {
     "continue",
   ];
 
-  it("includes the user's authority and planning-only instructions in planning launches", async () => {
+  it("includes authority and coordinator-only instructions in planning launches", async () => {
     const prompt = await readTemplate("planning.md");
     expect(prompt).toContain("Repository authority map:");
     expect(prompt).toContain("Task specification destination: `{{SPECIFICATION_PATH}}`");
-    expect(prompt).toContain("Its phase is `{{PHASE}}`; this is a planning-only launch.");
+    expect(prompt).toContain("Its phase is `{{PHASE}}`; this is a coordinator-only planning launch.");
     expect(prompt).toContain("Do not implement product code, UI, migrations, or runtime behavior in this phase.");
     expect(prompt).toContain("Ask the user focused questions");
     expect(prompt).toContain("{{PLANNED_PREREQUISITES}}");
     expect(prompt).toContain("{{UI_REQUIREMENTS_PATH}}");
     expect(prompt).toContain("{{UI_HANDOFF_PATH}}");
-    expect(prompt).toContain("All planning happens in Pass 1");
+    expect(prompt).toContain("All initial planning is completed by this coordinator");
     for (const expected of expectedFailedUpstreamRecovery) expect(prompt).toContain(expected);
     expect(prompt).toContain(recommendedDecisionRecovery);
     expect(prompt).toContain(legacyDocumentLock);

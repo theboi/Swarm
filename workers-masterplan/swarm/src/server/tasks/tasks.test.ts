@@ -212,9 +212,9 @@ describe("task authority", () => {
 
   it("renders the canonical template with exact worker values", async () => {
     const prompt = await renderWorkerPrompt("planning", { workerId: "T0", accountId: "bot3", taskId: "T0", taskTitle: "Plan", phase: "planning", phaseTerminalCondition: "Stop after the approved planning handoff.", blueprintPath: "docs/blueprint.md", masterplanPath: "docs/blueprint.md", coordinationRoot: "docs/workers/mvp3", statusPath: "docs/workers/mvp3/T0.md", specificationPath: "docs/spec.md", implementationPlanPath: "docs/plan.md", plannedPrerequisites: "none", uiRequirementsPath: "not applicable", uiHandoffPath: "not applicable", checkoutMode: "coordinator_managed_same_mac_clones", mainMutationLock: "swarm-main-mutation-lock", edenmindClonePath: "/Users/bot3/Dev/EdenMind", ownedSurfaces: "src/a", excludedSurfaces: "src/b" });
-    expect(prompt).toContain("You are WORKER T0.");
-    expect(prompt).toContain("finished WRITING SPEC AND IMPLEMENTATION PLANS");
-    expect(prompt).toContain("Terra High/Xhigh");
+    expect(prompt).toContain("You are the COORDINATOR, using launch identity T0.");
+    expect(prompt).toContain("complete dated specification/plan set for ALL workers");
+    expect(prompt).toContain("Preserve existing user model/effort settings");
     expect(prompt).toContain("UI requirements contract: `not applicable`");
     expect(prompt).not.toContain("{{WORKER_ID}}");
   });
@@ -250,7 +250,7 @@ describe("task authority", () => {
       expect(prompt).toContain("Your task is `C3` — `Curriculum UI`.");
       expect(prompt).not.toMatch(/{{[A-Z_]+}}/);
     }
-    expect(planning).toContain("this is a planning-only launch");
+    expect(planning).toContain("this is a coordinator-only planning launch");
     expect(planning).toContain("Do not implement product code, UI, migrations, or runtime behavior in this phase.");
     expect(execution).toContain("this is an execution-only launch");
     expect(execution).toContain("Stop after fresh acceptance evidence, closed review, and the final handoff are integrated on origin/main.");
@@ -312,7 +312,7 @@ describe("task authority", () => {
     });
 
     expect.soft(prompt).not.toMatch(/push[- ]queue|MAIN_PUSH_QUEUE|{{[A-Z_]+}}/i);
-    expect.soft(prompt).toMatch(/independent_main_clone[^\n]+do not impose global edit or push locks or queues/);
+    expect.soft(prompt).toMatch(/independent_main_clone[^\n]+(?:do not impose global edit or push locks or queues|Do not impose a global edit lock across clones)/);
     expect.soft(prompt).toMatch(/frequently fetch and merge newer `origin\/main`/i);
     expect.soft(prompt).toMatch(/focused affected verification[^\n]+stage only owned paths[^\n]+commit directly to `main`[^\n]+push[^\n]+fetch[^\n]+remote ancestry/);
     expect.soft(prompt).toMatch(/non-fast-forward[^\n]+fetch[^\n]+merge[^\n]+rerun affected checks[^\n]+retry/i);

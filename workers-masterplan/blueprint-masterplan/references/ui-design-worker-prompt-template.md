@@ -23,6 +23,10 @@ ordinary implementation prompt.
    substituted block before any runtime command. Name existing previews as
    excluded and leave them running.
 
+The upstream implementation plans are coordinator-authored. Return presentation
+requirements to that coordinator so it can finish the live-wiring plan before
+handoff; do not launch an ordinary worker to write another plan.
+
 ## UI-design worker prompt
 
 ```markdown
@@ -64,14 +68,14 @@ Work directly on `main` in `<MAIN_CHECKOUT_PATH>` using checkout/clone mode
 prohibited. Your owned presentation surfaces are
 `<OWNED_PRESENTATION_SURFACES>`. You do not own
 `<EXCLUDED_FUNCTIONAL_SURFACES>`. Preserve unrelated changes and stage only
-owned paths. This is Pass 1 design and contents work: make every state
+owned paths. This is presentation-only design and contents work: make every state
 deterministic with fixtures/mock data and do no live wiring. Do not create or
 change live APIs, authorization, persistence, migrations, domain rules, scoring,
 background processing, or other business behavior. If the design needs any
 functional change, record the named decision in `<STATUS_PATH>` and
 `<UI_REQUIREMENTS_PATH>`, then return it to ordinary specification and planning.
 
-Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+When blocked by a routine decision, use the recommended option within the approved scope. Take over upstream work only when inspected evidence proves that its attempt ended without a concrete required deliverable; complete and verify only that bounded prerequisite, then resume your assignment. Never take over active or uncertain work.
 
 Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
 
@@ -192,7 +196,7 @@ Write `<UI_REQUIREMENTS_PATH>` as a separate UI requirements contract using
 `references/ui-requirements-template.md`. It must specify the surface inventory;
 actor capabilities; required reads and commands; async/lifecycle, navigation,
 file/export, and accessibility behavior; deterministic fixture scenarios;
-planned-contract traceability; Pass 2 acceptance mapping; and open product
+planned-contract traceability; implementation acceptance mapping; and open product
 decisions. Name `<LIVE_WIRING_WORKER_ID>` as its consumer. Do not embed this
 contract only inside the handoff.
 

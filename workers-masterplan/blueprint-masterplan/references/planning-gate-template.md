@@ -1,60 +1,58 @@
-# Planning-Gate Receipt Template
+# Coordinator Plan-Readiness Receipt
 
-The coordinator alone edits `docs/workers/<blueprint-id>/PLANNING_GATE.md`.
-Workers supply their owned planning artifacts and handoffs, but never create,
-approve, or alter this whole-blueprint execution authorization.
+Keep the existing PLANNING_GATE.md path when a project uses it. This receipt
+records the coordinator's completed initial planning, not a worker-planning
+phase or a later reconciliation of independently authored plans.
 
-````markdown
-# <blueprint-id> Planning-Gate Receipt
+# <blueprint-id> Coordinator Plan-Readiness Receipt
 
 | Field | Value |
 | --- | --- |
-| Gate state | open / passed / reopened |
-| Blueprint | `<blueprint-path>` |
-| Blueprint ID | `<blueprint-id>` |
-| Authorized `origin/main` commit | `<origin-main-commit>` |
-| Coordinator | `<coordinator>` |
-| Approval timestamp | `<timestamp>` |
+| State | drafting / ready / superseded |
+| Blueprint | <path> |
+| Coordinator and author of ALL worker plans | <coordinator> |
+| Reviewed origin/main plan-set commit | <commit> |
+| Existing owner authorization | <approved scope and evidence> |
+| Additional approval genuinely required | <specific material decision or none> |
 
-## Execution-worker planning set
+## Complete coordinator-authored plan set
 
-| Worker | Specification and commit | Implementation plan and commit | Approval | Living-authority synchronization | Cross-plan reconciliation |
+| Worker | Specification and commit | Detailed implementation plan and commit | Plan author | Interface/ownership/dependency check | Execution prerequisites |
 | --- | --- | --- | --- | --- | --- |
-| `<worker-id>` | `<spec-path-and-commit>` | `<plan-path-and-commit>` | approved / pending | `<authority-sync-evidence>` | `<reconciliation-result>` |
+| <worker-id> | <path/commit> | <path/commit> | <coordinator> | <evidence> | <implemented prerequisites or none> |
 
-## UI-design planning set
+Every ordinary worker has a concrete plan already written by the coordinator.
+No reserved-only paths, worker-authored planning receipt or pending independent
+consumer agreement is a valid complete row. The coordinator performs these
+checks while creating the full set, before handoff.
 
-| UI worker | Accepted app commit | Approval evidence | Presentation handoff | UI requirements | Live review | Requirements-to-plan reconciliation | Mutable owner transfer | Remote commit |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `<design-worker-id>` | `<accepted-app-commit>` | `<approval-evidence>` | `<handoff-path>` | `<ui-requirements-path>` | fixture/mock complete / pending | reconciled with `<implementation-owner>` | `<design-worker-id>` -> `<implementation-owner>` | `<origin-main-commit>` |
+## Conditional UI evidence
 
-## Unresolved contradictions
+When UI design is required, record accepted presentation commit, owner approval,
+UI requirements contract, presentation handoff and the coordinator-authored
+live-wiring plan consuming them. No UI-design implementation plan is required.
 
-| Contradiction | Owner | Unblock criterion |
-| --- | --- | --- |
-| `<contradiction>` | `<owner>` | `<unblock-criterion>` |
+## Verification
 
-For a passed receipt, delete every contradiction data row. Any retained row is
-unresolved and blocks execution; do not write a synthetic `none` row.
+Record authority synchronization/no-impact, complete task coverage, exact shared
+signatures, single ownership, acyclic DAG, no hidden prompt/schema producer cycle,
+link/path checks, reviews and remote ancestry. Do not claim runtime tests merely
+because planning checks pass.
 
-## Verification and review evidence
+## Readiness meaning
 
-Record the exact verification and review evidence, result, and reachable commit
-that supports this receipt.
+A ready receipt means initial coordinator planning is complete and required
+authorization is recorded. Workers may execute as their actual hard implemented
+prerequisites exist. The receipt cannot invent authority, waive those
+prerequisites or start deployment/paid calls.
 
-## Material-change reopening rule
+Legacy gate states open/passed/reopened may be retained by an existing project;
+interpret them as coordinator package readiness, not as a requirement to run
+ordinary workers through a planning pass. Do not rewrite historical receipts
+or mark old incomplete artifacts complete automatically.
 
-A material change to scope, ownership, dependencies, contracts, acceptance,
-security/privacy behavior, an accepted UI design, or an implementation plan
-changes this receipt to `reopened`. No new ordinary execution starts until every
-affected artifact and authority is updated, the complete planning set is
-reconciled again, and the coordinator publishes a new passed receipt at current
-`origin/main`.
-````
+## Bounded correction rule
 
-The gate cannot pass while any required row is pending or any contradiction is
-unresolved. A UI-design worker has no implementation plan; its accepted
-fixture/mock presentation app state, approval evidence, separate UI requirements
-contract, handoff, live review, and requirements-to-plan reconciliation must all
-be complete. Every ordinary execution prompt must verify this receipt and its
-pinned `origin/main` commit before editing.
+Coordinator updates affected plans/authorities when real discoveries require
+it. Pause only affected work when necessary; no all-worker re-planning round.
+Material scope/security/authorization changes require the relevant owner decision.

@@ -1,4 +1,4 @@
 interface:
   display_name: "Blueprint Masterplan"
-  short_description: "Plan-first DAGs with collision-safe local runtimes"
-  default_prompt: "Use $blueprint-masterplan to build a whole-blueprint planning gate and a collision-safe execution DAG, isolate account-local runtimes when workers need local services, and use the conditional UI-design and EdenMind swarm launch contracts when they apply."
+  short_description: "Coordinator-authored plans for parallel execution"
+  default_prompt: "Use $blueprint-masterplan to personally author the shared design and every worker's detailed implementation plan before handoff, check all interfaces and dependencies up front, and provide execution-ready worker packets without a worker planning/reconciliation round. Preserve main-only integration, conditional UI design and account-local runtime isolation."

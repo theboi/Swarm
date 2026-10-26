@@ -13,7 +13,7 @@ Repository authority map:
 
 Use the paths above as an authority map. Start the assigned work immediately, and consult a document when you need specific information from it; do not front-load a complete read of every document.
 
-You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is a UI-only launch. This is a UI-only Pass 1 launch. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
+You are WORKER {{WORKER_ID}}. Your task is `{{TASK_ID}}` — `{{TASK_TITLE}}`. Its phase is `{{PHASE}}`; this is a UI-only launch. Work is limited to presentation and contents. The phase terminal condition is: `{{PHASE_TERMINAL_CONDITION}}`
 
 Design-method reference map:
 
@@ -55,7 +55,7 @@ scoped shutdown commands in the worker status and handoff.
 
 Confirm every listed UI prerequisite is reachable from `origin/main` before editing. If inspected status, handoff, tests, artifacts, or `origin/main` proves an upstream worker ended its attempt without completing a required prerequisite, temporarily assume that upstream role for the bounded missing work, complete and integrate it under the upstream package's phase and acceptance boundaries, reassess UI readiness, and continue. Do not ask the user whether the original worker should retry and do not hand the failure back through Codex chat. Treat other missing, stale, or local-only evidence as a blocker and record it in `{{STATUS_PATH}}`.
 
-Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
+When blocked by a routine decision, use the recommended option within the approved scope. Take over upstream work only when inspected evidence proves that its attempt ended without a concrete required deliverable; complete and verify only that bounded prerequisite, then resume your assignment. Never take over active or uncertain work.
 
 Old MVP2 and earlier documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
 
@@ -65,13 +65,13 @@ This repository is pre-production and has no live users. Update all old code, ca
 
 Write `{{UI_REQUIREMENTS_PATH}}` as a separate UI requirements contract with: authority and accepted presentation reference; surface inventory; actor/capability matrix; read and command requirements; async/lifecycle states; navigation/client state; files/exports; accessibility; deterministic fixture scenarios; planned-contract traceability; Pass 2 acceptance mapping; and open product decisions. Write `{{UI_HANDOFF_PATH}}` with the accepted app-state commit, user approval, reviewed states, affected presentation files, design foundations, limitations, and mutable ownership transfer to the named Layer 3 live-wiring consumer in the task brief. Do not embed the requirements contract only inside the handoff.
 
-This UI design does not authorize ordinary execution. The named Layer 3 worker consumes both UI documents while planning and performs live wiring only in Pass 2 after the global planning receipt and implemented runtime prerequisites pass.
+This UI design does not authorize ordinary execution. The coordinator incorporates both UI documents into the complete live-wiring implementation plan before handoff. The named Layer 3 worker executes that supplied plan after authorization and actual implemented prerequisites exist; it does not author another plan or enter an ordinary worker planning/reconciliation round.
 
 ## Direct-main lifecycle
 
 - Checkout mode: `{{CHECKOUT_MODE}}`; shared-checkout lock: `{{MAIN_MUTATION_LOCK}}`.
 - In `coordinator_managed_same_mac_clones` mode, acquire the named mutation lock before every filesystem or Git/index mutation and hold it through remote-reachability proof.
-- In `independent_main_clone` mode, do not impose global edit or push locks or queues.
+- In `independent_main_clone` mode, use origin/main's fast-forward reconciliation protocol: fetch/merge, affected verification, push and ancestry proof; on rejection safely merge/check/retry. Do not impose a global edit lock across clones.
 - Frequently fetch and merge newer `origin/main` throughout the task. At each independently testable UI checkpoint, fetch and merge newer `origin/main`, run focused affected verification, stage only owned paths (staging only owned paths), commit directly to `main`, push to `origin/main`, fetch again, and prove remote ancestry with `git merge-base --is-ancestor HEAD origin/main`.
 - If a push is rejected as non-fast-forward, fetch and merge newer `origin/main`, rerun affected checks, and retry the push, then fetch and prove remote ancestry again.
 - Never reset, clean, stash, rebase, force-push, or overwrite unrelated work.

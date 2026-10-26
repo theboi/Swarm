@@ -1,736 +1,243 @@
 ---
 name: blueprint-masterplan
-description: Use when splitting a bounded delivery objective across workers, agents, branches, worktrees, clones, or machines; flattening a dependency flowchart; assigning collision-safe ownership; isolating account-local runtimes; or writing worker briefs, readiness rules, delivery gates, and phase-specific launch prompts.
+description: Use when splitting a bounded delivery objective across workers, agents, branches, worktrees, clones, or machines; flattening a dependency flowchart; assigning collision-safe ownership; isolating account-local runtimes; or writing worker briefs, delivery gates, and launch prompts.
 ---
 
 # Blueprint Masterplan
 
-## Overview
+## Core workflow: coordinator plans, workers execute
 
-Turn current living authorities into a frozen execution contract: establish foundations, expose independently owned trades in parallel, converge through named integration owners, and close through evidence gates.
+The coordinator personally authors the complete shared design AND every one of
+the N workers' detailed specifications and implementation plans before handing
+off ordinary implementation. Spend the substantial planning effort up front:
+inspect real code, settle producer/consumer contracts, allocate every mutable
+surface, write test-first task steps and verification commands, and check the
+entire set together. Worker plans are finished deliverables, not reserved paths.
 
-**Core principle:** Minimize drift while maximizing delivery. Workers never communicate with one another through Codex chats. They work their assigned surfaces alongside concurrent workers on `main`; parallel read-only planning is normal. A genuinely shared checkout has one exclusive main-mutation lock for filesystem edits and Git/index operations through remote-reachability proof. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; across clones, a push lock or queue covers reconciliation, focused verification, push, and remote-ancestry proof. Keep local `main` and `origin/main` current without discarding unrelated work. Write code and tests continuously, run only the relevant test segment after each independently testable substep, and run the full suite once at the end of all tasks owned by that worker. Worker boundaries minimize collisions; they do not justify leaving a failed prerequisite unfinished. When a downstream worker proves an upstream worker failed to complete something it requires, the downstream worker temporarily assumes that upstream role, repairs the bounded prerequisite itself, and then continues.
+Do not delegate specification or implementation-plan authorship to workers or
+planning subagents. Do not launch N planning workers, require a worker-authored
+Pass 1, or create a later round waiting for their independent plans to be
+reconciled. The coordinator's initial planning includes all cross-plan
+consistency work. More workers means more coordinator planning, not less detail.
 
-**TWO-PASS LIFECYCLE:** First complete planning for the whole frozen blueprint; then execute it. In Pass 1, every ordinary worker authors its dated specification and implementation plan, while every required UI-design worker designs only presentation and contents against fixtures/mock state, writes a separate UI requirements contract, and integrates its accepted presentation handoff. No ordinary product execution or live wiring starts in Pass 1. The coordinator passes one global receipt only after every ordinary plan, UI requirements contract, UI handoff, authority update, and reconciliation is approved and reachable from `origin/main`. In Pass 2, ordinary workers execute only after that receipt and their hard implemented prerequisites exist. A worker's own approved plan is necessary but never sufficient to start execution.
+Workers receive their already-complete plan and proceed to implementation when
+their hard implemented prerequisites exist. They inspect current code as normal
+execution preflight; they do not rewrite or independently approve their plans.
+An actual newly discovered contract problem returns to the coordinator for a
+bounded correction, not a mandatory planning/reconciliation phase for everyone.
 
-## Mandatory response-shape preflight
+A user-requested plan or handoff does not itself authorize implementation,
+deployment, paid calls, messages or unrelated mutations. Honor approvals already
+given; do not ask for a second generic approval because a skill mentions a gate.
 
-An output is operative only when it creates or recommends worker assignments,
-gives a Git/integration lifecycle, emits a launch packet/prompt, or resolves a
-coordinator-versus-worker authorship dispute while directing work. Audits,
-status reports, factual explanations, and direct answers that assign no work
-remain concise. Operative outputs must show required facts rather than saying
-only to follow this skill or a template.
+## Roles and output shape
 
-`phase_required` is true exactly for an operative multiworker-blueprint or
-coordinator-authorship answer. When `phase_required` is true, the first
-structured output, after at most one outcome sentence, MUST be exactly one
-verbatim **Coordinator/worker phase contract** block before every graph, worker
-table, readiness decision, assignment, or launch instruction. Gate-correct
-prose is insufficient.
+For an operative blueprint, assignment or launch packet, put the following
+block before the DAG, assignments or readiness decisions, after at most one
+outcome sentence. Factual audits/status answers need no ceremonial blocks.
 
 **Coordinator/worker phase contract**
 
 | Phase | Required fact |
 | --- | --- |
-| Coordinator | Freeze the blueprint, DAG, gates, contracts, briefs, and reserved paths; do not author a worker's detailed specification or implementation plan. |
-| Pass 1 — worker planning and UI design | Each ordinary worker authors its own dated specification and detailed plan. Each UI-design worker uses fixtures/mock state to design presentation and contents, writes a separate UI requirements contract and presentation handoff, integrates its evidence into `origin/main`, and stops before live wiring. |
-| Whole-blueprint gate | The coordinator passes the receipt only after the complete Pass 1 set is reconciled and reachable from `origin/main`; one worker's approved plan or UI handoff never authorizes execution. |
-| Pass 2 — worker execution | Only after that passed receipt does an ordinary execution prompt direct implementation, after verifying the worker's hard implemented prerequisites and required evidence on `origin/main`. The named live-wiring worker consumes the UI requirements contract and accepted handoff. |
-
-When `phase_required` is false—including non-operative, UI-only, and
-UI-exception-only answers—render zero phase blocks. If a **Shared-main lifecycle** block
-independently applies, render it exactly once immediately after the phase block;
-never merge or duplicate the blocks.
-
-Before returning, mechanically set `phase_required` and check count and
-position. When true, require one phase heading and each of the four canonical
-rows before every graph, worker table, readiness decision, assignment, or launch
-instruction, with no more than one outcome sentence before the block. Otherwise
-require zero phase headings and rows. Count **Shared-main lifecycle** and
-UI-design reference-map blocks independently; do not return until these checks pass.
-
-Use `docs/superpowers/plans/2026-08-05-mvp1/2026-08-05-mvp1-implementation-masterplan.md` as the structural exemplar when it exists. Generalize its authority boundary and section responsibilities; do not copy project-specific behavior into unrelated blueprints.
-
-## Required companion skills
-
-- **REQUIRED SUB-SKILL:** Use `living-masterplan` when an authority is missing or stable approved information changes.
-- **REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before freezing or materially revising an unsettled blueprint.
-- **REQUIRED SUB-SKILL:** Use `grilling` when scope, decomposition, ownership, gates, or acceptance remains materially unsettled.
-- **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion` before declaring the blueprint valid.
-- **REQUIRED WORKER SUB-SKILLS:** Ordinary execution-worker briefs or prompts require applicable Superpowers planning, TDD, review, and verification skills. A UI-design worker instead follows the separate live-design lifecycle and consults the mapped design sources when the current decision needs them; it has no implementation plan.
-- **COEXISTENCE OVERRIDE:** Workers operate directly on `main`. A shared checkout permits concurrent read-only planning, but every filesystem edit and Git/index operation uses its exclusive main-mutation lock. If that lock cannot exist, use normal `main` clones only on different machines or when the shared checkout is incompatible; their required push lock or queue serializes reconciliation, affected focused verification, push, and remote-ancestry proof. Generic sub-skills must not create feature lanes, impose a global edit lock across independent normal clones, or require worker-to-worker Codex chat. Workers preserve and report unrelated changes, stage only owned paths, and use repository state plus coordinator-owned artifacts as the coordination surface.
-- **VERIFICATION OVERRIDE:** During implementation, run focused tests only at meaningful code checkpoints. Do not run the full suite after each substep; run it once after the worker finishes all owned tasks.
-
-Do not restart discovery for explicit, settled, evidence-backed maintenance.
-
-## Freeze the right document
-
-The coordinator-owned masterplan contains these responsibilities in this order:
-
-1. purpose, authority, and the one execution question;
-2. bounded outcome and measurable delivery gates;
-3. foundations workers must reuse;
-4. locked product, architecture, security, data, and ownership boundaries;
-5. a flattened hard-dependency DAG and graph-shape evidence;
-6. readiness and blocker rules;
-7. the mandatory worker lifecycle;
-8. compact worker briefs;
-9. shared integration contracts;
-10. integration gates;
-11. coordination without worker-to-worker chat, shared-lane safety, drift and conflict control, downstream-change propagation, handoff/cleanup, exclusions, and revision policy.
-
-Read [the blueprint template](references/blueprint-masterplan-template.md) completely before drafting.
-
-The masterplan owns worker boundaries, not worker implementation detail. A worker brief defines outcome, Pass 1 and Pass 2 prerequisites, ownership, non-ownership, acceptance evidence, merge condition, and downstream unblock. It classifies the worker as ordinary execution or conditional UI design. An ordinary worker authors its own dated Superpowers specification and implementation plan in Pass 1; a UI-design worker produces a fixture/mock-backed presentation design, UI requirements contract, accepted presentation handoff, and approval evidence instead of an implementation plan. The named ordinary live-wiring worker plans against those UI outputs in Pass 1 and implements the live behavior only in Pass 2.
-
-## Establish current authority
-
-1. Identify the bounded objective, coordinator, decision owners, requested gates, owned surfaces, and the checkout/clone mode each worker will use.
-2. If workers share one checkout, name its exclusive main-mutation lock for all filesystem edits and Git/index operations. If that lock cannot exist, document why the checkout is incompatible and assign normal `main` clones only on different machines; name the cross-clone push lock or queue that covers reconciliation, affected focused verification, push, and remote-ancestry proof.
-3. Read relevant business, product, architecture, implementation, operations, security, and custom authorities.
-4. Read existing code, migrations, tests, generated artifacts, components, and operational foundations that constrain decomposition.
-5. Use `living-masterplan` before freezing when an authority is missing or stable approved information changed.
-6. Record an authority-refresh record for every cited authority: its path, inspected `origin/main` commit, and `current`, `updated`, or `blocked` result. A remote-uninspected readiness or authority finding is `unverified`, never ready.
-7. Stop when a contradiction or unanswered decision makes scope, ownership, dependencies, or acceptance unreliable.
-
-Living authorities own approved behavior and current truth. The frozen blueprint owns delivery decomposition. Worker status owns transient progress.
-
-## Name the blueprint and its artifact roots
-
-Create one stable `<blueprint-id>` as `YYYY-MM-DD-<short-slug>`, using the date the delivery effort began. Do not change the folder because an individual worker starts later.
-
-Follow established project paths. Otherwise use:
-
-```text
-docs/plans/<project>_<objective>_Implementation_Masterplan.md
-docs/superpowers/specs/<blueprint-id>/
-docs/superpowers/plans/<blueprint-id>/
-docs/workers/<blueprint-id>/
-```
-
-Reserve worker paths inside the one blueprint folder:
-
-```text
-docs/superpowers/specs/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>-design.md
-docs/superpowers/plans/<blueprint-id>/YYYY-MM-DD-<worker-id>-<topic>.md
-```
-
-Do not create a folder per worker. The blueprint folder contains all worker documents for that delivery effort in date/ID order.
-
-## Map foundations and mutable surfaces
-
-Inventory reusable modules, contracts, infrastructure, migrations, generated outputs, components, tests, environments, and decision records.
-
-For every likely mutable surface, name exactly one owner. Include more than files: schemas, migration sequences, APIs, generated artifacts, central composition, environments, and operational records also collide.
-
-When proposed workers overlap, choose one:
-
-- assign the whole surface to one foundation or integration owner;
-- sequence the packages behind a remote-merge dependency; or
-- first merge an approved interface that makes later ownership independent.
-
-Checkout or clone separation does not make overlapping semantic ownership parallel. One worker owns each mutable surface. In a genuinely shared checkout, workers may plan read-only in parallel but must acquire the exclusive main-mutation lock before every filesystem edit or Git/index operation, and release it only after remote-reachability proof. If that lock cannot exist, use the documented normal-clone fallback; independent clones never require a global edit lock, but their push lock or queue is required. In either mode, preserve and report unrelated dirt, stage only owned paths, and never remove unrelated work to make integration possible.
-
-## Build a moderately flat DAG
-
-Start from real contract and evidence dependencies. Remove convenience sequencing and execution wave-wide barriers. The one global planning barrier authorizes ordinary execution only after the entire planning set is reconciled; it does not turn planned contracts into implemented hard prerequisites.
-
-For a multi-worker objective, target **three to seven concurrently ready workers** in each substantive post-foundation trade layer. Label each frontier as planning-ready or execution-ready; the two predicates remain distinct. This is a design band:
-
-- roots, contract foundations, joins, gates, closeout, and small objectives may be narrower;
-- accept a substantive layer wider than seven only after testing whether its packages can be grouped by domain, protocol, risk, runtime/toolchain, release boundary, and shared verification; and
-- record concrete evidence for every remaining exception.
-
-Flatten a serial wrapper when it owns no distinct surface, contract, decision, or acceptance evidence. Split an oversized worker only when every child has:
-
-- one coherent outcome and useful downstream handoff;
-- non-overlapping mutable ownership;
-- independently producible acceptance evidence; and
-- enough work to justify planning, review, integration, and status overhead.
-
-Before accepting a substantive frontier wider than seven, test grouping by domain, protocol, risk, runtime/toolchain, release boundary, and shared verification. Separate files, provider-specific acceptance evidence, independent ownership, and open execution slots do not alone justify an exception; keep provider tests inside a coherent adapter bundle where safe. A remaining exception must cite concrete incompatible ownership, security/isolation, runtime/toolchain, deployment/release, or verification evidence. Keep migrations, generated artifacts, central facades, and tightly coupled files under one owner. Never invent hard edges, group a shared migration or facade with adapter work, or force a group when documented constraints make it unsafe.
-
-Measure planning readiness and execution readiness independently from active execution slots. Work that satisfies the relevant predicate but lacks a slot remains ready in that predicate; a planning-complete worker never becomes execution-ready merely by waiting.
-
-## Record graph-shape evidence
-
-Every blueprint records:
-
-| Metric | Required evidence |
-| --- | --- |
-| Worker nodes | Count and why each package is coherent |
-| Hard edges | Count and why remote integration is required |
-| Layer widths | Worker IDs in each substantive frontier, labeled planning-ready or execution-ready |
-| Peak ready width | Widest logical frontier |
-| Active execution slots | Current capacity, separate from graph width |
-| Width exceptions | Structural reason for layers outside three to seven |
-
-Validate that the graph is acyclic; every node exists; every arrow matches written `Depends on` and `Unblocks`; gates are real nodes; and coordination-only relationships are not hard edges.
-
-If a cycle appears, redesign ownership or the interface. Do not hide it in prose.
-
-## Write worker briefs, not worker plans
-
-Each masterplan brief contains:
-
-- stable worker/task ID and bounded outcome;
-- planning prerequisites, hard execution prerequisites, and the immediate planning-start rule;
-- owned and excluded surfaces;
-- whether the observable UI-design trigger applies and, when it does, the named presentation files, sequential ownership-transfer target, and the canonical design-method reference map below;
-- coordination relationships that are not hard dependencies;
-- work outcomes, not step-by-step implementation instructions;
-- exact acceptance evidence;
-- merge condition; and
-- downstream nodes and supplied contracts/evidence.
-
-Every worker also has the named status contract
-`docs/workers/<blueprint-id>/status/<worker-id>.md`; the coordinator owns the
-aggregate `docs/workers/<blueprint-id>/STATUS.md`. The initial coordinator
-snapshot is taken at one inspected `origin/main` commit and separates planning
-readiness from execution readiness, with evidence and blockers for each. Do not
-label a remote-uninspected row ready: it is `unverified`.
-
-The coordinator reserves artifact paths but does not pre-author the ordinary worker's detailed specification or implementation plan. Each worker exclusively owns its lower-case `docs/workers/<blueprint-id>/completion-manifest/<task-id>.json` pass receipt and must commit and push it before its final response. The coordinator alone owns `docs/workers/<blueprint-id>/PLANNING_GATE.md`; workers never edit that whole-blueprint receipt.
-
-Every worker prompt includes this instruction exactly:
-
-> Whenever you are stuck/blocked by a decision, take the recommended unless it majorly changes the original combined masterplans/specs. If there  any issues from other workers just assume the role of the blocking worker and fix it yourself. Then resume and finish the original worker.
-
-Every worker prompt also includes this document lock exactly:
-
-> Old MVP2 and earlier Markdown documents are HARD LOCKED unless I explicitly tell you to modify them. At no point should you modify them or suggest modifying them.
-
-This hard lock overrides every authority-sync, propagation, status, acceptance,
-or recovery instruction. Locked Markdown documents may be consulted as
-historical evidence, but workers never propose or make changes to them without
-a new, explicit user instruction naming the exception. This lock does not
-restrict MVP2-and-earlier runtime code, tests, fixtures, or other non-Markdown
-artifacts.
-
-Present the blueprint, relevant authorities, brief, handoffs, specifications,
-plans, and receipts as an authority map. Tell the worker to start the bounded
-task immediately and consult a document when it needs specific information from
-that source; never require a front-loaded complete read of every document.
-
-Every planning and execution prompt also fixes the coding method for this
-pre-production repository with no live users: update old code and every caller,
-test, fixture, and contract directly; do not create legacy adapters,
-compatibility shims, dual old/new paths, or unnecessary fallbacks; remove
-obsolete code; eliminate duplication; and keep the result lightweight.
-
-### Planning readiness
-
-A worker is planning-ready when the frozen blueprint, its brief, relevant living authorities, and every approved planned contract required to make task decisions are available. Planning never waits for predecessor implementation merely because execution will depend on it.
-
-### Execution readiness
-
-A worker is execution-ready only when the coordinator-owned planning-gate receipt is passed at the named `origin/main` commit and every hard implemented prerequisite and required execution evidence for that worker is reachable from `origin/main`. If inspected repository evidence shows that a required prerequisite is missing because its upstream worker failed to complete it, use the upstream-recovery lifecycle below before reassessing execution readiness; do not ask the user whether the upstream worker should retry.
-
-A planning-complete worker remains blocked from execution while the global planning gate is open. A passed global planning gate does not waive an unimplemented hard prerequisite.
-
-### Produce the complete planning set
-
-Independent planning runs concurrently once each ordinary execution worker is planning-ready. An ordinary worker's planning phase:
-
-1. inspects the live worktree without disturbing unrelated changes, records the checkout/clone mode and required lock or queue, fetches `origin/main`, and fast-forwards clean local `main` with `git pull --ff-only origin main` only when safe;
-2. synchronizes its assigned `main` checkout with current local and remote `main`, records the relevant baseline without running the full suite, and distinguishes planned-contract inputs from later implemented execution prerequisites;
-3. reads the frozen blueprint, relevant living authorities, brief, and approved planned-contract handoffs;
-4. uses Superpowers brainstorming for task-local decisions;
-5. writes and obtains approval for its dated specification inside the blueprint specs folder;
-6. immediately identifies every affected product specification masterplan and
-   consolidates all approved changes from the dated specification into the
-   high-level frontend-to-backend product contract, or records an
-   evidence-backed no-impact finding;
-7. uses `superpowers:writing-plans` to write its detailed plan inside the blueprint plans folder;
-8. updates other stable living authorities before implementation depends on changed decisions;
-9. propagates any dependency, blocker, contract, acceptance, or implementation impact into every affected downstream worker document through its owner; and
-10. after each independently testable planning substep—a coherent plan task or
-    subtask with its own focused verification—runs that focused verification,
-    stages only owned paths, commits directly to `main`, fetches and merges newer
-    `origin/main`, reruns affected checks, pushes, and proves remote reachability
-    before beginning the next substep; and
-11. records authority-refresh and planning-readiness evidence in its named status
-    contract for the coordinator to consume, without editing `STATUS.md`.
-
-Repeat step 6 whenever the dated specification changes. Do not defer this
-product-specification maintenance to a different worker or a later delivery
-phase. A planning handoff is incomplete while an affected product specification
-masterplan is stale. It is a planning artifact, never individual authorization
-to begin ordinary implementation.
-
-UI-related ordinary implementation planning may begin after its upstream
-functional specifications and implementation plans are approved on `origin/main`;
-implemented predecessor code is not a planning prerequisite. A UI-design worker
-may start at the same point, but only with fixtures/mock state and no live wiring.
-The named live-wiring worker must plan against both the accepted UI-design handoff
-and separate UI requirements contract. All three workers remain
-execution-blocked until the global planning gate passes and their implemented
-hard prerequisites exist.
-
-## Isolate account-local application runtimes
-
-When a worker will start, configure, stop, reset, seed, test, or present an
-EdenMind client, API, Supabase, Docker, or Colima runtime on the shared Mac,
-read [account-local runtime isolation](references/account-local-runtime-isolation.md)
-completely. Separate accounts, account-local clones, and Colima VMs do not
-isolate host-published ports or browser cookies.
-
-Treat `431 Request Header Fields Too Large` on a shared localhost host as a
-transport/header-budget failure that occurs before middleware or application
-authentication. Treat `Authentication is required` after a successful local
-Supabase grant as a possible public-Auth/private-API project mismatch, not as
-proof that fixture credentials are wrong. Follow the reference's ordered,
-secret-free triage before changing credentials or weakening isolation.
-
-Set `account_runtime_required` from that observable trigger. When true, every
-affected worker brief and applicable planning, execution, or UI-design launch
-packet contains exactly one fully substituted **Account-local runtime
-isolation** block from the reference before runtime commands. The coordinator
-records the account/UID allocation and excludes every already-running runtime
-outside the worker's exact namespace.
-
-Runtime IDs are allocation labels, not behavior variants. All supported
-`u<UID>` runtimes implement the same application, isolation, readiness, and
-acceptance contract. A worker always uses the runtime derived from its currently
-assigned macOS account. When a task is reassigned, substitute the new account,
-UID, runtime ID, ports, project, network, workdir, holders, and cookie namespace
-as one coherent set. A prior `uXXX` value in a brief, plan, status, or handoff is
-historical execution metadata, not a semantic prerequisite: the reassignment
-alone does not require replanning, reopen a gate, weaken a test, or block the
-worker. Never mix allocations within one run or borrow a runtime currently
-assigned to another account.
-
-Here, `launcher` means the deterministic account-local launch procedure; it
-does not require a pre-existing wrapper script. Use a repository helper when
-one exists. When it does not, a worker whose brief already authorizes runtime
-operation executes the same procedure with explicit pinned-tool commands after
-the complete preflight. A missing convenience wrapper alone is not a blocker.
-For a review handoff, the application and dependencies run under a named,
-account-owned process holder independent of the worker's interactive command or
-chat session. A foreground or yielded worker tool session is not a lifecycle
-holder. Prove the holder and exact listeners from a separate command session,
-and record its redacted inspection, restart, log, and scoped shutdown inputs.
-
-Do not substitute a free-port lease, serialize all workers behind one shared
-stack, or stop an existing runtime. Unknown account/UID mappings, occupied
-assigned ports, incomplete port inventories, shared Docker/Supabase names,
-shared cookies, tracked-config mutation, or a failed identity canary are
-`blocked` states. Future compatibility-runtime cutover is coordinator-owned and
-requires separate explicit authorization.
-
-## Separate live UI design from implementation
-
-UI design exists when work introduces or changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy. Create a separate UI-design worker for each coherent affected surface. Pure implementation of an already accepted design is ordinary implementation and does not create another design worker.
-
-Whenever an output instantiates a UI-design worker—a brief, worker package,
-lifecycle, or launch prompt—it includes this reference map:
-
-**Design-method reference map:**
-
-- Repository instructions: `claude-design/codex/AGENTS.md`
-- Design-system prompt: `claude-design/codex/system-prompt.md`
-- Relevant design procedures: `claude-design/codex/skills/`
-- UI polish guidance: `.agents/skills/better-ui/SKILL.md`
-
-Tell the worker to consult the relevant source and linked supporting reference
-when the current design or implementation decision needs it. Do not require the
-worker to read every source end-to-end before its first useful task action.
-
-The UI-design worker has no
-implementation plan. In Pass 1 it may produce only a fixture/mock-backed,
-presentation-and-contents design; it must write both an accepted presentation
-handoff and a separate UI requirements contract using
-`references/ui-requirements-template.md`. Those two artifacts, together with
-approval evidence, replace the implementation-plan artifact in the planning-gate
-receipt.
-
-The UI-design worker is the only pre-gate app-edit exception. It may edit composition, hierarchy, spacing, responsive arrangement, visual component variants, motion, interface copy, and interaction-state presentation in the actual application, but must make those states deterministic with fixtures/mock data. It may not create or change live API calls, authorization, persistence, migrations, domain rules, scoring, background processing, or other business behavior. A discovered functional need returns to ordinary specification and planning and is captured in the UI requirements contract for the named live-wiring planner.
-
-Before editing, inventory and reuse the repository's existing components, tokens, typography, spacing, icons, motion, and interaction patterns. Do not create a competing component library or token system. Start the established live development server, publish its command and localhost URL, keep it available through iterative user feedback, and verify the rendered application in a browser. Show a working skeleton early, incorporate user feedback in the real app, and repeat until approval or a material product decision blocks design. When alternatives make feedback cheaper, use a small set of substantively different options in one temporary toggleable comparison surface backed by shared components. Remove rejected comparison-only code after approval unless the user explicitly accepts a development-only comparison control.
-
-The primary product surface starts with its real task controls, navigation, or
-content inside the established application shell. When that shell already
-identifies the route, retain one accessible page heading as visually hidden and
-give the visible space to the task. The default rendered shape contains no
-extra workspace eyebrow, repeated page title, descriptive introduction, welcome
-banner, or summary-card strip above the actual content. A visible task header is
-included only when an approved surface contract assigns it distinct changing
-state, context, or actions that cannot live with the content controls. Treat
-this as a presentation acceptance check for every UI-design worker.
-
-Apply the same necessity test to visible copy across the entire surface, not
-only above the primary content. Every visible copy block must do at least one
-of these jobs: label an operable control or destination; expose changing
-context, state, or value; state an actionable consequence, blocker, error, or
-recovery; or provide a required legal, safety, privacy, or mock-data
-disclosure. If it does none of them, omit it. Do not fill open layout space with
-explanatory headings, subtitles, welcome or reassurance copy, tips, helper
-cards, summary prose, or restatements of controls and values already visible
-nearby. Preserve useful whitespace and solve hierarchy with composition and
-spacing. Audit every visible copy block against this test before presentation
-review.
-
-A localhost presentation is review-ready only when the application and every runtime dependency required to enter the presentation are running against one coherent, account-owned endpoint set. Follow the repository's local setup and runtime-isolation authorities: use an account-isolated helper when present, otherwise execute the deterministic account-local procedure directly with the pinned tools, assigned ports, generated workdir, and exact namespace. A missing convenience wrapper alone is not a blocker. Prove that each listener and local container belongs to the current worker account, and treat an occupied assigned port or an inability to express the required isolation contract as a blocker instead of silently reusing another account's healthy process. Start required authentication emulators or services, local Supabase, APIs, seeds, or other access prerequisites even when the presentation data itself uses fixtures. Verify that the client's public Supabase origin and the API's Supabase origin, issuer, JWKS endpoint, and session store identify the same local project; a successful password grant against one project is not proof that the API will accept that session. Diagnose a `431` before auth: prove a no-cookie request reaches application handling, then use secret-free synthetic request-header sizes to find the accepted/rejected boundary and inspect the exact host's cookie accumulation. Distinct cookie names prevent session overwrite but do not stop a browser from sending every matching cookie for the same host. Prefer an account-specific review hostname and exact cookie cleanup; a bounded client-only header-ceiling increase may preserve an existing compatibility ingress, but is not isolation and requires accepted/rejected canaries plus a rollback. Publish the review port on loopback only. A containerized client may internally listen on `0.0.0.0`, and a framework may canonicalize that internal bind, only when the external host publication stays loopback-only and the development-fixture guard proves the public Supabase origin is loopback; never hand off a wildcard URL. Prove dependency health and authenticate one documented local fixture identity without publishing secrets. The login canary must exercise the application sign-in form, confirm that the API accepts the resulting session, enter the protected presentation route, and sign out; when a browser is available, perform that journey there. For a protected fixture presentation, the exact launch also starts from `edenmind-client`, exports matching account-specific `EDENMIND_AUTH_COOKIE_NAME` and browser cookie values, and uses `--fixture --review-as <identity>`; generic `--fixture` is insufficient. Run sign-out evidence before final no-cookie and stale-cookie protected-route checks that prove automatic review bootstrap, matching API `/v1/me`, visible presentation content, the runtime-specific cookie namespace, and no `431`, then leave the review route authenticated. Keep the application and access dependencies alive through user review. A `431`, protected-route redirect, sign-in-page `200`, generic error page, Supabase-only password grant, or final canary that leaves the route signed out is never login proof or a valid presentation handoff. If browser integration is unavailable, record that visual limitation, but still run the same endpoint-consistent login canary through an approved non-visual interface before asking the user to review.
-
-Keep those review processes under a named account-owned holder independent of
-the worker's interactive command or chat session. End the launching command
-session, inspect the holder and exact listeners from a separate command, and
-record redacted inspection and restart instructions. A temporary foreground or
-yielded tool process is not evidence that the URL will survive handoff.
-
-The reviewer-entry canary is separate from the worker's login canary. Launch the repository's approved fixture-review mode when it exists, using the assigned loopback hostname and account-local cookie name. Navigate directly to the exact handed-off protected URL from both (1) a fresh context with no cookies and (2) a fresh context carrying a stale default or other-runtime auth-cookie name. In both cases, the final URL must be the protected presentation, its content must render, the API must accept the real local Supabase identity, and only the assigned account-local auth-cookie namespace may be issued. When fixture-review mode exists, the user must not need to enter credentials or inherit the worker's browser session. Without this proof, hand off the sign-in entry point and access instructions instead of calling the protected URL review-ready. Keep the application and access dependencies alive through user review. A worker-authenticated browser, protected-route redirect, sign-in-page `200`, Supabase-only password grant, or “the reviewer may need to sign in” caveat is never proof that the handed URL is review-ready. If browser integration is unavailable, record that visual limitation, but still run both endpoint-consistent reviewer-entry cases through an approved non-visual interface before asking the user to review.
-
-The UI-design handoff records the accepted app-state commit reachable from `origin/main`, user approval evidence, affected routes/components and reused design-system foundations, verified applicable wide, narrow, interaction, keyboard/focus, and reduced-motion states, the development-server command and reviewed localhost URL, required access-runtime commands and endpoint health, the source of the documented fixture identity without secret values, fresh/no-cookie and stale-cookie reviewer-entry proof with the effective account-local cookie name, retained limitations and functional decisions returned to planning, and the implementation worker that receives mutable ownership. The separate UI requirements contract records the required reads, commands, actor capabilities, lifecycle and error states, navigation/client state, files/exports, accessibility, deterministic fixtures, planned-contract traceability, Pass 2 acceptance mapping, and unresolved product decisions. It is the contract the Pass 1 live-wiring planner and downstream planners consume; it is not live wiring.
-
-The design worker owns the named presentation files until its accepted handoff is integrated into `origin/main`. Transfer mutable ownership to the implementation worker only afterward; the two workers never edit the same mutable UI surface concurrently.
-
-## Generate launch prompts when needed
-
-Read [the worker prompt templates](references/worker-prompt-templates.md) completely before generating prompts.
-
-Create separate ordinary-worker planning and execution prompts when phases may run in different sessions or the user requests a launch packet. Both prompts name the blueprint, living authorities, worker brief, planning and execution prerequisites, owned/excluded surfaces, artifact paths, named worker-status contract, coordinator `STATUS.md`, checkout/clone mode, required shared-checkout lock or cross-clone push queue, `origin/main` integration authority, independently-testable-substep cadence, focused-test cadence, final full-suite requirement, the ban on worker-to-worker Codex chat, and the exact terminal condition.
-
-An ordinary planning prompt stops after the worker-authored specification,
-affected product-specification consolidation or no-impact findings, detailed
-plan, stable authority updates, and planning handoff to the coordinator. It
-explicitly states that the handoff does not authorize implementation. An
-ordinary execution prompt names the passed coordinator-owned planning-gate
-receipt and its pinned `origin/main` commit, requires execution-readiness
-verification before editing, and then covers implementation, review,
-integration evidence, handoff, and clean-main completion.
-
-### EdenMind swarm coordinator launch packets (conditional)
-
-Use this adapter only when the frozen blueprint explicitly declares the
-EdenMind swarm coordinator. It does not change ordinary Blueprint Masterplan
-prompts or turn this generic skill into an application specification. Read [the
-coordinator launch-packet adapter](references/worker-prompt-templates.md#edenmind-swarm-coordinator-launch-packets)
-completely before rendering any coordinator packet.
-
-The coordinator renderer and this skill resolve each packet directly from the
-single canonical source under `workers-masterplan/swarm/templates`; never copy
-or independently maintain packet bodies in the reusable skill. Supply the
-selected macOS account, worker ID, model routing, coordinator chat name, and
-phase terminal condition, selected Git mode, same-Mac mutation lock, and
-independent-clone push queue as explicit launch metadata. The selected account
-is not a worker: an account may own unlimited chats, while the global
-active-turn default is `3`.
-
-For this conditional mode, use one loopback Codex app-server per selected macOS
-account through `su - <account>`; never launch Codex desktop for a bot account.
-The planning packet is terminal before execution, and the execution packet
-routes bounded implementation to Terra High, difficult implementation,
-integration, migrations, or debugging to Terra Xhigh, and Sol High only to
-unexpected planning required during execution. Continue to apply this skill's
-direct-main lifecycle and remote-reachability proof without weakening it for
-the coordinator: each canonical packet must render its phase terminal condition
-and the full checkpoint sequence—focused check, owned-path staging, direct-main
-commit, fetch/merge, affected-check rerun, push, and remote-reachability proof.
-
-The coordinator may automatically approve an app-server request only after
-positive proof that every target is contained in the assigned account's
-EdenMind clone. Ambiguous, destructive, home/system, cross-account, glob,
-symlink-sensitive, or otherwise unproven requests fail closed to the exact
-method-compatible human decision; dangerous actions never receive a
-session-wide approval. Public ngrok access may run only from `10:00` until
-`00:00` in `Asia/Singapore`; local coordinator access remains available outside
-that public window.
-
-When a coordinator packet's worker needs an account-local application runtime,
-its launch envelope also supplies the validated UID, slot, offset, complete
-port allocation, runtime/project/network/workdir/cookie names, excluded current
-runtimes, and exact identity-canary terminal condition from
-`references/account-local-runtime-isolation.md`. The canonical packet body
-remains unchanged; the envelope renders the conditional isolation block once
-before any runtime command.
-
-### Render operative lifecycle outputs without compression
-
-Apply the operative-output classification and the **Coordinator/worker phase
-contract** from [Mandatory response-shape preflight](#mandatory-response-shape-preflight).
-Do not redefine, move, merge, or duplicate that canonical block here.
-
-For every operative Git/integration lifecycle or actual ordinary-worker launch
-packet, render exactly once this canonical Markdown block with all four visible
-rows:
+| Coordinator planning | The coordinator alone authors the shared design and all N workers' detailed specifications and implementation plans before handoff; interfaces, ownership, tests and dependencies are checked together during that initial planning. |
+| Ready-to-execute handoff | Publish the complete coordinator-authored plan set and required approvals on origin/main; do not launch a worker planning pass or require later reconciliation of independently authored plans. |
+| Worker execution | Workers execute the supplied plans after verifying their hard implemented prerequisites; genuine discoveries return to the coordinator for bounded corrections. |
+| Conditional UI design | A UI-design worker supplies accepted presentation and UI requirements when needed; the coordinator incorporates them into affected implementation plans before live wiring. |
+
+For operative Git lifecycles and worker launch packets also show once:
 
 **Shared-main lifecycle**
 
 | Item | Required fact |
 | --- | --- |
-| Mode | In a genuinely shared checkout, read-only planning may run in parallel; the exclusive shared-checkout main-mutation lock covers every filesystem edit and Git/index operation through remote-reachability proof. |
-| Fallback | Only when that lock cannot exist, use normal clones on `main` for different machines or a documented incompatible shared checkout. A cross-clone push lock or queue covers only reconciliation → affected focused verification → push → remote-ancestry proof; it does not impose a global edit lock across clones. |
-| Checkpoint cadence | After every independently testable substep—a coherent plan task or subtask with its own focused verification—run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep. |
-| Safety | Preserve and report unrelated dirt; never clean, stash, reset, overwrite, or remove it. Never rebase or force-push published `main`. |
+| Mode | In a genuinely shared checkout, concurrent reads are allowed; the exclusive main-mutation lock covers edits and Git/index mutations through remote-reachability proof. |
+| Fallback | Normal main clones are allowed on different machines or for a documented incompatible shared checkout; the cross-clone push queue covers reconciliation, affected checks, push and ancestry proof, not a global edit lock. |
+| Checkpoint cadence | After each independently testable substep, run focused checks, stage owned paths, commit on main, fetch/merge newer origin/main, rerun affected checks, push and prove remote ancestry. |
+| Safety | Preserve unrelated dirt. Never clean, stash, reset, overwrite, rebase or force-push published main to discard someone else's work. |
 
-The phase block is defined only in the mandatory preflight. UI-design exceptions
-retain their existing dedicated conditional workflow; do not emit either
-ordinary-worker block solely because the observable UI-design trigger applies.
+Do not inflate simple status answers with these blocks. The templates are
+contracts for useful handoffs, not a reason to restate every plan in chat.
 
-Only when the observable UI-design trigger is true, read [the UI-design worker
-prompt template](references/ui-design-worker-prompt-template.md) completely and
-generate that separate prompt. It must include the design-method reference map,
-the just-in-time source lookup method, the presentation-only real-app boundary, live-server
-feedback loop, approval evidence, no-plan handoff, and sequential ownership
-transfer.
+## Skills and source routing
 
-## Require remote-evidenced readiness
+- Use brainstorming for unsettled product/design choices; do not reopen settled
+  approved behavior or repeat an interview for explicit maintenance.
+- Use writing-plans to author EACH worker's detailed task plan yourself. A brief,
+  file list or empty reserved plan path is insufficient.
+- Use living-masterplan when approved stable behavior changes. Consolidate
+  affected product authorities in the same planning checkpoint, or record an
+  evidence-backed no-impact finding.
+- Use verification-before-completion before asserting the package is ready.
+- Execution workers use the applicable execution, TDD, review and verification
+  skills; repository main-only rules override generic worktree workflows.
 
-| State | Meaning |
+Read references/blueprint-masterplan-template.md before writing the blueprint.
+Read references/worker-prompt-templates.md before creating launch packets.
+Use references/planning-gate-template.md for a coordinator plan-readiness receipt
+when the project uses one. It records the coordinator's completed planning;
+it does not wait for worker-authored artifacts or create a new approval cycle.
+
+## Initial coordinator planning
+
+1. Inspect current repository instructions, main/origin/main, actual code,
+   callers, tests, migrations, configuration, runtime and relevant authorities.
+   Preserve unrelated work. Record inspected commits, not assumed readiness.
+2. Define the bounded outcome, existing authorization, non-goals and measurable
+   acceptance. Ask only for decisions that materially change approved intent.
+3. Decompose coherent implementation packages. One owner per mutable file,
+   schema, migration sequence, prompt registry, generated artifact, environment
+   and central composition surface. An independent clone does not solve
+   semantic ownership collisions.
+4. Freeze exact shared types, signatures, artifact versions and producer/consumer
+   rules. Check SQL/RLS, source/currentness, replay, data ownership and error
+   boundaries across the full flow. Do not invent columns or capabilities.
+5. Personally write every worker's dated specification and detailed plan.
+   Include exact files, interfaces, meaningful failing behavioral tests,
+   implementation steps, focused commands, review evidence and final acceptance.
+   Keep common constraints in the shared design and consume them consistently.
+6. Check the whole plan set NOW: identical signatures and field names, no
+   conflicting file owners, no hidden producer dependencies, no fixture/prompt
+   import before its producer exists, no placeholder schemas or migrations,
+   no integration consumer that rejects the newly permitted result.
+7. Synchronize affected living authorities and all downstream plans. Complete
+   any already-required user review without manufacturing new checkpoints.
+8. Verify links, paths, DAG and complete plan coverage; commit/push the coherent
+   coordinator-authored package and prove origin/main ancestry before handoff.
+9. Publish execution handoffs naming the supplied plan, current readiness and
+   actual hard prerequisites. Do not send workers away to author plans first.
+
+One stable blueprint ID, e.g. YYYY-MM-DD-short-slug, owns:
+- docs/superpowers/specs/<blueprint-id>/ for shared and worker specifications;
+- docs/superpowers/plans/<blueprint-id>/ for blueprint and ALL worker plans;
+- docs/workers/<blueprint-id>/ for prompts, worker status and completion receipts.
+
+Follow existing repository path conventions when different. A single shared
+specification may cover several workers if each plan's contract is explicit.
+The coordinator owns plan/spec revisions; workers own execution status and
+completion manifests. Do not mistake spec authorship for implementation ownership.
+
+## DAG and readiness
+
+Build a moderately flat DAG from real implemented prerequisites. Aim for 3–7
+ready workers per substantive frontier; small objectives, foundations, joins
+and gates may be narrower. Wider frontiers need evidence that coherent grouping
+is unsafe. Report node/edge counts, layer membership, peak logical width and
+active slot capacity separately. Verify acyclicity and Depends on/Unblocks parity.
+
+A foundation exists only for distinct shared contracts/code needed by consumers.
+Keep it small; defer full retrieval/security implementations to their trade
+when consumers can develop independently. Conversely, a planned capability is
+not implemented authority: final integration still requires its real tests.
+
+Never make F0 import a prompt/schema/module that a worker blocked on F0 has not
+written. Put pure shared contracts in F0; register real producer assets at the
+integration join or assign their implementation explicitly to F0.
+
+| State | Required evidence |
 | --- | --- |
-| planning-blocked | A required frozen authority, brief, or approved planned contract is unavailable |
-| planning-ready | The planning-readiness predicate is satisfied at an inspected `origin/main` commit; implemented predecessor code is not required |
-| planning-in-progress | The worker is producing its required planning artifacts, or a UI-design worker is producing its fixture/mock presentation handoff and separate UI requirements contract |
-| planning-complete / execution-blocked | The worker's planning artifacts are reconciled, but the global planning gate is open or an implemented hard prerequisite is absent |
-| execution-ready | The execution-readiness predicate is satisfied at the named `origin/main` commit |
-| unverified | The needed remote commit or evidence has not been inspected; it is neither planning-ready nor execution-ready |
-| in-progress | An execution-ready worker claimed its owned surfaces, refreshed local `main` from `origin/main`, and is producing coherent checkpoints |
-| blocked | A named dependency, decision, conflict, or external condition prevents progress |
-| review | Work exists but review, evidence, or integration remains open |
-| complete | The coordinator verified final full-suite evidence, `origin/main` integration, handoff, and cleanup of any dedicated temporary lane |
+| Planning | Coordinator is still writing/checking the complete plan set. |
+| Planned | Coordinator-authored specification and detailed plan exist, required approval is recorded and the complete package is reachable from origin/main. |
+| Execution-blocked | A named hard implemented prerequisite or genuine external requirement is absent. |
+| Execution-ready | Supplied plan is current, authorization exists and all hard prerequisite code/evidence is integrated. |
+| In progress / review | Worker is implementing or awaiting required implementation review. |
+| Complete | Fresh tests/review, remote integration, handoff and owned cleanliness are verified. |
+| Unverified | Needed remote evidence has not been inspected; never call it ready. |
 
-A feature-branch-only commit, unpushed local commit, stash, or working-tree change never satisfies a planned contract, hard prerequisite, or required evidence. The coordinator cannot pass the planning gate until the complete Pass 1 planning set, UI requirements contracts, and UI handoffs are reachable from `origin/main`; execution readiness additionally requires each worker's implemented hard prerequisites.
+There is no worker-planning readiness state and no reconciliation barrier
+dependent on independently authored plans. A readiness receipt may pin the
+coordinator package; its name (including existing PLANNING_GATE.md) does not
+restore the removed two-pass workflow. Never label missing plans complete.
 
-Use [the worker status template](references/worker-status-template.md) for each active worker and [the coordinator summary template](references/status-summary-template.md) for `STATUS.md`. A worker owns only its named status file; the coordinator alone owns the aggregate, authority-refresh record, and initial readiness table.
+## Execution lifecycle and coordination
 
-## Reconcile through the coordinator-owned planning gate
+Workers verify their supplied plan and actual prerequisites, then implement
+owned tasks directly. Use focused tests at coherent checkpoints; run the full
+owned suite once at completion, repeating broader checks only for new concerns.
+Keep model calls outside DB transactions and preserve runtime/domain safeguards.
 
-Before writing, passing, or reopening the receipt, read [the planning-gate
-template](references/planning-gate-template.md) completely.
+All work stays on main. Shared checkout: agree one exclusive main-mutation lock
+and one consistent lock protocol before mutations; never unlink an active lock.
+Different-machine normal clones: named push queue for reconcile/check/push/proof.
+The queue may be the optimistic origin/main-reconciliation protocol: the remote
+accepts only fast-forward pushes; rejected pushes fetch/merge/check/retry. This
+needs no extra cross-machine lock service or launch metadata. Name that protocol
+consistently when canonical swarm packets use it.
+No feature branches, worktrees, stash queues or hidden lanes. A rejected push
+means fetch/merge/check/retry, never rebase published main or force push.
 
-After the complete planning set is produced, the coordinator reconciles it
-together before ordinary execution. The coordinator writes
-`docs/workers/<blueprint-id>/PLANNING_GATE.md`, pins one inspected
-`origin/main` commit, and records state `open`, `passed`, or `reopened`. This
-receipt is the only whole-blueprint planning authorization.
+Workers coordinate through origin/main, owned status/handoffs and coordinator
+summaries, not worker-to-worker Codex chats. Report a real contract discovery to
+the coordinator; the coordinator updates affected plans/authorities together.
+Do not require all workers to stop for unrelated discoveries. Already-approved
+routine fixes do not need a fresh product-approval round.
 
-The receipt contains the blueprint ID and path, coordinator and approval time,
-the pinned commit, verification and review evidence, unresolved contradictions
-with owner and unblock criterion, and the material-change rule. It has one row
-for every ordinary execution worker with its specification path and commit,
-implementation-plan path and commit, approval, living-authority synchronization,
-and cross-plan reconciliation result. It has one row for every UI-design worker
-with accepted presentation app-state commit, approval evidence, separate UI
-requirements path, handoff path, completed fixture/mock live review,
-requirements-to-plan reconciliation, and sequential ownership-transfer target.
-`not applicable` is valid only for the UI-design worker implementation-plan
-field and only with its accepted design artifacts.
+If repository evidence proves an upstream attempt ENDED without a concrete
+required deliverable, the downstream worker temporarily assumes that bounded
+implementation role, completes/tests/integrates it, updates evidence and
+resumes. Active, queued, slow or uninspected work is not failed work. Never
+overwrite active/uncertain changes, invent policy or bypass new authority.
 
-Before passing the gate, the coordinator verifies that every brief has the
-required planning artifact, producer and consumer planned interfaces agree,
-shared mutable surfaces have exactly one current owner, migration,
-generated-artifact, central-composition, and integration ordering are explicit,
-accepted UI design and its UI requirements contract are reflected in affected
-live-wiring implementation plans, affected living authorities and downstream
-documents are current, all approvals and review evidence are reachable from
-`origin/main`, and no material decision or cross-plan contradiction remains.
-The gate passes only when every required row is complete.
+Each execution handoff names exact commits, coordinator-authored spec/plan,
+tests/review, migration/index/runtime actions, downstream evidence, limitations,
+owned cleanliness and docs/workers/<blueprint-id>/completion-manifest/<id>.json.
+Publish the manifest before final response; coordinator independently verifies.
 
-## Keep every worker current on `main`
+## Conditional UI design and account-local runtimes
 
-All planning, implementation, review fixes, and documentation updates happen directly on checked-out `main`. Local `main` and `origin/main` remain the integration truth. Select and record exactly one of these modes before any mutation:
+A real presentation change uses a UI-design worker only for fixtures/mock-backed
+presentation and contents, accepted UI requirements and an owner-reviewed
+handoff. The coordinator remains the implementation-plan author and incorporates
+that handoff before live wiring; ordinary workers do not start a planning pass.
+Read references/ui-design-lifecycle.md and
+references/ui-design-worker-prompt-template.md for that conditional workflow.
+Required design-method sources remain:
+- claude-design/codex/AGENTS.md
+- claude-design/codex/system-prompt.md
+- claude-design/codex/skills/
+- .agents/skills/better-ui/SKILL.md
 
-1. **Genuinely shared checkout:** read-only planning may proceed in parallel, but an exclusive main-mutation lock is required for every filesystem edit and every Git/index operation. The holder keeps it from pre-edit reconciliation through focused verification, staging, commit, reconciliation, push, and proof that the published commit is reachable from `origin/main`.
-2. **Independent normal clones:** use only when workers are on different machines or a shared checkout is incompatible with the required lock. No global edit lock spans the clones, but a required cross-clone push lock or queue covers reconciliation, affected focused verification, push, and remote-ancestry proof.
+When any worker starts/configures/stops/seeds/tests client, API, Supabase, Docker
+or Colima on a shared machine, read references/account-local-runtime-isolation.md
+completely. Allocate account/UID-derived ports, names, cookie namespace, holder
+and real identity/reviewer-entry canaries before runtime commands. No borrowing
+another account's stack, free-port substitution or broad cleanup. A 431 is
+transport/header evidence, not proof of bad credentials. Preserve existing
+runtime isolation, authentication consistency and durable-holder requirements.
 
-A clean baseline means reconciled local `main` plus no owned dirty state. Unrelated dirt is preserved and reported; it is never cleaned, stashed, reset, overwritten, or treated as the worker's clean-baseline failure.
+## Launches, legacy packets and verification
 
-**Mandatory lane rules:**
+Worker packets consume completed coordinator-authored plans and request
+implementation, not plan authorship. Include an authority map, owned/excluded
+paths, prerequisites, status/manifest paths, lock/queue, checkpoint cadence,
+terminal outcome, approved model settings and bounded recovery instructions.
+Use the user's model/effort settings; do not invent new model policy.
 
-- Workers are banned from messaging, following up with, or handing off to other workers through Codex chats. Publish progress through commits, owned status/handoff artifacts, and coordinator-owned summaries.
-- Never stop merely because another worker is active on `main` or another normal clone. In a shared checkout, wait only for the required main-mutation lock before mutation; read-only planning may continue in parallel.
-- Never reset, overwrite, clean, stash, or reformat another worker's changes. Stage explicit owned paths and review the exact staged diff before committing.
-- Fetch `origin/main` before starting. Fast-forward only a clean, reconcilable local `main` with `git pull --ff-only origin main`; preserve and report unrelated dirt rather than making it disappear.
-- Treat an independently testable substep as one coherent plan task or subtask with its own focused verification, not every edit. After each such substep: run the focused check, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before beginning the next substep.
-- Before every push, use the mode's required lock or queue and reconcile concurrent upstream changes. If rejected, preserve all work, fetch and merge the new remote state, run the affected focused tests, and retry. Never rebase or force-push published `main`.
-- Do not create new feature branches or linked worktrees. Preserve legacy or uncertain lanes and retire them only after final integration and remote proof.
+Conditional EdenMind swarm packets retain one canonical source under
+workers-masterplan/swarm/templates. The planning packet is coordinator-only:
+the same coordinator writes ALL plans. It must not be launched once per ordinary
+worker. Execution packets consume those plans; UI packets remain conditional
+presentation-only. Preserve runtime isolation and main-only safety when rendering.
 
-## Require the worker execution lifecycle
+Before handoff, confirm all N plans are authored by the coordinator, complete,
+internally consistent and remote-reachable; one owner per shared surface;
+acyclic implemented dependency graph; no delegated planning or later independent
+plan-reconciliation requirement; actual approval/authorization; concrete test
+coverage; no paid/live/runtime completion claims without evidence.
 
-1. Inspect the current checkout/clone mode, acquire the required shared-checkout main-mutation lock before mutation or identify the cross-clone push queue to use at reconciliation, preserve and report unrelated changes, fetch `origin/main`, establish a clean baseline when no owned dirt remains, and prove the named planning-gate receipt is passed at its pinned commit.
-2. Prove every hard implemented prerequisite and required execution evidence is reachable from `origin/main`. When a prerequisite is absent because its upstream worker failed to complete it, perform the upstream-recovery lifecycle below and then reassess readiness. For other absent prerequisites, stop unless the execution-readiness predicate is satisfied.
-3. Enter the assigned `main` checkout, reconcile it with `origin/main`, record the authority-refresh and readiness evidence at that inspected commit, and inspect the relevant baseline before editing.
-4. Read the worker-authored approved specification and detailed plan, including the accepted UI-design handoff when the implementation consumes one.
-5. Implement only owned surfaces with TDD where applicable.
-6. Write code and tests in coherent chunks. For every independently testable substep (a coherent plan task or subtask with its own focused verification), run only the test segment relevant to changed behavior; do not run the full suite at every small turning point.
-7. Resolve ordinary concurrent edits and conflicts within owned surfaces. Escalate only a genuine semantic, ownership, migration, generated-artifact, or contract decision, through the coordinator rather than another worker's Codex chat.
-8. After every independently testable substep, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected focused tests, push, and prove remote reachability before the next substep. Use the required lock or queue throughout that lifecycle.
-9. Request/address review and run fresh focused verification for the completed owned scope.
-10. After all tasks owned by the worker are finished, refresh from local and remote `main`, run the full suite once, integrate and push the final state, prove remote reachability, and produce the evidence-backed handoff. The assigned checkout has no owned dirt; unrelated dirt remains preserved and reported.
-
-## Recover failed upstream prerequisites directly
-
-The observable trigger is narrow: a downstream worker requires a concrete upstream deliverable, and inspected status, handoff, tests, artifacts, or `origin/main` state proves the assigned upstream worker ended its attempt without completing that deliverable. A worker that is merely active, queued, slow, remote-uninspected, or waiting on a genuine external decision has not failed this predicate.
-
-When the trigger is true, the downstream worker MUST:
-
-1. record the missing prerequisite and the evidence that the upstream attempt failed;
-2. temporarily assume the upstream worker's role and ownership only for the bounded work required to satisfy that prerequisite, including its necessary tests, generated artifacts, migrations, documentation, status, and handoff evidence;
-3. follow the upstream package's approved specification, acceptance criteria, safety boundaries, lock or queue, TDD/review requirements, and Git synchronization lifecycle;
-4. resolve and verify the prerequisite, integrate it into current `main`, push it, and prove it reachable from `origin/main`;
-5. update the upstream and downstream status/handoff evidence through the ownership exception created by this recovery rule; and
-6. reassess the downstream worker's execution readiness and continue its original assignment immediately when the prerequisite is satisfied.
-
-Do not stop to ask the user whether the original upstream worker should fix, retry, or finish the work. Do not hand the failure back to that worker through Codex chat. The downstream worker owns the recovery to completion. This exception does not authorize unrelated upstream scope, overwrite concurrent or uncertain work, waive a required approval, invent a product decision, weaken a safety boundary, or bypass a genuinely external permission or credential requirement. Pause only for one of those independent blockers, never merely because the failed work was assigned to a different worker.
-
-**Verification and synchronization cadence:**
-
-1. Before work: record checkout/clone mode, required lock or queue, inspected `origin/main` commit, authority-refresh record, and the separate planning/execution readiness findings; remote-uninspected findings are `unverified`.
-2. During work: after each independently testable substep (a coherent plan task or subtask with its own focused verification), run the narrow affected test segment, stage only owned paths, commit directly to `main`, fetch and merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep.
-3. During long tasks: use the same per-substep lifecycle rather than delaying synchronization; preserve unrelated dirt and report any inability to reconcile without removing it.
-4. At worker completion: refresh again, run the full suite once, fix failures, then integrate and push final evidence.
-5. On a shared checkout: read-only planning may be parallel, while its exclusive main-mutation lock covers filesystem edits and Git/index work through remote proof. Across independent clones, use the required push queue for reconcile → affected verification → push → ancestry proof. Never use worker-to-worker Codex chat, and never impose a global edit lock across independent clones.
-
-## Propagate living-authority changes downstream
-
-Whenever a worker updates a living business, product/specification, architecture, implementation, operations, security, release, or custom masterplan, it MUST assess the direct and transitive downstream workers and gates before integrating the update.
-
-Writing or modifying a dated task specification always requires this assessment
-for every affected product specification masterplan. The worker must consolidate
-all and only approved product behavior into one high-level frontend-to-backend
-contract in the same planning substep, or record an evidence-backed no-impact
-finding. Do not use available-now, approved-future, deferred, worker, or
-delivery-history categories in that product specification masterplan.
-
-An accepted UI design enters this downstream impact assessment only when it
-changes approved product behavior or a product interaction contract. In that
-case, update the affected product specification masterplan and downstream
-planning artifacts before the planning gate passes. Purely visual evidence does
-not become product behavior or delivery-status history in a product
-specification masterplan.
-
-If the authority change affects a dependency, readiness condition, blocker, contract, ownership boundary, acceptance evidence, test expectation, launch instruction, or implementation assumption, the change is incomplete until:
-
-1. the affected downstream set is identified from the DAG and coordination contracts;
-2. every affected worker brief, specification, implementation plan, launch prompt, worker status, and coordinator status is updated where relevant;
-3. the originating worker records the impact in its owned artifact; the coordinator or owning worker consumes that repository evidence without direct worker-to-worker Codex chat, and no worker overwrites a cross-owned document;
-4. affected downstream work is marked blocked or not-ready until its documents and assumptions are current;
-5. the authority change and all required downstream document updates are verified with the relevant focused checks, committed as a coherent checkpoint, reconciled with current local and remote `main`, and pushed to `origin/main`; and
-6. the originating worker records propagation evidence or an explicit evidence-backed finding of no downstream impact.
-
-If the change alters frozen blueprint scope, ownership, dependencies, gates, or completion semantics, the coordinator must issue the required approved blueprint revision. No affected downstream worker may continue from stale documents.
-
-## Reopen the global planning gate for material changes
-
-A material change to frozen scope, ownership, dependency edges, contracts, acceptance, security/privacy behavior, an accepted UI design, or an implementation plan reopens the global planning gate. No new execution starts. Directly affected execution pauses at a safe checkpoint. The coordinator reauthorizes execution only after every affected artifact and living authority is current, the complete planning set is reconciled again, and a new passed receipt is reachable from `origin/main`. Already-running unrelated work continues only with an evidence-backed no-impact finding in the reopened receipt.
-
-When reopening, the coordinator changes the receipt state to `reopened` and
-ensures each affected specification, plan, UI handoff, prompt, living authority,
-and status is updated through its owner. A new passed receipt pins the updated
-`origin/main` commit. This rule applies even if an individual worker's prior
-plan or handoff remains approved.
-
-## Complete and clean up safely
-
-A worker is complete only after:
-
-1. one fresh full-suite run after all of the worker's owned tasks are finished;
-2. approved integration into current local `main`;
-3. proof its final commit and required downstream-document updates are reachable from `origin/main`;
-4. integrated or CI verification;
-5. preserved handoff and archival status;
-6. no owned dirty state in the assigned checkout, with any unrelated dirt preserved and reported;
-7. cleanup of any fully integrated legacy dedicated lane, while shared `main` remains intact; and
-8. its worker-owned per-task pass receipt committed and reachable from `origin/main`.
-
-Preserve dirty, unpushed, failing, under-review, or uncertain-ancestry work. Never reset, overwrite, force-push, or force-clean it.
-
-## Verify and freeze
-
-Before freezing:
-
-- re-read cited authorities and promote stable changes first;
-- verify every shared surface has one owner;
-- compare Mermaid edges with briefs and gate prerequisites;
-- compute node/edge counts, layers, peak width, and cycles;
-- review narrow serial stretches and over-wide micro-packages;
-- verify worker artifact roots use the blueprint ID;
-- verify the coordinator wrote briefs, not worker specifications/plans;
-- test planning-blocked, planning-ready, planning-complete/execution-blocked, execution-ready, review, and completion readiness;
-- verify the coordinator-owned `PLANNING_GATE.md` has every required ordinary-worker and UI-design row, a pinned `origin/main` commit, complete reconciliation evidence, and no unresolved material contradiction before ordinary execution;
-- verify an ordinary execution worker cannot begin because only its own planning handoff is approved;
-- verify a UI-design worker is created only for the observable trigger, receives the design-method reference map, uses just-in-time source lookup, follows the presentation-only live-app boundary, and transfers UI ownership sequentially after its accepted handoff;
-- verify every worker that needs local client/API/Supabase/Docker/Colima uses the validated UID-derived allocation, complete namespacing and port inventory, ignored generated config, cookie isolation, fail-before-mutation preflight, and real identity canary; verify it cannot stop or reset an existing runtime;
-- verify a material change reopens the receipt, pauses affected execution safely, and requires a new passed remote-evidenced receipt;
-- verify worker-to-worker Codex chat is prohibited and repository/coordinator artifacts carry coordination;
-- verify each worker's checkout/clone mode, that shared-checkout mutation uses an exclusive main-mutation lock, and that independent clones use the required push queue without a global edit lock;
-- verify a clean baseline means reconciled local `main` and no owned dirty state, while unrelated dirt is preserved and reported;
-- verify workers refresh local `main` from `origin/main` before work and, after each independently testable substep, run focused verification, stage only owned paths, commit directly to `main`, merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep;
-- verify implementation uses focused test segments and each worker runs the full suite only once after all owned tasks finish;
-- verify every authority-refresh record names its path, inspected `origin/main` commit, and `current`, `updated`, or `blocked` result; remote-uninspected readiness remains `unverified`;
-- verify the initial coordinator readiness table at the inspected remote commit separates planning readiness from execution readiness, including evidence and blockers, and names each worker status contract plus `STATUS.md`;
-- mechanically check every Git lifecycle or worker prompt for checkout/clone mode, the required lock or queue, independently-testable-substep cadence, remote reachability proof, published-main no-rebase/no-force, and unrelated-dirt preservation;
-- verify every new or modified worker specification synchronizes each affected
-  product specification masterplan in the same planning substep, or carries an
-  evidence-backed no-impact finding;
-- verify product specification masterplans read as unified high-level
-  frontend-to-backend contracts rather than availability or delivery-status
-  dashboards;
-- verify living-authority changes require downstream-impact assessment and all relevant downstream document updates;
-- verify every downstream worker launch contract requires direct takeover of a proven failed upstream prerequisite, bounded to the missing dependency, with no user question or retry handoff to the original worker;
-- verify every worker prompt contains the exact recommended-decision and blocking-worker recovery instruction;
-- verify every worker prompt contains the exact hard lock against modifying, or suggesting modifications to, old MVP2-and-earlier Markdown documents without explicit user authorization;
-- verify every worker prompt supplies an authority map with just-in-time lookup instead of front-loaded complete document reads;
-- verify every planning/execution prompt requires direct pre-production replacement without legacy adapters, unnecessary compatibility/fallback paths, or duplicated old/new implementations;
-- scan for placeholders, unsupported assumptions, stale references, and unrelated edits; and
-- obtain approval, then commit the frozen snapshot when authorized.
-
-Ordinary progress updates status, not the blueprint. Revise the frozen blueprint only when approved stable information changes scope, ownership, dependencies, gates, or completion semantics.
-
-## Quick reference
-
-| Situation | Response |
-| --- | --- |
-| Authority missing or stale | Bootstrap or maintain it before blueprint work |
-| Independent packages share approved planned contracts | Expose them in the same planning-ready frontier; execution still waits for the global gate and hard implemented prerequisites |
-| Layer narrower than three | Remove artificial edges or record the bottleneck |
-| Layer wider than seven | Test grouping by domain, protocol, risk, runtime/toolchain, release boundary, and shared verification; retain only evidence-backed unsafe exceptions |
-| Fewer active slots than ready workers | Keep the DAG flat and schedule from the ready queue |
-| Shared file/schema/generated output | Assign one owner or sequence behind its merge |
-| Worker needs detailed steps | Once planning-ready, the ordinary worker authors its own specification and detailed plan before the global planning gate may pass |
-| Worker has only its own approved plan | Keep it execution-blocked until the passed coordinator-owned planning-gate receipt and its hard implemented prerequisites are proven on `origin/main` |
-| Work changes visual hierarchy, layout, component treatment, responsive behavior, motion, interaction states, or interface copy | Create the separate live UI-design worker and use its conditional prompt; do not give it an implementation plan |
-| Worker specification is created or changed | Consolidate approved changes into every affected product specification in the same planning substep, or record no impact |
-| Worker needs local Supabase, API, client, Docker, or Colima | Render the account-local runtime isolation block with the validated UID allocation; for protected fixture review also require `--review-as`, matching `EDENMIND_AUTH_COOKIE_NAME` values, public Auth and private API on the same project, no-cookie/stale-cookie entry checks, and the bounded `431` header canary; fail closed rather than using free ports or another account's stack |
-| Workers share one checkout | Permit parallel read-only planning; require the exclusive main-mutation lock for edits and Git/index operations through remote proof |
-| Workers use independent normal clones | Allow only different machines or an incompatible shared checkout; require the push queue, not a global edit lock |
-| Worker tries to message another worker in Codex | Ban the chat; publish through commits, owned artifacts, and coordinator summaries |
-| Worker says done on its feature branch or only locally | Keep execution dependants not-ready; planning may use only approved planned-contract evidence already reachable from `origin/main` |
-| Required upstream deliverable is proven incomplete after its worker's attempt ended | The downstream worker assumes the upstream role for that bounded prerequisite, fixes and integrates it, proves it on `origin/main`, then reassesses readiness and continues; never ask the user who should retry |
-| Worker completes an independently testable substep | Run the focused test, stage only owned paths, commit, merge newer `origin/main`, rerun affected checks, push, and prove remote reachability before the next substep |
-| Worker finishes all owned tasks | Refresh, run the full suite once, push and prove `origin/main`, leave no owned dirt, preserve/report unrelated dirt, then remove only dedicated temporary lanes |
-| Living-authority change affects downstream work | Update every relevant downstream document through its owner and block stale work until `origin/main` contains the updates |
-| Main checkout is dirty or has unpushed commits | Preserve it and report the integration blocker |
+For existing projects, preserve historical artifacts and completed worker work.
+Apply this workflow to new plans and remaining coordinator work when asked;
+do not delete old plans, falsify old receipts or automatically authorize runtime
+execution merely because the skill changed.
 
 ## Common mistakes
 
 | Mistake | Correction |
 | --- | --- |
-| Maximizing worker count | Optimize coherent ownership and safe throughput |
-| One worker per independent file | Group related surfaces by outcome and verification |
-| Treating slot capacity as graph width | Report both; queued ready work is still logically parallel |
-| Coordinator writes every task plan | Coordinator writes briefs; each worker writes its own plan |
-| An approved individual plan starts implementation | Require the passed whole-blueprint planning receipt and per-worker execution readiness |
-| UI exploration changes functional behavior before the gate | Keep the live UI-design worker presentation-only; return functional needs to ordinary planning |
-| Design and implementation workers edit one UI surface together | Transfer mutable presentation ownership only after the accepted handoff is integrated |
-| Flat shared specs/plans roots | Use one dated folder per blueprint in both roots |
-| Treating a required shared-checkout lock as optional | Use the exclusive lock for all filesystem edits and Git/index operations; use normal clones only for the documented fallback |
-| Treating an account-local Colima VM as host-port or cookie isolation | Use the UID-derived runtime, full port/project/network/workdir/cookie namespace, `--review-as` bootstrap, and final cookie-free protected-route check; never disturb another runtime |
-| Treating `431` as bad credentials or increasing the header ceiling as isolation | Diagnose transport first with no-cookie and secret-free synthetic-size probes; isolate the hostname/cookies, and use any bounded compatibility increase only with accepted/rejected canaries and rollback evidence |
-| Treating a successful Supabase password grant as API authentication proof | Prove the public Auth origin and private API issuer/JWKS/session store belong to the same project, then require matching `/v1/me` and protected-route identity |
-| Treating separate files, provider evidence, or free slots as a wide-frontier exception | Test coherent domain/protocol/risk/runtime/release/verification bundles and cite concrete incompatibility evidence for any exception |
-| Workers coordinate through Codex chat | Use repository evidence and coordinator-owned artifacts instead |
-| Local-only checkpoint treated as a dependency handoff | Reconcile current local/remote `main`, push the coherent commit, and prove ancestry |
-| Missing failed prerequisite is handed back to its original worker or escalated as a staffing question | The dependant temporarily takes over the exact upstream scope, completes and verifies it, then resumes its own assignment |
-| Full suite run after every small substep | Run focused affected tests during implementation and the full suite once at worker completion |
-| Long task drifts from `main` | Preserve coherent progress, refresh local and remote `main`, reconcile, and push a checkpoint |
-| Dedicated finished worktree retained for convenience | Remove it after final merge and remote proof; never remove a shared lane |
-| Worker specification lands while product specification is stale | Integrate the specification, product-specification update or no-impact finding, and required propagation together |
-| Living authority updated without downstream propagation | Identify affected downstream workers and update their relevant briefs, specs, plans, prompts, and statuses before they continue |
-| Daily progress rewrites the blueprint | Update worker/coordinator status instead |
-| Force cleanup saves time | Preserve uncertain work and expose the blocker |
-
-## Stop conditions
-
-Pause with an owner, unblock criterion, and downstream impact when authorities contradict; an authority or readiness result is remote-uninspected; the objective is too broad; a material decision is unapproved; the DAG cycles; semantic ownership overlaps outside the bounded upstream-recovery exception; a migration/generated artifact has competing active writers; artifact paths mix blueprints; existing worker state cannot be integrated safely; a genuinely shared checkout lacks its required main-mutation lock and does not qualify for the normal-clone fallback; planning readiness is absent; the global planning gate is open, reopened, stale, incomplete, or lacks evidence/verifier; an execution worker lacks an implemented prerequisite for a reason other than a proven failed upstream attempt, or cannot complete that failed prerequisite under the recovery lifecycle; `origin/main` cannot be pulled or pushed safely after retry; a conflict requires a genuine semantic or cross-owner decision; remote ancestry cannot be proven; a dependant started from feature-only or unpushed work or a stale document; a changed worker specification leaves an affected product specification masterplan stale without an evidence-backed no-impact finding; required downstream propagation is incomplete; or the UI-design boundary would require functional behavior. A proven failed upstream prerequisite is not itself a stop condition and never triggers a question about whether the original worker should retry. Another worker using an independent normal clone is never, by itself, a stop condition; in a shared checkout, wait only for the required mutation lock before editing.
+| Reserve N plan paths and call planning complete | Coordinator writes all N detailed plans before handoff. |
+| Launch workers to produce Pass 1 plans | Send implementation handoffs consuming finished plans. |
+| Wait for independent plans, then reconcile | Coordinator checks all interfaces and dependencies during initial planning. |
+| Delegate coordinator planning to subagents | Coordinator personally authors the implementation-plan set. |
+| Treat no reconciliation round as no integration | Keep real implementation dependencies, review and integration tests. |
+| Redesign unrelated UI/runtime policy | Preserve existing conditional presentation and runtime safeguards. |
+| Reapprove settled behavior because a template says gate | Reuse existing authorization; ask only for new authority or material decisions. |

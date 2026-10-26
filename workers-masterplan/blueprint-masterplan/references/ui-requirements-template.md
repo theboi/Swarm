@@ -3,9 +3,10 @@
 Use this separate contract for every conditional UI-design worker. It records
 what the presentation needs from later live wiring; it never authorizes or
 implements APIs, authorization, persistence, domain rules, or other runtime
-behavior. The UI-design worker owns this document in Pass 1. The named
-live-wiring worker consumes it while writing its Pass 1 implementation plan and
-implements it only in Pass 2 after the whole-blueprint planning gate passes.
+behavior. The UI-design worker owns this presentation requirements document. The
+coordinator consumes it while authoring or updating the live-wiring worker's
+implementation plan before handoff; that worker implements the supplied plan
+after its hard implemented prerequisites exist.
 
 ````markdown
 # <Worker ID> <Surface> UI Requirements Contract
@@ -44,7 +45,7 @@ empty, error, unavailable, and stale states.
 For each command, define the user intent, inputs, client-visible validation,
 capability/permission expectation, confirmation requirement, idempotency,
 success state, failure state, recovery action, and the planned producer and
-consumer. This describes UI needs only; the ordinary planner owns the API,
+consumer. This describes UI needs only; the coordinator owns the API,
 authorization, persistence, and domain implementation.
 
 | Requirement ID | User intent | Inputs, validation, and capability | Confirmation / idempotency | Success, failure, and recovery behavior | Producer / consumer |
@@ -56,7 +57,7 @@ Specify the presentation and permitted action for every applicable loading,
 queued, processing, waiting, attention-required, partial-success, failed,
 cancelled, completed, stale, and revoked state. Include retry, cancellation,
 polling or refresh expectations where the UI needs them; do not design live
-wiring in this Pass 1 contract.
+wiring in this presentation-only contract.
 
 ## Navigation and client state
 
@@ -81,7 +82,7 @@ or descriptions.
 
 List at least one deterministic fixture/mock scenario for every required state,
 including all permissions, async, empty, error, and unavailable variants. State
-explicitly that this Pass 1 presentation uses fixture/mock data and no live
+explicitly that this presentation-only work uses fixture/mock data and no live
 wiring, API calls, persistence, or runtime behavior.
 
 ## Planned-contract traceability
@@ -94,12 +95,12 @@ implementation-plan task, or explicitly names the missing-contract owner,
 reconciliation action, and downstream work that must wait. Do not hide a
 missing upstream contract behind a generic `pending` state.
 
-## Pass 2 acceptance mapping
+## Implementation acceptance mapping
 
 Map each requirement to focused contract, browser, integration, or acceptance
-checks that the named live-wiring worker will complete in Pass 2.
+checks that the named live-wiring worker will complete during execution.
 
-## Open product decisions and reconciliation state
+## Open product decisions and coordinator updates
 
 | Decision or contradiction | Decision owner | Blocking behavior | Affected plans | Planned resolution | Observable closure evidence | State |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -109,6 +110,6 @@ product authority; otherwise every open decision must state its owner, blocking
 behavior, affected plans, and observable closure evidence.
 
 Business and domain intent remain in living product authorities. An approved
-endpoint shape may be cited, but the named ordinary planner owns APIs,
+endpoint shape may be cited, but the coordinator owns APIs,
 authorization, domain behavior, and persistence decisions.
 ````
