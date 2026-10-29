@@ -2,7 +2,9 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChatsPage, hasActiveDescendant, normalizeExecutionSettings, subagentReferences } from "./ChatsPage";
+import { ChatsPage } from "./ChatsPage";
+import { hasActiveDescendant, subagentReferences } from "./ChatsPage/subagents";
+import { normalizeExecutionSettings } from "../turnSettings";
 import { chatSnapshot, chatTranscript, setViewport } from "../test/fixtures";
 import type { TranscriptItem } from "../../shared/contracts";
 

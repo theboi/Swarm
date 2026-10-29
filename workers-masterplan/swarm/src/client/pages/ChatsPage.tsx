@@ -2,8 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Archive, ArrowDown, ArrowRightLeft, CircleStop, CornerUpRight, MessageSquarePlus, Network, Pencil, Plus, Send, SquareTerminal, UserRound, X } from "lucide-react";
 
 import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
-import type { CoordinatorApi, MarkdownDocument } from "../api.js";
+import type { MarkdownDocument } from "../api.js";
 import type { ChatTarget } from "./HomePage.js";
+import { SubagentChatDialog } from "./ChatsPage/SubagentChatDialog.js";
+import { subagentReferences, hasActiveDescendant } from "./ChatsPage/subagents.js";
+import { turnIdFromStart, queuedTurnFromStart } from "./ChatsPage/turnStart.js";
+import type { ChatsApi, SubagentReference } from "./ChatsPage/types.js";
 import { MarkdownViewer } from "../components/MarkdownViewer.js";
 import { OverlayCloseButton } from "../components/OverlayCloseButton.js";
 import { TranscriptTurns, reconcileTranscript, type TranscriptHandle } from "../components/TranscriptTurns.js";
@@ -13,67 +17,17 @@ import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
 import { chatExecutionSettingsKey, defaultExecutionSettings, normalizeExecutionSettings, readChatExecutionSettings, readGlobalExecutionSettings, writeChatExecutionSettings, writeGlobalExecutionSettings } from "../turnSettings.js";
 
-type ChatsApi = Pick<CoordinatorApi, "readTranscript" | "readMarkdown" | "listModels" | "listThreads" | "startTurn" | "startThread" | "archiveThread" | "steerTurn" | "interruptTurn" | "decideApproval" | "setLimitResumeEnabled"> & Partial<Pick<CoordinatorApi, "moveThreadToAccount" | "renameThread">>;
 const EMPTY_TURN_KEYS: ReadonlySet<string> = new Set<string>();
 const noopMarkThreadRead = () => undefined;
 
-interface SubagentReference {
-  threadId: string;
-  label: string;
-  active: boolean;
-}
 
-function textField(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
 
-export function subagentReferences(items: TranscriptItem[], parentThreadId?: string | null): SubagentReference[] {
-  const references = new Map<string, SubagentReference>();
-  const add = (threadId: unknown, label?: unknown, active?: boolean) => {
-    const id = textField(threadId);
-    if (!id || id === parentThreadId) return;
-    const prior = references.get(id);
-    references.set(id, {
-      threadId: id,
-      label: textField(label) ?? prior?.label ?? `Subagent ${references.size + 1}`,
-      active: active ?? prior?.active ?? false,
-    });
-  };
 
-  for (const item of items) {
-    if (item.type === "subAgentActivity") {
-      const kind = textField(item.payload.kind)?.toLowerCase();
-      add(item.payload.agentThreadId, item.payload.agentPath, kind === "started" || kind === "interacted" ? true : kind === "completed" || kind === "failed" ? false : undefined);
-    }
-    if (item.type !== "collabAgentToolCall") continue;
-    const states = item.payload.agentsStates && typeof item.payload.agentsStates === "object" && !Array.isArray(item.payload.agentsStates)
-      ? item.payload.agentsStates as Record<string, unknown>
-      : {};
-    const receivers = Array.isArray(item.payload.receiverThreadIds) ? item.payload.receiverThreadIds : [];
-    for (const receiver of receivers) {
-      const state = typeof receiver === "string" && states[receiver] && typeof states[receiver] === "object" && !Array.isArray(states[receiver])
-        ? states[receiver] as Record<string, unknown>
-        : {};
-      const status = textField(state.status)?.toLowerCase();
-      add(receiver, state.agentPath ?? state.path ?? state.name, status === "running" || status === "inprogress" || status === "pending" ? true : status === "completed" || status === "failed" ? false : undefined);
-    }
-  }
-  return [...references.values()];
-}
-
-export function hasActiveDescendant(threadId: string, accountId: AccountId, graph: ReadonlyMap<string, SubagentReference[]>, activeTurnKeys: ReadonlySet<string>, activeThreadIds: ReadonlySet<string> = new Set(), visited: ReadonlySet<string> = new Set()): boolean {
-  if (visited.has(threadId)) return false;
-  const nextVisited = new Set([...visited, threadId]);
-  return (graph.get(threadId) ?? []).some((child) => activeTurnKeys.has(`${accountId}\u0000${child.threadId}`)
-    || activeThreadIds.has(child.threadId)
-    || hasActiveDescendant(child.threadId, accountId, graph, activeTurnKeys, activeThreadIds, nextVisited));
-}
 
 function settingsKey(accountId: AccountId | null, threadId: string | null, isDraftChat: boolean): string | null {
   return accountId && threadId && !isDraftChat ? chatExecutionSettingsKey(accountId, threadId) : null;
 }
 
-export { normalizeExecutionSettings } from "../turnSettings.js";
 
 function initialAccount(snapshot: CoordinatorSnapshot, initialThreadId?: string | null, initialAccountId?: AccountId): AccountId | null {
   return snapshot.threads.find((thread) => thread.id === initialThreadId)?.accountId
@@ -134,136 +88,8 @@ function limitCountdown(resetAt: number | null, now: number): string | null {
   return `${Math.max(1, minutes)}m`;
 }
 
-function turnIdFromStart(value: unknown): string | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const turn = (value as Record<string, unknown>).turn;
-  return turn && typeof turn === "object" && !Array.isArray(turn) && typeof (turn as Record<string, unknown>).id === "string"
-    ? (turn as Record<string, string>).id
-    : undefined;
-}
-
-function queuedTurnFromStart(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).queued === true);
-}
-
-function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onTranscript, onOpenMarkdown, onClose, report, reportError }: {
-  accountId: AccountId;
-  reference: SubagentReference;
-  api: ChatsApi;
-  models: ChatModelOption[];
-  settings: ChatExecutionSettings;
-  activeTurnKeys: ReadonlySet<string>;
-  activeTurnIds: ReadonlyMap<string, string>;
-  markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
-  onSettingsChange: (settings: ChatExecutionSettings) => void;
-  onTranscript: (threadId: string, items: TranscriptItem[]) => void;
-  onOpenMarkdown: (path: string) => void;
-  onClose: () => void;
-  report: (message: string) => void;
-  reportError: (message: string) => void;
-}) {
-  const [items, setItems] = useState<TranscriptItem[]>([]);
-  const [draft, setDraft] = useState("");
-  const [revision, setRevision] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const opened = useRef(false);
-  const key = `${accountId}\u0000${reference.threadId}`;
-  const thinking = activeTurnKeys.has(key);
-  const latestTurnId = activeTurnIds.get(key) ?? [...items].reverse().find((item) => item.turnId)?.turnId ?? undefined;
-
-  useEffect(() => {
-    let live = true;
-    let timer: number | undefined;
-    const read = async () => {
-      try {
-        const result = await api.readTranscript(accountId, reference.threadId);
-        if (!live) return;
-        setLoading(false);
-        if ("error" in result && result.error) { reportError(result.error.message); return; }
-        setItems((previous) => reconcileTranscript(previous, result.data));
-        onTranscript(reference.threadId, result.data);
-      } catch {
-        if (live) { setLoading(false); reportError("Unable to load this subagent."); }
-      } finally {
-        if (live) schedule();
-      }
-    };
-    const schedule = () => {
-      timer = window.setTimeout(() => {
-        if (globalThis.document.visibilityState === "visible") void read();
-        else schedule();
-      }, thinking ? 2_500 : 30_000);
-    };
-    const refreshVisible = () => { if (globalThis.document.visibilityState === "visible") setRevision((current) => current + 1); };
-    void read();
-    globalThis.document.addEventListener("visibilitychange", refreshVisible);
-    return () => { live = false; if (timer !== undefined) window.clearTimeout(timer); globalThis.document.removeEventListener("visibilitychange", refreshVisible); };
-  }, [accountId, api, onTranscript, reference.threadId, reportError, revision, thinking]);
-
-  useLayoutEffect(() => {
-    if (loading || opened.current || !scrollRef.current) return;
-    opened.current = true;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [items, loading]);
-
-  useEffect(() => {
-    const priorFocus = globalThis.document.activeElement as HTMLElement | null;
-    window.setTimeout(() => closeRef.current?.focus(), 0);
-    return () => priorFocus?.focus();
-  }, []);
 
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || thinking) return;
-    try {
-      const result = await api.startTurn(accountId, reference.threadId, text, normalizeExecutionSettings(models, settings));
-      if ("error" in result && result.error) return reportError(result.error.message);
-      markTurnActive(accountId, reference.threadId, turnIdFromStart(result.data));
-      setDraft("");
-      setRevision((current) => current + 1);
-      report("Message sent.");
-    } catch { reportError("Unable to message this subagent."); }
-  };
-
-  const steer = async () => {
-    const text = draft.trim();
-    if (!latestTurnId || !text) return;
-    try {
-      const result = await api.steerTurn(accountId, reference.threadId, latestTurnId, text);
-      if ("error" in result && result.error) return reportError(result.error.message);
-      setDraft("");
-      setRevision((current) => current + 1);
-      report("Turn steered.");
-    } catch { reportError("Unable to steer this subagent."); }
-  };
-
-  const interrupt = async () => {
-    if (!latestTurnId) return;
-    try {
-      const result = await api.interruptTurn(accountId, reference.threadId, latestTurnId);
-      if ("error" in result && result.error) return reportError(result.error.message);
-      setRevision((current) => current + 1);
-      report("Turn interrupted.");
-    } catch { reportError("Unable to interrupt this subagent."); }
-  };
-
-  return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="subagent-dialog" role="dialog" aria-modal="true" aria-label={`Subagent ${reference.label}`} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-      <header className="subagent-dialog__header"><div><span>{accountId}</span><h2 id="subagent-dialog-title">Subagent {reference.label}</h2></div>{thinking ? <span className="chat-thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}<OverlayCloseButton ref={closeRef} onClick={onClose} /></header>
-      <div className="transcript-scroll subagent-dialog__transcript" ref={scrollRef} aria-label={`Conversation with ${reference.label}`}>
-        {loading ? <div className="transcript-working"><span className="loading-spinner" aria-hidden="true" /><span>Loading subagent…</span></div> : items.length ? <TranscriptTurns items={items} activeReasoningId={thinking ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning")?.id : undefined} onOpenMarkdown={onOpenMarkdown} /> : <div className="transcript-empty"><p>No messages in this subagent yet.</p></div>}
-      </div>
-      <form className="chat-compose subagent-dialog__composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-        <div className="chat-compose__field"><textarea aria-label="Message" rows={2} placeholder={thinking ? "Steer this turn…" : "Write a message…"} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
-        <TurnOptions models={models} settings={settings} onChange={onSettingsChange} />
-        <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><button type="button" aria-label="Steer" title="Steer" disabled={!latestTurnId || !draft.trim()} onClick={() => void steer()}><CornerUpRight aria-hidden="true" size={16} strokeWidth={1.75} /></button><button type="button" aria-label="Interrupt" title="Interrupt" disabled={!latestTurnId || !thinking} onClick={() => void interrupt()}><CircleStop aria-hidden="true" size={16} strokeWidth={1.75} /></button></div><button className="primary-button chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={thinking || !draft.trim()}><Send aria-hidden="true" size={16} strokeWidth={2} /></button></div>
-      </form>
-    </section>
-  </div>;
-}
 
 export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initialAccountId, openMarkdownPath = null, onOpenMarkdownPathChange, transcriptRevision: liveTranscriptRevision = 0, transcriptRevisions, activeTurnKeys = EMPTY_TURN_KEYS, activeTurnIds = new Map<string, string>(), limitExhaustedTurnKeys = EMPTY_TURN_KEYS, unreadTurnKeys = EMPTY_TURN_KEYS, attentionTurnKeys = EMPTY_TURN_KEYS, markTurnActive = () => undefined, markThreadRead = noopMarkThreadRead, onRefresh = async () => undefined }: { snapshot: CoordinatorSnapshot; api: ChatsApi; initialThreadId?: string | null; initialTarget?: ChatTarget; initialAccountId?: AccountId; openMarkdownPath?: string | null; onOpenMarkdownPathChange?: (path: string | null, accountId?: AccountId) => void; transcriptRevision?: number; transcriptRevisions?: ReadonlyMap<string, number>; activeTurnKeys?: ReadonlySet<string>; activeTurnIds?: ReadonlyMap<string, string>; limitExhaustedTurnKeys?: ReadonlySet<string>; unreadTurnKeys?: ReadonlySet<string>; attentionTurnKeys?: ReadonlySet<string>; markTurnActive?: (accountId: string, threadId: string, turnId?: string) => void; markThreadRead?: (accountId: string, threadId: string) => void; onRefresh?: () => Promise<void> }) {
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
@@ -867,8 +693,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       </div>
       {document ? <MarkdownViewer document={document} onClose={closeMarkdown} /> : null}
       {openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onTranscript={rememberSubagents} onOpenMarkdown={(path) => void openMarkdown(path)} onClose={() => setOpenSubagent(null)} report={report} reportError={reportError} /> : null}
-      {moveOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !moving) setMoveOpen(false); }}><section className="launch-dialog chat-move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-chat-title" tabIndex={-1} ref={moveDialogRef} onKeyDown={(event) => { if (event.key === "Escape" && !moving) setMoveOpen(false); }}><OverlayCloseButton ref={moveCloseButton} disabled={moving} onClick={() => setMoveOpen(false)} /><h2 id="move-chat-title">Move to another account</h2><p>The original chat will remain on {accountId}. Swarm will attach its JSONL to a new chat on the selected account and ask it to continue from that session.</p>{continuationAccounts.length ? <fieldset className="chat-move-dialog__accounts"><legend>New chat account</legend>{continuationAccounts.map((account) => <label key={account.id}><input type="radio" name="continuation-account" value={account.id} checked={moveTarget === account.id} onChange={() => setMoveTarget(account.id)} />{account.id}</label>)}</fieldset> : <p>No other signed-in account is available.</p>}<div className="dialog-actions"><button className="primary-button" type="button" disabled={!moveTarget || moving} onClick={() => void moveToAccount()}>{moving ? "Moving…" : `Move to ${moveTarget ?? "account"}`}</button></div></section></div> : null}
-      {renameOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !renaming) setRenameOpen(false); }}><section className="launch-dialog chat-rename-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-chat-title" onKeyDown={(event) => { if (event.key === "Escape" && !renaming) setRenameOpen(false); }}><OverlayCloseButton ref={renameCloseButton} disabled={renaming} onClick={() => setRenameOpen(false)} /><h2 id="rename-chat-title">Rename chat</h2><label htmlFor="rename-chat-name">Chat name</label><input id="rename-chat-name" autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /><div className="dialog-actions"><button className="primary-button" type="button" disabled={!renameDraft.trim() || renaming} onClick={() => void renameChat()}>{renaming ? "Renaming…" : "Rename"}</button></div></section></div> : null}
+      {moveOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !moving) setMoveOpen(false); }}><section className="launch-dialog chat-move-dialog" role="dialog" aria-modal="true" aria-label="Move to another account" tabIndex={-1} ref={moveDialogRef} onKeyDown={(event) => { if (event.key === "Escape" && !moving) setMoveOpen(false); }}><OverlayCloseButton ref={moveCloseButton} disabled={moving} onClick={() => setMoveOpen(false)} /><h2 id="move-chat-title">Move to another account</h2><p>The original chat will remain on {accountId}. Swarm will attach its JSONL to a new chat on the selected account and ask it to continue from that session.</p>{continuationAccounts.length ? <fieldset className="chat-move-dialog__accounts"><legend>New chat account</legend>{continuationAccounts.map((account) => <label key={account.id}><input type="radio" name="continuation-account" value={account.id} checked={moveTarget === account.id} onChange={() => setMoveTarget(account.id)} />{account.id}</label>)}</fieldset> : <p>No other signed-in account is available.</p>}<div className="dialog-actions"><button className="primary-button" type="button" disabled={!moveTarget || moving} onClick={() => void moveToAccount()}>{moving ? "Moving…" : `Move to ${moveTarget ?? "account"}`}</button></div></section></div> : null}
+      {renameOpen ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !renaming) setRenameOpen(false); }}><section className="launch-dialog chat-rename-dialog" role="dialog" aria-modal="true" aria-label="Rename chat" onKeyDown={(event) => { if (event.key === "Escape" && !renaming) setRenameOpen(false); }}><OverlayCloseButton ref={renameCloseButton} disabled={renaming} onClick={() => setRenameOpen(false)} /><h2 id="rename-chat-title">Rename chat</h2><label htmlFor="rename-chat-name">Chat name</label><input id="rename-chat-name" autoFocus value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} /><div className="dialog-actions"><button className="primary-button" type="button" disabled={!renameDraft.trim() || renaming} onClick={() => void renameChat()}>{renaming ? "Renaming…" : "Rename"}</button></div></section></div> : null}
     </section>
   );
 }
