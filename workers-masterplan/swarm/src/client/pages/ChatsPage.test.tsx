@@ -622,7 +622,8 @@ describe("ChatsPage", () => {
       await user.click(screen.getByRole("button", { name: /earlier messages/i }));
     }
     expect(screen.getByText("Reply 0")).toBeVisible();
-  });
+    // Rendering all 500 Markdown messages in JSDOM is functional coverage, not a timing benchmark.
+  }, 20_000);
 
   it("uses the conversation as the page surface and reports actions in a toast", async () => {
     setViewport(1440);

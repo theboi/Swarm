@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuLauncher, type SpawnedPty } from "./suLauncher.js";
 
 class FakeChild extends EventEmitter implements SpawnedPty {
@@ -52,6 +52,12 @@ async function waitForSpawn(spawn: ReturnType<typeof vi.fn>) {
 }
 
 describe("SuLauncher", () => {
+  beforeEach(() => {
+    // Keep launcher tests independent of the agent's inherited credential home.
+    vi.stubEnv("CODEX_HOME", "/Users/claudiothe/.codex");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it("launches an isolated slot when its owner-only profile directory is not visible to the coordinator", async () => {
     const { launcher, spawn } = launcherFixture({ profileVisible: false, autoPrompt: true });
 

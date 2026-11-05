@@ -124,7 +124,7 @@ test.describe("Chats", () => {
     await expect(sourceViewer.locator("pre")).toHaveText("export function App() { return null; }");
     await sourceViewer.getByRole("button", { name: "Close" }).click();
 
-    for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name })).toBeEnabled();
+    for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
     const targetSizes = await page.locator(".chat-compose button:visible").evaluateAll((buttons) => buttons.map((button) => {
       const box = button.getBoundingClientRect();
@@ -136,7 +136,7 @@ test.describe("Chats", () => {
     const toast = page.locator(".app-toast[role='status']");
     await expect(toast).toHaveText("Approval response sent.");
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
-    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(toast).toHaveText("Message sent.");
     await page.getByLabel("Message", { exact: true }).fill("Clarify the fixture handoff");
     await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
