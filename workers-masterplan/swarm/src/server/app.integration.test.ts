@@ -55,11 +55,12 @@ describe("coordinator application composition", () => {
   it("serves the compiled SPA and its client routes without shadowing API errors", async () => {
     const staticDir = await mkdtemp(join(tmpdir(), ".swarm-client-"));
     await writeFile(join(staticDir, "index.html"), "<main>Swarm client</main>");
+    await writeFile(join(staticDir, "queued-tasks.html"), "<main>Queued tasks</main>");
     const coordinator = createCoordinatorApp({ services: await servicesFixture(), staticDir, flush: async () => undefined, shutdown: async () => undefined });
     stop = coordinator.shutdown;
     try {
       await request(coordinator.app).get("/").expect(200, "<main>Swarm client</main>");
-      await request(coordinator.app).get("/queued-tasks").expect(200, "<main>Swarm client</main>");
+      await request(coordinator.app).get("/queued-tasks").expect(200, "<main>Queued tasks</main>");
       await request(coordinator.app).get("/api/v1/not-found").expect(404);
     } finally {
       await rm(staticDir, { recursive: true, force: true });

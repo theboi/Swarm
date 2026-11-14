@@ -52,11 +52,12 @@ for (const width of [390, 1440]) {
     await page.getByLabel("Prompt", { exact: true }).fill("Use this exact prompt.");
     await page.getByRole("button", { name: "Add todo" }).click();
     await page.getByRole("button", { name: `Send ${title} to bot` }).click();
-    await expect(page.getByLabel("Bot", { exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: /^Bot:/ })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: `Send ${title} to bot` })).toBeFocused();
     await page.getByRole("button", { name: `Send ${title} to bot` }).click();
-    await page.getByLabel("Bot", { exact: true }).selectOption("bot3");
+    await page.getByRole("button", { name: /^Bot:/ }).click();
+    await page.getByRole("radio", { name: "bot3", exact: true }).click();
     const sent = page.waitForRequest(request => request.method() === "POST" && /accounts\/bot3\/threads\/[^/]+\/turns$/.test(new URL(request.url()).pathname));
     await page.getByRole("button", { name: "Send prompt" }).click();
     expect((await sent).postDataJSON()).toMatchObject({ text: "Use this exact prompt.", clientUserMessageId: expect.any(String) });

@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import express from "express";
 import compression from "compression";
-import { resolve } from "node:path";
+import { createDashboardRouter } from "./staticAssets.js";
 
 import type { CoordinatorRouteServices } from "./http/routes.js";
 import { createApiRouter } from "./http/routes.js";
@@ -36,9 +36,7 @@ export function createCoordinatorApp(dependencies: CoordinatorAppDependencies): 
   app.use(compression());
   app.use("/api/v1", createApiRouter(dependencies.services));
   if (dependencies.staticDir) {
-    const staticDir = resolve(dependencies.staticDir);
-    app.use(express.static(staticDir, { index: "index.html", fallthrough: true }));
-    app.use((_request, response) => response.sendFile("index.html", { root: staticDir }));
+    app.use(createDashboardRouter(dependencies.staticDir));
   }
   const server = createServer(app);
   const terminalServer = createServer(createTerminalControlApp(dependencies.services));

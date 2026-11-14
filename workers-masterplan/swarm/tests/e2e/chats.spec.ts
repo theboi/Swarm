@@ -23,6 +23,26 @@ async function selectBot3Thread(page: Page, name: string): Promise<void> {
 test.describe("Chats", () => {
   test.describe.configure({ mode: "serial" });
 
+  for (const width of [390, 1440]) {
+    test(`retains an unsent chat draft across page navigation and reload at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await signIn(page);
+      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      const composer = page.getByLabel("Message", { exact: true });
+      await composer.fill(`Unsent draft at ${width}`);
+      if (width < 768) await expect(page.locator(".app-nav")).toBeHidden();
+      else await expect(page.locator(".app-nav")).toBeVisible();
+      await composer.blur();
+      await page.getByRole("link", { name: "Home", exact: true }).click();
+      await page.getByRole("link", { name: "Chats", exact: true }).click();
+      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await expect(composer).toHaveValue(`Unsent draft at ${width}`);
+      await page.reload();
+      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await expect(composer).toHaveValue(`Unsent draft at ${width}`);
+    });
+  }
+
   test("reveals bot3 chats only after its compact picker is re-clicked", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
@@ -51,7 +71,7 @@ test.describe("Chats", () => {
     expect((optionsBox?.y ?? 0) + (optionsBox?.height ?? 0)).toBeLessThanOrEqual(844);
   });
 
-  test("keeps a 44px Send target clear of the mobile navigation below the legacy 320px layout floor", async ({ page }) => {
+  test("hides navigation while composing and keeps a 44px Send target within a narrow viewport", async ({ page }) => {
     const viewportWidth = 280;
     await page.setViewportSize({ width: viewportWidth, height: 568 });
     await signIn(page);
@@ -67,6 +87,7 @@ test.describe("Chats", () => {
     const nav = page.locator(".app-nav");
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await expect(send).toBeEnabled();
+    await expect(nav).toBeHidden();
 
     await page.locator(".transcript-item__links").first().evaluate((links) => {
       const anchor = document.createElement("a");
@@ -80,18 +101,18 @@ test.describe("Chats", () => {
 
     const longLink = page.locator(".transcript-item__links a", { hasText: "mobileoverflowsegment" });
     await expect(longLink).toBeVisible();
-    const [sendBox, navBox, longLinkBox] = await Promise.all([send.boundingBox(), nav.boundingBox(), longLink.boundingBox()]);
+    const [sendBox, longLinkBox] = await Promise.all([send.boundingBox(), longLink.boundingBox()]);
     expect(sendBox).not.toBeNull();
-    expect(navBox).not.toBeNull();
     expect(longLinkBox).not.toBeNull();
     expect(sendBox!.width).toBeGreaterThanOrEqual(44);
     expect(sendBox!.height).toBeGreaterThanOrEqual(44);
     expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(viewportWidth);
-    expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
+    expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(568);
     expect(longLinkBox!.x + longLinkBox!.width).toBeLessThanOrEqual(viewportWidth);
 
     await send.click();
-    await expect(page.locator(".app-toast[role='status']")).toHaveText("Message sent.");
+    await expect(nav).toBeVisible();
+    await expect(page.locator(".rt-ToastRoot")).toContainText("Message sent.");
   });
 
   test("shows normalized transcript details, approved controls, and capability gating", async ({ page }) => {
@@ -116,13 +137,13 @@ test.describe("Chats", () => {
     await expect(viewer).toBeVisible();
     await expect(viewer.locator("script")).toHaveCount(0);
     await expect(viewer.getByRole("heading", { name: "Runbook", exact: true })).toBeVisible();
-    await viewer.getByRole("button", { name: "Close" }).click();
+    await viewer.getByRole("button", { name: "Close modal" }).click();
     await expect(viewer).toHaveCount(0);
     await expect.poll(async () => Math.abs(await transcript.evaluate((element) => element.scrollTop) - scrollBeforeViewer)).toBeLessThanOrEqual(1);
     await page.getByRole("link", { name: "src/client/App.tsx", exact: true }).click();
     const sourceViewer = page.getByRole("dialog", { name: "App.tsx" });
     await expect(sourceViewer.locator("pre")).toHaveText("export function App() { return null; }");
-    await sourceViewer.getByRole("button", { name: "Close" }).click();
+    await sourceViewer.getByRole("button", { name: "Close modal" }).click();
 
     for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
@@ -133,15 +154,15 @@ test.describe("Chats", () => {
     expect(targetSizes.every(({ width, height }) => width >= 36 && height >= 36)).toBe(true);
 
     await page.getByRole("button", { name: "Decline approval" }).first().click();
-    const toast = page.locator(".app-toast[role='status']");
-    await expect(toast).toHaveText("Approval response sent.");
+    const toast = page.locator(".rt-ToastRoot");
+    await expect(toast).toContainText("Approval response sent.");
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(toast).toHaveText("Message sent.");
+    await expect(toast).toContainText("Message sent.");
     await page.getByLabel("Message", { exact: true }).fill("Clarify the fixture handoff");
     await expect(page.getByRole("button", { name: "Steer" })).toBeDisabled();
     await page.getByRole("button", { name: "Interrupt" }).click();
-    await expect(toast).toHaveText("Turn interrupted.");
+    await expect(toast).toContainText("Turn interrupted.");
 
     await page.getByRole("button", { name: "U1 · Coordinator UI" }).click();
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -155,6 +176,6 @@ test.describe("Chats", () => {
     await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
     await page.getByLabel("Message", { exact: true }).fill("Start a fixture chat");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(toast).toHaveText("Message sent.");
+    await expect(toast).toContainText("Message sent.");
   });
 });

@@ -1,5 +1,46 @@
 # EdenMind Swarm Coordinator
 
+## Frontend and API ownership
+
+`client/` is the Next.js frontend workspace. The existing Express/TypeScript
+coordinator stays in `src/server/`; browser/API contracts stay in `src/shared/`.
+The client imports those contracts through `client/src/shared`. No backend code
+has been ported to Python. Eden's client instructions are copied to
+`client/AGENTS.md`, and its API instructions to `src/server/AGENTS.md`; Python-only
+commands and Python stack details do not change Swarm's TypeScript runtime.
+
+Run `npm ci` from this directory to install both workspaces. `npm run build`
+typechecks both sides, builds the Next static export in `client/out/`, and compiles
+the coordinator. `npm start` serves that export, `/api/v1`, and the existing
+WebSocket endpoint on the same origin. Route-specific exported HTML preserves
+direct links and refreshes. The existing LaunchAgent entry point and working
+directory remain valid. After pulling on the running machine, run `npm ci`,
+`npm run build`, then restart the Swarm process to load the new frontend.
+
+`npm run dev` runs Express against the latest frontend build. Rebuild browser
+changes with `npm run build:client` and refresh the dashboard on port 4310.
+`npm run dev:client` runs the standalone Next renderer on port 4312; authenticated
+API/WebSocket development uses the Express-hosted export on port 4310.
+
+## Shared Eden UI and future repository extraction
+
+`edenmind` is currently a relative symlink to this EdenMind checkout. Client
+components, supporting library imports, theme sources, and fonts link through
+that anchor. The client owns its React/Radix dependencies; the linked sources
+resolve against the client installation.
+
+When Swarm and the masterplan skills move into their own repository, replace
+only the `edenmind` anchor with an EdenMind Git submodule at the same path.
+The client symlinks then continue to resolve without rewriting component imports.
+Pin the submodule revision, initialize it recursively in fresh checkouts, and
+keep runtime `.env`, `.data`, credential homes and account registries private.
+The repository extraction is intentionally not performed in this change.
+
+Main-chat, new-chat and subagent message drafts are saved in browser storage,
+separately per account/thread. They survive page navigation and reloads; a
+successful send clears the submitted chat's draft. When storage is unavailable,
+drafts still survive navigation within the current browser session.
+
 The coordinator is a local-first operations tool for supervising Codex
 app-server chats across the local `claudiothe` account and logical bot profiles
 such as `bot1/acc1` and `bot1/acc2`. Open it locally at

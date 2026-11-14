@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": ["client"],
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
-    "dev:client": "vite",
-    "build": "npm run typecheck && vite build && tsc -p tsconfig.server.json",
+    "dev:client": "npm run dev --workspace swarm-client",
+    "build": "npm run typecheck && npm run build:client && tsc -p tsconfig.server.json",
+    "build:client": "npm run build --workspace swarm-client",
     "start": "node dist-server/server/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,7 +18,7 @@
     "profiles:setup": "tsx scripts/setup-profile.ts",
     "auth:hash": "tsx scripts/hash-password.ts",
     "auth:totp": "tsx scripts/generate-totp-secret.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace swarm-client && tsc -p tsconfig.server.json --noEmit",
     "postinstall": "node scripts/prepare-node-pty.mjs"
   },
   "dependencies": {
@@ -25,8 +27,8 @@
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
     "node-pty": "^1.1.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
@@ -44,12 +46,10 @@
     "@types/react-dom": "^19.1.6",
     "@types/supertest": "^6.0.3",
     "@types/ws": "^8.5.14",
-    "@vitejs/plugin-react": "^5.0.0",
     "jsdom": "^26.1.0",
     "supertest": "^7.1.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0",
     "vitest": "^3.2.4"
   },
   "allowScripts": {

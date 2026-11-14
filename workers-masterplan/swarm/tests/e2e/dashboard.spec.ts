@@ -23,6 +23,7 @@ test.describe("Home dashboard", () => {
     test(`shows accounts and attention on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await signIn(page);
+      await expect(page.locator(".app-shell")).toHaveCSS("background-color", "rgb(21, 25, 27)");
 
       await expect(page.locator(".app-nav")).toHaveAttribute("data-variant", viewport.navigationVariant);
       await expect(page.getByText(/Public access starts/i)).toHaveCount(0);
