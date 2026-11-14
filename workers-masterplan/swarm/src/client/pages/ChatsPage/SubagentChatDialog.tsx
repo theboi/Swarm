@@ -7,6 +7,7 @@ import { TurnOptions } from "../../components/TurnOptions.js";
 import { normalizeExecutionSettings } from "../../turnSettings.js";
 import type { ChatsApi, SubagentReference } from "./types.js";
 import { turnIdFromStart } from "./turnStart.js";
+import { useChatDraft } from "./useChatDraft.js";
 export function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onTranscript, onOpenMarkdown, onClose, report, reportError }: {
   accountId: AccountId;
   reference: SubagentReference;
@@ -24,7 +25,7 @@ export function SubagentChatDialog({ accountId, reference, api, models, settings
   reportError: (message: string) => void;
 }) {
   const [items, setItems] = useState<TranscriptItem[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useChatDraft(accountId, reference.threadId);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const closeRef = useRef<HTMLButtonElement>(null);

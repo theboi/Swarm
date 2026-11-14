@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AppShell } from "./AppShell";
@@ -7,6 +7,15 @@ import { setViewport } from "../test/fixtures";
 afterEach(cleanup);
 
 describe("AppShell", () => {
+  it("hides mobile navigation while a chat composer is focused and restores it on blur", () => {
+    setViewport(390);
+    render(<AppShell activePage="chats" onNavigate={() => undefined}><textarea aria-label="Message" /></AppShell>);
+    fireEvent.focus(screen.getByRole("textbox", { name: "Message" }));
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
+    fireEvent.blur(screen.getByRole("textbox", { name: "Message" }));
+    expect(screen.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+  });
+
   it("uses an icon-only desktop rail with accessible 44px navigation controls", () => {
     setViewport(1440);
     render(<AppShell activePage="home" onNavigate={() => undefined}><p>Content</p></AppShell>);

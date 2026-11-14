@@ -5,6 +5,7 @@ import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, Coor
 import type { MarkdownDocument } from "../api.js";
 import type { ChatTarget } from "./HomePage.js";
 import { SubagentChatDialog } from "./ChatsPage/SubagentChatDialog.js";
+import { useChatDraft } from "./ChatsPage/useChatDraft.js";
 import { subagentReferences, hasActiveDescendant } from "./ChatsPage/subagents.js";
 import { turnIdFromStart, queuedTurnFromStart } from "./ChatsPage/turnStart.js";
 import type { ChatsApi, SubagentReference } from "./ChatsPage/types.js";
@@ -105,7 +106,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const [scrollRequest, setScrollRequest] = useState(0);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useChatDraft(accountId, isDraftChat ? null : threadId);
   const [models, setModels] = useState<ChatModelOption[]>([]);
   const [executionSettings, setExecutionSettings] = useState<ChatExecutionSettings>({ permissionMode: "ask_for_approval" });
   const [settingsByChat, setSettingsByChat] = useState<Record<string, ChatExecutionSettings>>(readChatExecutionSettings);
@@ -333,7 +334,6 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     lastOpenedChatKey.current = null;
     setCreatedThread(null);
     setItems([]);
-    setDraft("");
     setIsDraftChat(true);
     setPickerOpen(false);
     setMessage(null);

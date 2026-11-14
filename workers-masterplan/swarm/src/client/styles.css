@@ -20,6 +20,8 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid #8ee39a; outline-offset: 2px; }
 
 .app-shell { min-height: 100dvh; background-color: #15191b; color: #e8f0eb; }
+.app-shell--composing { --mobile-nav-block-size: 0px; padding-block-end: 0 !important; }
+.app-shell--composing .app-nav { display: none; }
 .app-nav { background: #1c2224; border-color: #313a3d; }
 .app-nav__brand { color: #8ee39a; font-weight: 700; letter-spacing: .08em; }
 .app-nav__item { position: relative; min-width: 44px; min-height: 44px; border: 0; border-radius: 12px; background: transparent; color: #b9c5bc; display: inline-flex; align-items: center; justify-content: center; padding: 10px; }

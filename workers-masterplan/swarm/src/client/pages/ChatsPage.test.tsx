@@ -26,6 +26,30 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("restores separate chat drafts after switching chats and leaving the page", async () => {
+    const entries = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => { entries.set(key, value); },
+      removeItem: (key: string) => { entries.delete(key); },
+    });
+    setViewport(1440);
+    const user = userEvent.setup();
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "First unsent message");
+    await user.click(screen.getByRole("button", { name: /U1 · Coordinator UI/ }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Second unsent message");
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("First unsent message");
+    view.unmount();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("First unsent message");
+    await user.click(screen.getByRole("button", { name: /U1 · Coordinator UI/ }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Second unsent message");
+    vi.unstubAllGlobals();
+  });
+
   it("does not poll an idle chat but refreshes it when the tab becomes visible", async () => {
     vi.useFakeTimers();
     const readTranscript = vi.fn(async () => ({ data: chatTranscript }));

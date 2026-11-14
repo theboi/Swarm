@@ -21,6 +21,8 @@ function viewportVariant(width: number): "desktop" | "tablet" | "mobile" {
 
 export function AppShell({ activePage, hasBreakingChangeNotification = false, onNavigate, children }: { activePage: AppPage; hasBreakingChangeNotification?: boolean; onNavigate: (page: AppPage) => void; children: ReactNode }) {
   const [variant, setVariant] = useState(() => viewportVariant(window.innerWidth));
+  const [composerFocused, setComposerFocused] = useState(false);
+  const composing = variant === "mobile" && activePage === "chats" && composerFocused;
 
   useEffect(() => {
     const update = () => setVariant(viewportVariant(window.innerWidth));
@@ -29,9 +31,11 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
   }, []);
 
   return (
-    <div className={`app-shell app-shell--${variant}`} data-testid="app-shell" style={{ backgroundColor: "#15191b" }}>
+    <div className={`app-shell app-shell--${variant}${composing ? " app-shell--composing" : ""}`} data-testid="app-shell" style={{ backgroundColor: "#15191b" }}
+      onFocusCapture={(event) => setComposerFocused(event.target instanceof HTMLTextAreaElement)}
+      onBlurCapture={(event) => setComposerFocused(event.relatedTarget instanceof HTMLTextAreaElement)}>
       <a className="skip-link" href="#main-content">Skip to content</a>
-      <nav className="app-nav" aria-label="Primary navigation" data-variant={variant}>
+      <nav className="app-nav" aria-label="Primary navigation" data-variant={variant} hidden={composing}>
         <div className="app-nav__brand" aria-label="EdenMind Swarm">ES</div>
         {navigation.map(({ id, label, icon: Icon }) => (
           <a className="app-nav__item" key={id} href={pagePath(id)} aria-current={activePage === id ? "page" : undefined} aria-label={id === "chats" && hasBreakingChangeNotification ? "Chats — breaking change notification" : label} title={label} onClick={(event) => {
