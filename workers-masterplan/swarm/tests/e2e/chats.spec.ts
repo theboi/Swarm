@@ -112,7 +112,7 @@ test.describe("Chats", () => {
 
     await send.click();
     await expect(nav).toBeVisible();
-    await expect(page.locator(".rt-ToastRoot")).toContainText("Message sent.");
+    await expect(page.locator('.rt-ToastRoot[data-state="open"]')).toContainText("Message sent.");
   });
 
   test("shows normalized transcript details, approved controls, and capability gating", async ({ page }) => {
@@ -154,7 +154,7 @@ test.describe("Chats", () => {
     expect(targetSizes.every(({ width, height }) => width >= 36 && height >= 36)).toBe(true);
 
     await page.getByRole("button", { name: "Decline approval" }).first().click();
-    const toast = page.locator(".rt-ToastRoot");
+    const toast = page.locator('.rt-ToastRoot[data-state="open"]');
     await expect(toast).toContainText("Approval response sent.");
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -171,7 +171,7 @@ test.describe("Chats", () => {
 
     await page.getByRole("button", { name: "T0 · Graph planning" }).click();
     await page.getByRole("button", { name: "Archive chat" }).click();
-    await expect(page.getByRole("status")).toHaveText("Chat archived.");
+    await expect(toast).toContainText("Chat archived.");
     await page.getByRole("button", { name: "New chat" }).click();
     await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
     await page.getByLabel("Message", { exact: true }).fill("Start a fixture chat");
