@@ -16,5 +16,8 @@ to the independent Swarm repository without changing the shared design system.
 - Chats occupies the available dynamic viewport, minus mobile navigation and
   safe areas when visible. Account/chat lists and transcript scroll within their
   own regions; long lists must not expand the page or clip its header/composer.
+- At the existing 768px compact-picker breakpoint, retain the navigation rail
+  and account column, let the conversation fill the remaining width, and overlay
+  the chat picker only while open. Do not reserve an empty third column.
 
 Fixture browser checks may use port 4340. Never alter live processes or ports.

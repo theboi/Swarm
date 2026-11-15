@@ -267,6 +267,9 @@ button:disabled { cursor: not-allowed; opacity: .52; }
   .app-shell { display: grid; grid-template-columns: 68px minmax(0, 1fr); }
   .app-nav { grid-row: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-inline-end: 1px solid var(--border); }
   .app-nav__brand { min-height: 44px; display: grid; place-items: center; margin-block-end: 16px; }
+  .chats-workspace { position: relative; grid-template-columns: 104px minmax(0, 1fr); }
+  .chat-panel { grid-column: 2; }
+  .thread-picker { position: absolute; z-index: 4; inset-block: 0; inset-inline: 104px 0; }
 }
 
 @media (max-width: 767px) {

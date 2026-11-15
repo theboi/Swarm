@@ -24,7 +24,7 @@ async function selectBot3Thread(page: Page, name: string): Promise<void> {
 test.describe("Chats", () => {
   test.describe.configure({ mode: "serial" });
 
-  for (const width of [390, 1440]) {
+  for (const width of [390, 768, 1440]) {
     test(`contains long chat lists inside the viewport at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 720 });
       await page.route("**/api/v1/accounts/bot3/threads", async route => {
@@ -36,7 +36,7 @@ test.describe("Chats", () => {
       await signIn(page);
       const account = page.getByRole("button", { name: "bot3", exact: true });
       await account.click();
-      if (width < 768) await account.click();
+      if (width <= 768) await account.click();
       const list = page.locator(".thread-picker__list");
       await expect(list.getByRole("button")).toHaveCount(82);
       const dimensions = await list.evaluate(element => ({ height: element.clientHeight, content: element.scrollHeight }));
@@ -48,7 +48,9 @@ test.describe("Chats", () => {
       expect(bounds!.y).toBeGreaterThanOrEqual(0);
       expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
       expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
-      if (width < 768) await account.click();
+      if (width <= 768) await account.click();
+      const panel = (await page.locator(".chat-panel").boundingBox())!;
+      expect(panel.x + panel.width).toBeCloseTo(width, 0);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
       await expect(page.locator(".chat-panel__header")).toBeInViewport();
     });

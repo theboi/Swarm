@@ -14,21 +14,38 @@ drafts. Do not change shared Eden sources. Browser fixtures use port 4340 only.
 
 ## Task 1: Composer and account controls
 
-- [ ] Add a ChatsPage regression proving account buttons omit counts but retain
+- [x] Add a ChatsPage regression proving account buttons omit counts but retain
   unread dots, and Turn options is a compact disclosure preceding Steer.
-- [ ] Run the regression and observe failure before implementing.
-- [ ] Remove count markup/CSS; use EdenTextArea autoResize/maxAutoHeight props in
+- [x] Run the regression and observe failure before implementing.
+- [x] Remove count markup/CSS; use EdenTextArea autoResize/maxAutoHeight props in
   main and subagent composers; move TurnOptions to the footer before Steer.
-- [ ] Use EdenButton asChild with summary, retaining native details semantics.
-- [ ] Run focused ChatsPage tests; commit and pull/push verified changes.
+- [x] Use EdenButton asChild with summary, retaining native details semantics.
+- [x] Run focused ChatsPage tests; commit and pull/push verified changes.
 
 ## Task 2: Viewport and expanding drafts
 
-- [ ] Add fixture browser checks at 390px and 1440px with 80 returned threads.
+- [x] Add fixture browser checks at 390px, 768px and 1440px with 80 returned threads.
   Assert bounded page/list heights, reachable final row and visible composer.
-- [ ] Prove textarea growth, capped internal scrolling, shrinking and reload size.
-- [ ] Build and run new checks against port 4340; inspect baseline failures.
-- [ ] Constrain the chat grid's automatic minimum sizing and list flex shrinking
+- [x] Prove textarea growth, capped internal scrolling, shrinking and reload size.
+- [x] Build and run new checks against port 4340; inspect baseline failures.
+- [x] Constrain the chat grid's automatic minimum sizing and list flex shrinking
   where the browser measurements identify overflow. Rebuild and rerun checks.
-- [ ] Verify existing chat journeys, typecheck/build, broader unit tests, and
+- [x] Verify existing chat journeys, typecheck/build, broader unit tests, and
   screenshots. Record limitations; commit, pull and push.
+
+## Verification record
+
+- Baseline regressions failed: count badge/compact trigger assertions, an 82-row
+  desktop list expanding to 4734px, textarea staying at 80px for multiline input,
+  and 336px of unused conversation width at the 768px compact-picker boundary.
+- Production build/typecheck passed, followed by a fresh frontend build after the
+  CSS-only tablet correction. All 12 chat browser journeys passed on port 4340.
+  Screenshots were inspected at 390px, 768px and 1440px; no horizontal overflow.
+- The full 700-test unit run passed 696 tests and failed four timing-sensitive
+  chat tests (three timeouts and one scroll-restoration assertion). All four
+  passed in isolation without increasing timeouts or weakening assertions.
+  An earlier focused run also hit the long-transcript timing limit; that test
+  passed in the broader run. This is not a claim of a clean single full-suite run.
+- Scoped ESLint reports the same 12 existing errors and two warnings as the
+  pre-change ChatsPage baseline; no clean full lint run is claimed.
+- Shared Eden files and live Swarm processes were not changed or restarted.
