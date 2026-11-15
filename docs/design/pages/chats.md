@@ -37,9 +37,20 @@ to the independent Swarm repository without changing the shared design system.
   Copy takes exact raw source, handles missing/denied clipboard APIs with native
   selection fallback, restores focus/selection, and reports failure truthfully.
   Copied feedback expires after two seconds and does not apply to changed source.
-- Chat-view EdenButtons use borderless appearance and superCompact density,
-  including composer, transcript, turn history and subagent controls. Shared
-  primitive geometry is not overridden locally. New chat is the compact/primary
-  exception above the list.
+- Chat-view EdenButtons use superCompact density. Composer, transcript, turn
+  history and subagent controls retain borderless appearance. Auto-resume is a
+  secondary cycle icon toggle with `aria-pressed`; archive and transfer are
+  secondary icon buttons. Preserve descriptive accessible names and tooltips.
+  Scroll to bottom is a floating secondary icon button. There is no latest-user-
+  message jump button. Shared primitive geometry is not overridden locally.
+  New chat remains the compact/primary action above the list.
+- Remove the account/chat-title header. Keep a compact action toolbar and the
+  mobile Back to chats action; the conversation region retains its accessible name.
+- Completed turns keep ALL user messages (opening prompts and steers), final
+  replies and earlier non-commentary assistant questions visible in source order.
+  Only intermediate commentary, reasoning and tool activity belong under Show
+  turn details. Expanding restores those steps without duplicating messages.
+  These rules supersede the linked Eden chat contract's opening-prompt collapse
+  rule and apply to main and subagent transcripts.
 
 Fixture browser checks may use port 4340. Never alter live processes or ports.

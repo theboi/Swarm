@@ -7,8 +7,14 @@ Swarm-specific composition refinements live in [Chats](pages/chats.md) and
 [Todos](pages/queued-tasks.md) and [Navigation and appearance](pages/navigation-appearance.md).
 
 Chats uses a plain transcript: assistant replies and expandable activities are
-unboxed, with borderless superCompact EdenButton controls. Activity previews show
+unboxed, with superCompact EdenButton controls. Auto-resume, archive and transfer
+use secondary icon buttons; scroll-to-bottom uses a floating secondary button.
+Other transcript/composer actions retain borderless controls. Activity previews show
 their first content line; extracted file badges belong inside expanded details.
 The Chats contract records the approved composition and responsive behavior.
 Chat lists use EdenListCard with list/detail mobile navigation; New chat is the
 compact primary action. Source is monospace; thinking separates summary/content.
+
+Chat turns keep every user message and non-commentary assistant response visible,
+including earlier questions awaiting an answer. Only intermediate activity is
+collapsed under turn details. The conversation omits the account/title header.

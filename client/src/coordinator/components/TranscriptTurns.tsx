@@ -1,13 +1,11 @@
 import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
-import { memo, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { memo, useMemo, useState } from "react";
 import { EdenIcon } from "@/components/primitives/EdenIcon/EdenIcon";
 import type { TranscriptItem } from "../../shared/contracts.js";
 import { TranscriptItemView } from "./TranscriptItemView.js";
 
 const RENDER_BATCH = 100;
-export interface TranscriptHandle { showLatestUserMessage(): void }
-type RevealRequest = { id: string };
-type Turn = { key: string; items: TranscriptItem[]; finalId?: string; steerIds: ReadonlySet<string> };
+type Turn = { key: string; items: TranscriptItem[]; finalId?: string; visibleIds: ReadonlySet<string> };
 
 /** Keep server JSON round trips from invalidating every unchanged message. */
 export function reconcileTranscript(previous: TranscriptItem[], incoming: TranscriptItem[]): TranscriptItem[] {
@@ -26,7 +24,7 @@ function groupTurns(items: TranscriptItem[]): Turn[] {
     const key = `${item.accountId}\u0000${item.threadId}\u0000${item.turnId ?? item.id}`;
     let turn = turns.at(-1);
     if (!turn || turn.key !== key || item.turnId === null) {
-      turn = { key, items: [], steerIds: new Set() };
+      turn = { key, items: [], visibleIds: new Set() };
       turns.push(turn);
     }
     turn.items.push(item);
@@ -41,45 +39,29 @@ function groupTurns(items: TranscriptItem[]): Turn[] {
     ));
     if (!final) continue;
     turn.finalId = final.id;
-    // The first user message starts the turn; later user messages steer it.
-    turn.steerIds = new Set(turn.items.filter((item) => item.type === "userMessage").slice(1).map((item) => item.id));
+    // Keep the whole conversation visible, including opening prompts, steers,
+    // and earlier assistant questions. Only commentary and activity are details.
+    turn.visibleIds = new Set(turn.items.filter((item) => item.type === "userMessage" || (item.type === "agentMessage" && item.payload.phase !== "commentary")).map((item) => item.id));
   }
   return turns;
 }
 
-function TranscriptTurn({ turn, activeReasoningId, onOpenMarkdown, reveal }: { turn: Turn; activeReasoningId?: string; onOpenMarkdown: (path: string) => void; reveal: RevealRequest | null }) {
+function TranscriptTurn({ turn, activeReasoningId, onOpenMarkdown }: { turn: Turn; activeReasoningId?: string; onOpenMarkdown: (path: string) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const container = useRef<HTMLDivElement>(null);
-  const handledReveal = useRef<RevealRequest | null>(null);
-  useLayoutEffect(() => {
-    if (!reveal || handledReveal.current === reveal || !turn.items.some((item) => item.id === reveal.id)) return;
-    if (turn.finalId && !expanded) { setExpanded(true); return; }
-    const target = [...container.current?.querySelectorAll<HTMLElement>("[data-transcript-id]") ?? []].find((node) => node.dataset.transcriptId === reveal.id);
-    handledReveal.current = reveal;
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [reveal, expanded, turn]);
-  const hiddenCount = turn.finalId ? turn.items.filter((item) => item.id !== turn.finalId && !turn.steerIds.has(item.id)).length : 0;
+  const hiddenCount = turn.finalId ? turn.items.filter((item) => item.id !== turn.finalId && !turn.visibleIds.has(item.id)).length : 0;
   const collapsed = Boolean(turn.finalId && !expanded);
-  return <div className="transcript-turn" ref={container}>
+  return <div className="transcript-turn">
     {hiddenCount ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier transcript-turn__toggle" type="button" aria-expanded={!collapsed} onClick={() => setExpanded((value) => !value)}>
       {collapsed ? <EdenIcon name="chevronDown" aria-hidden="true" size={16} /> : <EdenIcon name="chevronUp" aria-hidden="true" size={16} />}
       {collapsed ? "Show turn details" : "Hide turn details"} <span>({hiddenCount})</span>
     </EdenButton> : null}
-    {turn.items.filter((item) => !collapsed || item.id === turn.finalId || turn.steerIds.has(item.id)).map((item) => <TranscriptItemView key={item.id} item={item} active={item.id === activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
+    {turn.items.filter((item) => !collapsed || item.id === turn.finalId || turn.visibleIds.has(item.id)).map((item) => <TranscriptItemView key={item.id} item={item} active={item.id === activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
   </div>;
 }
 
 /** Owns history windowing and disclosure state, independent of composer typing. */
-export const TranscriptTurns = memo(function TranscriptTurns({ items, activeReasoningId, onOpenMarkdown, ref }: { items: TranscriptItem[]; activeReasoningId?: string; onOpenMarkdown: (path: string) => void; ref?: Ref<TranscriptHandle> }) {
+export const TranscriptTurns = memo(function TranscriptTurns({ items, activeReasoningId, onOpenMarkdown }: { items: TranscriptItem[]; activeReasoningId?: string; onOpenMarkdown: (path: string) => void }) {
   const [visibleCount, setVisibleCount] = useState(RENDER_BATCH);
-  const [reveal, setReveal] = useState<RevealRequest | null>(null);
-  useImperativeHandle(ref, () => ({ showLatestUserMessage() {
-    const reverseIndex = [...items].reverse().findIndex((item) => item.type === "userMessage");
-    const index = reverseIndex < 0 ? -1 : items.length - reverseIndex - 1;
-    if (index < 0) return;
-    setVisibleCount((count) => Math.max(count, items.length - index));
-    setReveal({ id: items[index].id });
-  } }), [items]);
   const turns = useMemo(() => groupTurns(items), [items]);
   const cutoff = Math.max(0, items.length - visibleCount);
   let offset = 0;
@@ -97,6 +79,6 @@ export const TranscriptTurns = memo(function TranscriptTurns({ items, activeReas
   }
   return <>
     {hiddenCount > 0 ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier" type="button" onClick={() => setVisibleCount((value) => value + RENDER_BATCH)}>Show earlier messages</EdenButton> : null}
-    {visibleTurns.map((turn) => <TranscriptTurn key={turn.key} turn={turn} reveal={reveal} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
+    {visibleTurns.map((turn) => <TranscriptTurn key={turn.key} turn={turn} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
   </>;
 });

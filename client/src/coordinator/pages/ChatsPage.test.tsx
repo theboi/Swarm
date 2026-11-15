@@ -309,7 +309,7 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialThreadId="thread-3" />);
 
     expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
   });
 
   it("opens an account and its first chat when the account panel selects it", async () => {
@@ -317,7 +317,7 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialAccountId="bot1" />);
 
     expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
   });
 
   it("does not reselect the navigation account after the operator chooses another account", async () => {
@@ -325,14 +325,14 @@ describe("ChatsPage", () => {
     const user = userEvent.setup();
     const { rerender } = render(<ChatsPage snapshot={chatSnapshot} api={api} initialAccountId="bot1" />);
 
-    expect(await screen.findByRole("heading", { name: "Account recovery" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "bot3" }));
-    expect(await screen.findByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "T0 · Graph planning" })).toBeVisible();
 
     rerender(<ChatsPage snapshot={{ ...chatSnapshot, generatedAt: chatSnapshot.generatedAt + 1, threads: [...chatSnapshot.threads] }} api={api} initialAccountId="bot1" />);
 
     expect(screen.getByRole("button", { name: "bot3" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("heading", { name: "T0 · Graph planning" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "T0 · Graph planning" })).toBeVisible();
   });
 
   it("renders the chat workspace immediately and lazy-loads only the selected account's chat list", async () => {
@@ -368,7 +368,7 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialTarget={{ accountId: "bot1", threadId: "thread-new" }} />);
 
     expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("heading", { name: "No chat selected" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "No chat selected" })).toBeVisible();
   });
 
   it("shows a visible active-thinking indicator for a selected active turn", async () => {
@@ -474,7 +474,7 @@ describe("ChatsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Rename" }));
 
     expect(renameThread).toHaveBeenCalledWith("bot3", "thread-1", "Graph plan review");
-    expect(await screen.findByRole("heading", { name: "Graph plan review" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Graph plan review" })).toBeVisible();
   });
 
   it("marks an accepted turn as working before the realtime event arrives", async () => {
@@ -676,7 +676,7 @@ describe("ChatsPage", () => {
     await waitFor(() => expect(transcript.scrollTop).toBe(1_240));
   });
 
-  it("offers direct jumps to the bottom and the latest message sent by the operator", async () => {
+  it("offers only a secondary floating scroll-to-bottom action", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
@@ -687,12 +687,12 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "Scroll to bottom" }));
     expect(transcript.scrollTop).toBe(1_400);
 
-    const userMessages = await screen.findAllByRole("article", { name: "userMessage" });
-    const latest = userMessages.at(-1)!;
-    const scrollIntoView = vi.fn();
-    latest.scrollIntoView = scrollIntoView;
-    await user.click(screen.getByRole("button", { name: "Scroll to latest message you sent" }));
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    expect(screen.queryByRole("button", { name: "Scroll to latest message you sent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scroll to bottom" })).toHaveClass("appearance-secondary", "isFloating-true");
+    for (const name of ["Enable automatic resume", "Archive chat", "Move to another account"]) {
+      expect(screen.getByRole("button", { name })).toHaveClass("appearance-secondary");
+    }
+    expect(screen.getByRole("button", { name: "Enable automatic resume" }).textContent).toBe("");
   });
 
   it("does not force the transcript back to the bottom during live refreshes", async () => {
@@ -860,7 +860,7 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, startThread, startTurn }} />);
 
     await user.click(screen.getByRole("button", { name: "New chat" }));
-    expect(screen.getByRole("heading", { name: "New chat" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
     expect(startThread).not.toHaveBeenCalled();
     await user.type(screen.getByRole("textbox", { name: "Message" }), "Start this investigation.");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -889,7 +889,7 @@ describe("ChatsPage", () => {
     await user.click(screen.getByRole("button", { name: "Move to bot1" }));
 
     expect(moveThreadToAccount).toHaveBeenCalledWith("bot3", "thread-1", "bot1", expect.objectContaining({ permissionMode: expect.any(String) }));
-    expect(await screen.findByRole("heading", { name: "(Handoff) T0 · Graph planning" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "(Handoff) T0 · Graph planning" })).toBeVisible();
   });
 
   it("keeps the JSONL handoff action beside Archive when the source account is unauthenticated and not limit-blocked", async () => {

@@ -54,7 +54,7 @@ test.describe("Chats", () => {
       const panel = (await page.locator(".chat-panel").boundingBox())!;
       expect(panel.x + panel.width).toBeCloseTo(width, 0);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
-      await expect(page.locator(".chat-panel__header")).toBeInViewport();
+      await expect(page.locator(".chat-panel__toolbar")).toBeInViewport();
     });
 
     test(`grows and caps the Eden composer without moving its actions off-screen at ${width}px`, async ({ page }) => {
@@ -63,6 +63,10 @@ test.describe("Chats", () => {
       await selectBot3Thread(page, "T0 · Graph planning");
       const input = page.getByRole("textbox", { name: "Message", exact: true });
       const surface = page.locator(".chat-compose__field [data-eden-textarea] .rt-TextAreaRoot");
+      // Compare the same short content before/after expansion and reload;
+      // the empty surface can have a different minimum height.
+      await input.fill("Short draft");
+      await page.evaluate(() => document.fonts.ready);
       const baseline = (await surface.boundingBox())!.height;
       await input.fill("A line\n".repeat(6));
       await expect.poll(async () => (await surface.boundingBox())!.height).toBeGreaterThan(baseline);
@@ -95,7 +99,8 @@ test.describe("Chats", () => {
       await composer.fill(`Unsent draft at ${width}`);
       if (width < 768) await expect(page.locator(".app-nav")).toBeHidden();
       else await expect(page.locator(".app-nav")).toBeVisible();
-      await composer.blur();
+      await page.getByRole("button", { name: "Scroll to bottom", exact: true }).click();
+      await expect(page.locator(".app-nav")).toBeVisible();
       await page.getByRole("link", { name: "Home", exact: true }).click();
       if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("link", { name: "Chats", exact: true }).click();
@@ -252,7 +257,7 @@ test.describe("Chats", () => {
     await page.getByRole("button", { name: "Archive chat" }).click();
     await expect(toast).toContainText("Chat archived.");
     await page.getByRole("button", { name: "New chat" }).click();
-    await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "New chat" })).toBeVisible();
     await page.getByLabel("Message", { exact: true }).fill("Start a fixture chat");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(toast).toContainText("Message sent.");

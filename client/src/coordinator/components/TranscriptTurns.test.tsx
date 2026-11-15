@@ -1,8 +1,7 @@
-import { createRef } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptItem } from "../../shared/contracts.js";
-import { TranscriptTurns, reconcileTranscript, type TranscriptHandle } from "./TranscriptTurns.js";
+import { TranscriptTurns, reconcileTranscript } from "./TranscriptTurns.js";
 
 afterEach(cleanup);
 const openFile = () => undefined;
@@ -16,25 +15,9 @@ const turn = [
 ];
 
 describe("TranscriptTurns", () => {
-  it("reveals the latest opening prompt before jumping to it in a completed turn", () => {
-    const ref = createRef<TranscriptHandle>();
-    const scrollIntoView = vi.fn();
-    const prior = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
-    try {
-      render(<><button onClick={() => ref.current?.showLatestUserMessage()}>Jump</button><TranscriptTurns ref={ref} items={[turn[0], turn[1], turn[4]]} onOpenMarkdown={openFile} /></>);
-      expect(screen.queryByText("Original request")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Jump" }));
-      expect(screen.getByText("Original request")).toBeVisible();
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
-      fireEvent.click(screen.getByRole("button", { name: /Hide turn details/ }));
-      expect(screen.queryByText("Original request")).not.toBeInTheDocument();
-    } finally { Element.prototype.scrollIntoView = prior; }
-  });
-
-  it("collapses a finished turn into one disclosure, its steers and its final answer", () => {
+  it("keeps all user messages visible while disclosing intermediate activity", () => {
     render(<TranscriptTurns items={turn} onOpenMarkdown={openFile} />);
-    expect(screen.queryByText("Original request")).not.toBeInTheDocument();
+    expect(screen.getByText("Original request")).toBeVisible();
     expect(screen.queryByText("Progress update")).not.toBeInTheDocument();
     expect(screen.queryByText("Expensive output")).not.toBeInTheDocument();
     expect(screen.getByText("Please keep the steers")).toBeVisible();
@@ -46,7 +29,16 @@ describe("TranscriptTurns", () => {
     expect(screen.getByText("Progress update")).toBeVisible();
     expect(screen.getAllByText("Please keep the steers")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /Hide turn details/ }));
-    expect(screen.queryByText("Original request")).not.toBeInTheDocument();
+    expect(screen.getByText("Original request")).toBeVisible();
+  });
+
+  it("keeps earlier Codex questions and the user's answers outside turn details", () => {
+    const question = item("question", "agentMessage", "Which option should I use?", { payload: { text: "Which option should I use?", phase: "final_answer" } });
+    render(<TranscriptTurns items={[turn[0], question, turn[3], turn[1], turn[4]]} onOpenMarkdown={openFile} />);
+    expect(screen.getByText("Which option should I use?")).toBeVisible();
+    expect(screen.getByText("Original request")).toBeVisible();
+    expect(screen.getByText("Please keep the steers")).toBeVisible();
+    expect(screen.queryByText("Progress update")).not.toBeInTheDocument();
   });
 
   it("leaves a live final response expanded until it finishes, then collapses automatically", () => {
@@ -55,13 +47,13 @@ describe("TranscriptTurns", () => {
     expect(screen.getByText("Original request")).toBeVisible();
     expect(screen.queryByRole("button", { name: /Show turn details/ })).not.toBeInTheDocument();
     view.rerender(<TranscriptTurns items={turn} onOpenMarkdown={openFile} />);
-    expect(screen.queryByText("Original request")).not.toBeInTheDocument();
+    expect(screen.getByText("Original request")).toBeVisible();
   });
 
   it("uses authoritative turn completion for older messages without phase metadata", () => {
     const completed = turn.map((entry) => ({ ...entry, turnStatus: "completed" as const, payload: { text: entry.id } }));
     render(<TranscriptTurns items={completed} onOpenMarkdown={openFile} />);
-    expect(screen.queryByText("prompt", { selector: ".transcript-item__markdown p" })).not.toBeInTheDocument();
+    expect(screen.getByText("prompt", { selector: ".transcript-item__markdown p" })).toBeVisible();
     expect(screen.getByText("steer")).toBeVisible();
     expect(screen.getByText("final")).toBeVisible();
   });
@@ -78,7 +70,7 @@ describe("TranscriptTurns", () => {
   it("keeps whole turn boundaries when windowing a long history", () => {
     const entries = Array.from({ length: 120 }, (_, index) => item(`step-${index}`, index === 0 ? "userMessage" : "commandExecution", `Step ${index}`));
     render(<TranscriptTurns items={[...entries, turn[3], turn[4]]} onOpenMarkdown={openFile} />);
-    expect(screen.queryByText("Step 0")).not.toBeInTheDocument();
+    expect(screen.getByText("Step 0")).toBeVisible();
     expect(screen.getByText("Please keep the steers")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /Show turn details/ }));
     expect(screen.getByText("Step 0")).toBeVisible();
