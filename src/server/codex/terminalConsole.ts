@@ -1,3 +1,4 @@
+import { swarmInstanceId } from "../instance.js";
 import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type CodexAccountSlot, type MacosBotId } from "../../shared/contracts.js";
 
 const TMUX_BINARY = "/opt/homebrew/bin/tmux";
@@ -20,7 +21,8 @@ function macosUser(account: TerminalAccount): MacosBotId | undefined {
 
 function tmuxSocket(account: TerminalAccount): string {
   const owner = macosUser(account) ?? LOCAL_ACCOUNT_ID;
-  return `/Users/${owner}/.swarm/tmux/swarm.sock`;
+  const instance = swarmInstanceId();
+  return `/Users/${owner}/.swarm/tmux/swarm${instance ? `-${instance}` : ""}.sock`;
 }
 
 function tmuxCommand(account: TerminalAccount): string {
@@ -28,7 +30,8 @@ function tmuxCommand(account: TerminalAccount): string {
 }
 
 export function tmuxSessionName(account: TerminalAccount): string {
-  return `swarm-${accountId(account).replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  const instance = swarmInstanceId();
+  return `swarm-${instance ? `${instance}-` : ""}${accountId(account).replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }
 
 export function tmuxServerCommand(account: TerminalAccount, appServerCommand: string): string {
@@ -36,7 +39,7 @@ export function tmuxServerCommand(account: TerminalAccount, appServerCommand: st
   const socketDirectory = tmuxSocket(account).replace(/\/[^/]+$/, "");
   const session = tmuxSessionName(account);
   const stop = `${tmux} kill-session -t ${session} >/dev/null 2>&1 || true`;
-  const legacyStop = typeof account === "object" && account.accountNumber === 1
+  const legacyStop = !swarmInstanceId() && typeof account === "object" && account.accountNumber === 1
     ? `${shellQuote(TMUX_BINARY)} kill-session -t swarm-${account.macosUser} >/dev/null 2>&1 || true; `
     : "";
   const appServerSupervisor = [

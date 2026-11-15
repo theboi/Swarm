@@ -2,7 +2,7 @@ import type { IncomingMessage, Server } from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 
 import type { AccountSnapshot, CoordinatorEvent, CoordinatorSnapshot } from "../../shared/contracts.js";
-import { readCookie, SESSION_COOKIE } from "../http/authMiddleware.js";
+import { readCookie, sessionCookieName } from "../http/authMiddleware.js";
 import { isAllowedDashboardOrigin } from "../http/dashboardOrigins.js";
 import type { SessionStore } from "../auth/sessionStore.js";
 
@@ -71,7 +71,7 @@ export class BrowserHub {
     if (this.closed || new URL(request.url ?? "/", "http://localhost").pathname !== "/ws") { rejectUpgrade(socket); return; }
     const origin = request.headers.origin;
     if (!isAllowedDashboardOrigin(origin, request.headers.host, this.options.allowedOrigins())) { rejectUpgrade(socket); return; }
-    const cookie = readCookie(request as never, SESSION_COOKIE);
+    const cookie = readCookie(request as never, sessionCookieName());
     const auth = cookie ? await this.options.sessions.useSession(cookie) : undefined;
     if (!auth) { rejectUpgrade(socket); return; }
     this.websocket.handleUpgrade(request, socket as never, head, (client) => this.websocket.emit("connection", client, request));

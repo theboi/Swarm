@@ -352,3 +352,21 @@ process output in `.data/swarm.stdout.log` and `.data/swarm.stderr.log`. On
 `SIGINT` or `SIGTERM`, the
 coordinator stops accepting launches, closes browser sockets, flushes state,
 terminates child app-servers, and exits within ten seconds.
+
+## Temporary second instance
+
+`com.swarm.test` is a separate macOS LaunchAgent using `ops/com.swarm.test.plist`.
+It starts at user login and launchd restarts it if it exits, matching the existing
+EdenMind service. It runs this checkout on dashboard port 4320 and loopback
+terminal-control port 4321. Its private environment and durable state stay in
+this checkout's ignored `.env` and `.data/` directories.
+
+`SWARM_INSTANCE_ID=test-4320` namespaces tmux sockets, sessions and browser
+cookies, preventing this instance from replacing the original account servers
+or invalidating the original browser login. Account authentication/profile homes
+remain shared; coordinator sessions, queues, approvals and scheduling state are
+separate. Use the existing dashboard login credentials and authenticator.
+
+Inspect with `launchctl print gui/$(id -u)/com.swarm.test`. Logs are under
+`.data/swarm.stdout.log` and `.data/swarm.stderr.log`. The original
+`com.edenmind.swarm` service remains unchanged on ports 4310/4311.

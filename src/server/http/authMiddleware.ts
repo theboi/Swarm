@@ -1,9 +1,13 @@
+import { swarmInstanceId } from "../instance.js";
 import type { NextFunction, Request, Response } from "express";
 
 import type { SessionStore } from "../auth/sessionStore.js";
 import { isAllowedDashboardOrigin } from "./dashboardOrigins.js";
 
-export const SESSION_COOKIE = "swarm_session";
+export function sessionCookieName(): string {
+  const instance = swarmInstanceId();
+  return instance ? `swarm_session_${instance}` : "swarm_session";
+}
 
 export interface RequestAuthentication {
   email: string;
@@ -28,7 +32,7 @@ export function readCookie(request: Request, name: string): string | undefined {
 }
 
 export async function authenticateRequest(request: Request, sessions: SessionStore): Promise<RequestAuthentication | undefined> {
-  const token = readCookie(request, SESSION_COOKIE);
+  const token = readCookie(request, sessionCookieName());
   if (!token) return undefined;
   return sessions.useSession(token);
 }

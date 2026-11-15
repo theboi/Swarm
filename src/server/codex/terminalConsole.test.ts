@@ -1,8 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { codexLoginCommand, tmuxAttachCommand, tmuxServerCommand } from "./terminalConsole.js";
 
 describe("terminal console commands", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("isolates a second instance without retiring the live primary session", () => {
+    vi.stubEnv("SWARM_INSTANCE_ID", "test-4320");
+    const primary = { id: "bot1/acc1" as const, macosUser: "bot1" as const, accountNumber: 1, codexHome: "/Users/bot1/.swarm/codex-profiles/acc1", workspaceRoot: "/Users/bot1/Dev/EdenMind" };
+    const command = tmuxServerCommand(primary, "codex app-server");
+    expect(command).toContain("/Users/bot1/.swarm/tmux/swarm-test-4320.sock");
+    expect(command).toContain("new-session -d -s swarm-test-4320-bot1-acc1");
+    expect(command).not.toContain("kill-session -t swarm-bot1");
+    expect(tmuxAttachCommand(primary)).toContain("swarm-test-4320-bot1-acc1");
+  });
+
   it("uses an allowlisted account session for the app-server and its attach console", () => {
     const command = tmuxServerCommand("bot1", "'/opt/homebrew/bin/codex' app-server");
 

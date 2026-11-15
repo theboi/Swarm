@@ -8,7 +8,7 @@ import { verifyPassword } from "../auth/password.js";
 import { LoginThrottle, resolveLoginSource, SessionStore } from "../auth/sessionStore.js";
 import { type createTotpVerifier } from "../auth/totp.js";
 import type { InterruptRequestAuditContext } from "../audit/interruptAudit.js";
-import { apiError, readCookie, requireAllowedOrigin, requireJson, requireSession, SESSION_COOKIE } from "./authMiddleware.js";
+import { apiError, readCookie, requireAllowedOrigin, requireJson, requireSession, sessionCookieName } from "./authMiddleware.js";
 
 export interface CoordinatorRouteServices {
   queuedTasks?: QueuedTasks;
@@ -190,15 +190,15 @@ export function createApiRouter(services: CoordinatorRouteServices) {
     }
     await services.throttle.recordSuccess(challenge.email, source);
     const session = await services.sessions.createSession(challenge.email);
-    response.cookie(SESSION_COOKIE, session, { httpOnly: true, sameSite: "strict", path: "/", secure: secureCookie(request, services.config), maxAge: 30 * 24 * 60 * 60_000 });
+    response.cookie(sessionCookieName(), session, { httpOnly: true, sameSite: "strict", path: "/", secure: secureCookie(request, services.config), maxAge: 30 * 24 * 60 * 60_000 });
     sendData(response, { authenticated: true });
   }));
 
   router.get("/auth/session", requireSession(services.sessions), (_request, response) => sendData(response, { authenticated: true }));
   router.post("/auth/logout", ...securedMutation, asyncRoute(async (request, response) => {
-    const session = readCookie(request, SESSION_COOKIE);
+    const session = readCookie(request, sessionCookieName());
     if (session) await services.sessions.revokeSession(session);
-    response.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "strict", path: "/", secure: secureCookie(request, services.config) });
+    response.clearCookie(sessionCookieName(), { httpOnly: true, sameSite: "strict", path: "/", secure: secureCookie(request, services.config) });
     sendData(response, { authenticated: false });
   }));
   router.get("/snapshot", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.snapshot())));
