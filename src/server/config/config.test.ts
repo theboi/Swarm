@@ -30,7 +30,7 @@ describe("loadConfig", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("uses the MVP3 manifest and EdenMind repository root when path settings are omitted", async () => {
+  it("uses the MVP3 manifest and current Swarm repository root when path settings are omitted", async () => {
     const config = await loadConfig({
       SWARM_LOGIN_EMAIL: "claudio@example.com",
       SWARM_LOGIN_PASSWORD_HASH: "hash",
@@ -39,10 +39,10 @@ describe("loadConfig", () => {
     });
 
     expect(config.masterplanPath).toBe("manifests/mvp3.json");
-    expect(config.coordinationRoot).toBe(resolve(process.cwd(), "../.."));
+    expect(config.coordinationRoot).toBe(resolve(process.cwd()));
     expect(config.host).toBe("0.0.0.0");
     expect(config.codexBin).toBe("/Applications/ChatGPT.app/Contents/Resources/codex");
-    expect(config.repositoryUrl).toBe("https://github.com/theboi/EdenMind.git");
+    expect(config.repositoryUrl).toBe("https://github.com/theboi/Swarm.git");
     expect(config.terminalPort).toBe(config.port + 1);
   });
 
@@ -112,7 +112,7 @@ describe("loadConfig", () => {
     });
 
     expect(config.codexBin).toBe("/custom/codex");
-    expect(config.repositoryUrl).toBe("https://github.com/theboi/EdenMind.git");
+    expect(config.repositoryUrl).toBe("https://github.com/theboi/Swarm.git");
     expect(config.trustManagedProxy).toBe(false);
     expect(config.publicConfig()).not.toContain("/custom/codex");
   });

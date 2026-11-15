@@ -88,8 +88,8 @@ describe("repository completion manifest", () => {
   });
 
   it("projects the checked-in MVP3 receipts without reading completion phrases", async () => {
-    const repositoryRoot = resolve(process.cwd(), "../..");
-    const loaded = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
+    const repositoryRoot = resolve(process.cwd(), "edenmind");
+    const loaded = await loadManifest(resolve(repositoryRoot, "workers-masterplan/swarm/manifests/mvp3.json"), repositoryRoot);
     const production = { ...loaded, lifecycle: { ...loaded.lifecycle!, activePass: "planning" as const } };
     const files = Object.fromEntries(production.tasks.flatMap((task) => {
       try {
@@ -111,8 +111,8 @@ describe("repository completion manifest", () => {
   });
 
   it("does not project planning-only UI workers into the execution pass", async () => {
-    const repositoryRoot = resolve(process.cwd(), "../..");
-    const production = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
+    const repositoryRoot = resolve(process.cwd(), "edenmind");
+    const production = await loadManifest(resolve(repositoryRoot, "workers-masterplan/swarm/manifests/mvp3.json"), repositoryRoot);
     const execution = { ...production, lifecycle: { ...production.lifecycle!, activePass: "execution" as const } };
     const completion = { revision: "origin-main", receipts: new Map(), completedTaskIds: new Set<string>() };
 
@@ -181,5 +181,5 @@ describe("repository completion manifest", () => {
 });
 
 function requireReceipt(path: string): unknown {
-  return JSON.parse(readFileSync(resolve(process.cwd(), "../..", path), "utf8"));
+  return JSON.parse(readFileSync(resolve(process.cwd(), "edenmind", path), "utf8"));
 }

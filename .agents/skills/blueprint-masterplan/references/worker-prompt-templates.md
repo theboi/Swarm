@@ -12,9 +12,9 @@ packet body or its phase/shared-main instructions here.
 
 | Packet | Canonical file |
 | --- | --- |
-| coordinator planning (never one launch per ordinary worker) | `workers-masterplan/swarm/templates/planning.md` |
-| execution | `workers-masterplan/swarm/templates/execution.md` |
-| ui | `workers-masterplan/swarm/templates/ui.md` |
+| coordinator planning (never one launch per ordinary worker) | `templates/planning.md` |
+| execution | `templates/execution.md` |
+| ui | `templates/ui.md` |
 
 Before rendering, the coordinator supplies these explicit metadata slots. They
 are launch-envelope values; the canonical packet body remains the source for

@@ -1,4 +1,4 @@
-# EdenMind Swarm Coordinator
+# Swarm
 
 ## Frontend and API ownership
 
@@ -13,28 +13,46 @@ Run `npm ci` from this directory to install both workspaces. `npm run build`
 typechecks both sides, builds the Next static export in `client/out/`, and compiles
 the coordinator. `npm start` serves that export, `/api/v1`, and the existing
 WebSocket endpoint on the same origin. Route-specific exported HTML preserves
-direct links and refreshes. The existing LaunchAgent entry point and working
-directory remain valid. After pulling on the running machine, run `npm ci`,
-`npm run build`, then restart the Swarm process to load the new frontend.
+direct links and refreshes. The LaunchAgent template in `ops/` points to this checkout; it has not been installed.
+Do not restart the existing EdenMind Swarm during extraction testing.
 
 `npm run dev` runs Express against the latest frontend build. Rebuild browser
 changes with `npm run build:client` and refresh the dashboard on port 4310.
 `npm run dev:client` runs the standalone Next renderer on port 4312; authenticated
 API/WebSocket development uses the Express-hosted export on port 4310.
 
-## Shared Eden UI and future repository extraction
+## Repository structure
 
-`edenmind` is currently a relative symlink to this EdenMind checkout. Client
-components, supporting library imports, theme sources, and fonts link through
-that anchor. The client owns its React/Radix dependencies; the linked sources
-resolve against the client installation.
+- `src/server/` and `src/shared/`: coordinator backend and API contracts.
+- `client/`: Next.js frontend workspace.
+- `templates/`, `manifests/`, `assets/`: coordinator inputs and resources.
+- `.agents/skills/`: Blueprint Masterplan and Living Masterplan skills.
+- `evals/`: skill scenarios and prompt parity verification.
+- `docs/`: historical design and implementation records; old paths describe the original EdenMind layout.
+- `scripts/` and `ops/`: development utilities and deployment templates.
 
-When Swarm and the masterplan skills move into their own repository, replace
-only the `edenmind` anchor with an EdenMind Git submodule at the same path.
-The client symlinks then continue to resolve without rewriting component imports.
-Pin the submodule revision, initialize it recursively in fresh checkouts, and
-keep runtime `.env`, `.data`, credential homes and account registries private.
-The repository extraction is intentionally not performed in this change.
+## Shared Eden UI
+
+`edenmind` links to the sibling `../EdenMind` checkout. Client components,
+library imports, theme sources, and fonts link through that anchor; keep the
+sibling checkout available when building. The client owns its React/Radix
+installation. This remains a local dependency until shared UI is extracted or
+pinned separately.
+
+Run all npm commands from this repository root. Run prompt parity verification
+with `node --import tsx evals/verify-swarm-prompt-parity.mjs`; its EdenMind-specific
+integration assertion reads the Phase 1b masterplan through the `edenmind` link.
+Skills are discovered from `.agents/skills/` and reference root `templates/`.
+Runtime `.env`, `.data`, build outputs and dependencies are ignored and are not
+copied from the live instance.
+The retained `manifests/mvp3.json` describes EdenMind's historical project and
+requires its planning artifacts. To coordinate that project, explicitly set
+`SWARM_COORDINATION_ROOT` to the EdenMind checkout and `SWARM_MASTERPLAN_PATH` to
+its `workers-masterplan/swarm/manifests/mvp3.json`. The self-contained
+`manifests/example-ready.json` is a test fixture, not a production work queue.
+The prompt evaluator currently has a pre-existing coordinator-adapter assertion
+failure, also reproducible in EdenMind before this reorganization. Configure a separate port and isolated runtime
+state before a temporary launch.
 
 Main-chat, new-chat and subagent message drafts are saved in browser storage,
 separately per account/thread. They survive page navigation and reloads; a

@@ -16,8 +16,8 @@ const manifest: TaskManifest = { blueprintId: "mvp3", title: "MVP3", masterplanP
 
 describe("task authority", () => {
   it("loads every ordinary and UI-design worker from the production MVP3 topology", async () => {
-    const repositoryRoot = resolve(process.cwd(), "../..");
-    const production = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
+    const repositoryRoot = resolve(process.cwd(), "edenmind");
+    const production = await loadManifest(resolve(repositoryRoot, "workers-masterplan/swarm/manifests/mvp3.json"), repositoryRoot);
     const domainPaths = ["P", "C", "Q", "A", "E", "G"];
 
     expect(production.blueprintId).toBe("2026-08-14-mvp3");

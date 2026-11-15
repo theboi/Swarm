@@ -3,37 +3,37 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = resolve(workspaceRoot, "..");
-const skillPath = resolve(workspaceRoot, "blueprint-masterplan/SKILL.md");
+const repositoryRoot = workspaceRoot;
+const skillPath = resolve(workspaceRoot, ".agents/skills/blueprint-masterplan/SKILL.md");
 const referencePath = resolve(
   workspaceRoot,
-  "blueprint-masterplan/references/worker-prompt-templates.md",
+  ".agents/skills/blueprint-masterplan/references/worker-prompt-templates.md",
 );
 const uiRequirementsTemplatePath = resolve(
   workspaceRoot,
-  "blueprint-masterplan/references/ui-requirements-template.md",
+  ".agents/skills/blueprint-masterplan/references/ui-requirements-template.md",
 );
 const runtimeIsolationPath = resolve(
   workspaceRoot,
-  "blueprint-masterplan/references/account-local-runtime-isolation.md",
+  ".agents/skills/blueprint-masterplan/references/account-local-runtime-isolation.md",
 );
 const uiDesignPromptTemplatePath = resolve(
   workspaceRoot,
-  "blueprint-masterplan/references/ui-design-worker-prompt-template.md",
+  ".agents/skills/blueprint-masterplan/references/ui-design-worker-prompt-template.md",
 );
 const blueprintTemplatePath = resolve(
   workspaceRoot,
-  "blueprint-masterplan/references/blueprint-masterplan-template.md",
+  ".agents/skills/blueprint-masterplan/references/blueprint-masterplan-template.md",
 );
-const coordinatorTemplateDirectory = resolve(workspaceRoot, "swarm/templates");
+const coordinatorTemplateDirectory = resolve(workspaceRoot, "templates");
 const approvedDraftsPath = resolve(coordinatorTemplateDirectory, "approved-drafts.md");
 const phase1bMasterplanPath = resolve(
-  repositoryRoot,
+  resolve(repositoryRoot, "edenmind"),
   "docs/masterplans/tuition-agency/EdenMind_TuitionAgency_Phase1b_Implementation_Masterplan.md",
 );
 const coordinatorRendererPath = resolve(
   workspaceRoot,
-  "swarm/src/server/tasks/promptTemplates.ts",
+  "src/server/tasks/promptTemplates.ts",
 );
 
 const templateIds = ["planning", "execution", "ui"];
@@ -107,7 +107,7 @@ const coordinatorLaunchValues = {
   coordinationRoot: "docs/workers/2026-08-26-edenmind",
   devServerCommand: "npm run dev -- --host 127.0.0.1",
   edenmindClonePath: "/Users/bot3/Dev/EdenMind",
-  excludedSurfaces: "workers-masterplan/swarm/src/server/**",
+  excludedSurfaces: "src/server/**",
   checkoutMode: "coordinator_managed_same_mac_clones",
   hardPrerequisites: "W1, W2",
   implementationModel: "Terra High",
@@ -116,7 +116,7 @@ const coordinatorLaunchValues = {
   masterplanPath: "docs/plans/edenmind_Implementation_Masterplan.md",
   mainMutationLock: "swarm-main-mutation-lock",
   mainPushQueue: "swarm-main-push-queue",
-  ownedSurfaces: "workers-masterplan/swarm/src/client/**",
+  ownedSurfaces: "client/src/**",
   plannedPrerequisites: "W2: specification docs/specs/w2.md implementation plan docs/plans/w2.md\nWD: UI requirements docs/design/requirements/wd.md presentation handoff docs/design/handoffs/wd.md",
   phase: "execution",
   phaseTerminalCondition: "Stop after the worker's phase handoff is integrated on origin/main.",
@@ -323,7 +323,7 @@ for (const mappedPath of [
   ".agents/skills/better-ui/SKILL.md",
 ]) {
   try {
-    await access(resolve(repositoryRoot, mappedPath));
+    await access(resolve(repositoryRoot, "edenmind", mappedPath));
   } catch {
     throw new Error(`Active Phase 1b authority map points to a missing path: ${mappedPath}`);
   }

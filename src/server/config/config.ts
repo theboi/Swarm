@@ -68,10 +68,10 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     totpSecret: required(env, "SWARM_TOTP_SECRET"),
     sessionSecret: required(env, "SWARM_SESSION_SECRET"),
     codexBin: env.SWARM_CODEX_BIN ?? "/Applications/ChatGPT.app/Contents/Resources/codex",
-    repositoryUrl: env.SWARM_REPOSITORY_URL ?? "https://github.com/theboi/EdenMind.git",
+    repositoryUrl: env.SWARM_REPOSITORY_URL ?? "https://github.com/theboi/Swarm.git",
     trustManagedProxy: bool(env.SWARM_TRUST_MANAGED_PROXY, false),
     masterplanPath: env.SWARM_MASTERPLAN_PATH ?? "manifests/mvp3.json",
-    coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd(), "../.."),
+    coordinationRoot: env.SWARM_COORDINATION_ROOT?.trim() || resolve(process.cwd()),
     accountPasswords,
     publicConfig: () => JSON.stringify({ host: config.host, port: config.port, terminalPort: config.terminalPort, timezone: config.timezone, localAccount: config.localAccount }),
   };

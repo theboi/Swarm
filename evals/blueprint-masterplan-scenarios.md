@@ -534,7 +534,7 @@ skill-policy change.
 ### Expected behavior
 
 - **Critical:** Declares the coordinator-only conditional launch-packet mode
-  and uses `workers-masterplan/swarm/templates` as the sole canonical prompt
+  and uses `templates` as the sole canonical prompt
   source instead of reproducing coordinator prompt prose.
 - **Critical:** Keeps a macOS account distinct from a worker and permits
   unlimited chats per account; the default global active-turn concurrency is

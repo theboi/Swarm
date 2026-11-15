@@ -66,8 +66,8 @@ describe("operator tools", () => {
   });
 
   it("loads and evaluates every ordinary and UI-design task in the committed MVP3 projection", async () => {
-    const repositoryRoot = resolve(process.cwd(), "../..");
-    const manifest = await loadManifest(resolve(process.cwd(), "manifests/mvp3.json"), repositoryRoot);
+    const repositoryRoot = resolve(process.cwd(), "edenmind");
+    const manifest = await loadManifest(resolve(repositoryRoot, "workers-masterplan/swarm/manifests/mvp3.json"), repositoryRoot);
     const evidence = await loadBlueprintEvidence(manifest, {
       fetch: async () => "abcdef012345",
       readRemote: async (path) => readFile(resolve(repositoryRoot, path), "utf8").catch((error: NodeJS.ErrnoException) => {
@@ -85,14 +85,14 @@ describe("operator tools", () => {
   });
 
   it("uses the ready manifest only with its explicit fixture authority", async () => {
-    const repositoryRoot = resolve(process.cwd(), "../..");
+    const repositoryRoot = resolve(process.cwd());
     const manifest = await loadManifest(resolve(process.cwd(), "manifests/example-ready.json"), repositoryRoot);
     const evidence = await loadBlueprintEvidence(manifest, {
       fetch: async () => "abcdef012345",
       readRemote: async (path) => readFile(resolve(repositoryRoot, path), "utf8"),
     });
 
-    expect(manifest.masterplanPath).toMatch(/^workers-masterplan\/swarm\/tests\/e2e\/fixtures\//);
+    expect(manifest.masterplanPath).toMatch(/^tests\/e2e\/fixtures\//);
     expect(evaluateTaskReadiness(manifest, evidence).find((task) => task.taskId === "I0")?.state).toBe("ready");
   });
 });

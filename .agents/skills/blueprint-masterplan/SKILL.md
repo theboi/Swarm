@@ -214,7 +214,7 @@ terminal outcome, approved model settings and bounded recovery instructions.
 Use the user's model/effort settings; do not invent new model policy.
 
 Conditional EdenMind swarm packets retain one canonical source under
-workers-masterplan/swarm/templates. The planning packet is coordinator-only:
+templates. The planning packet is coordinator-only:
 the same coordinator writes ALL plans. It must not be launched once per ordinary
 worker. Execution packets consume those plans; UI packets remain conditional
 presentation-only. Preserve runtime isolation and main-only safety when rendering.

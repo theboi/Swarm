@@ -7,10 +7,10 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/Users/claudiothe/Dev/EdenMind/workers-masterplan/swarm/dist-server/server/index.js</string>
+    <string>/Users/claudiothe/Dev/Swarm/dist-server/server/index.js</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/claudiothe/Dev/EdenMind/workers-masterplan/swarm</string>
+  <string>/Users/claudiothe/Dev/Swarm</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key>
@@ -29,8 +29,8 @@
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>/Users/claudiothe/Dev/EdenMind/workers-masterplan/swarm/.data/swarm.stdout.log</string>
+  <string>/Users/claudiothe/Dev/Swarm/.data/swarm.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/claudiothe/Dev/EdenMind/workers-masterplan/swarm/.data/swarm.stderr.log</string>
+  <string>/Users/claudiothe/Dev/Swarm/.data/swarm.stderr.log</string>
 </dict>
 </plist>
