@@ -10,6 +10,8 @@ import { LoginPage } from "./pages/LoginPage.js";
 import { CoordinatorStoreProvider, useCoordinatorStore } from "./store/coordinatorStore.js";
 import { LOCAL_ACCOUNT_ID, type AccountId } from "../shared/contracts.js";
 import { Toast } from "./components/Toast.js";
+import { AppearanceProvider } from "./components/AppearanceProvider";
+import { AppearanceSettings } from "./pages/AppearanceSettings";
 import { filePath, pagePath, parseAppRoute, type AppRoute } from "./navigation.js";
 
 type ChatSelection = { accountId: AccountId; threadId?: string };
@@ -18,6 +20,7 @@ import "./styles.css";
 function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat, selectedChat, onNavigate, onOpenFilePathChange }: { route: AppRoute; api: CoordinatorApi; onOpenAccountChat: (accountId: AccountId) => void; onOpenThread: (threadId: string) => void; onOpenLaunchedChat: (target: ChatTarget) => void; selectedChat: ChatSelection | null; onNavigate: (page: AppPage) => void; onOpenFilePathChange: (path: string | null, accountId?: AccountId) => void }) {
   const { snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const { page } = route;
+  if (page === "settings") return <AppearanceSettings onNavigate={() => onNavigate("settings")} />;
   const title = page === "home" ? "Home" : page === "queued-tasks" ? "Queued tasks" : page === "chats" ? "Chats" : "Accounts";
   if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
   if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ addAccount: api.addAccount, cancelAccountLogin: api.cancelAccountLogin, connectAccount: api.connectAccount, makePrimary: api.makePrimary, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits, startAccountLogin: api.startAccountLogin }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
@@ -88,5 +91,5 @@ function _App({ api }: { api: CoordinatorApi }) {
 import { EdenOverlayProvider } from "@/components/overlay/EdenOverlayProvider";
 
 export function App({ api }: { api: CoordinatorApi }) {
-  return <EdenOverlayProvider><_App api={api} /></EdenOverlayProvider>;
+  return <AppearanceProvider><EdenOverlayProvider><_App api={api} /></EdenOverlayProvider></AppearanceProvider>;
 }

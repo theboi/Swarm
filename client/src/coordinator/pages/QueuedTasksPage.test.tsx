@@ -46,8 +46,13 @@ it("selects lists, edits exact descriptions and changes state through badge choi
   expect(await screen.findByText("Edited description")).toBeVisible();
   expect(api.editQueuedTask).toHaveBeenCalledWith(task.id, " Edited description ");
   await user.click(screen.getByRole("button", { name: "Todo state: Todo" }));
-  await user.click(screen.getByRole("button", { name: "Todo (priority)" }));
+  expect(screen.getByRole("radio", { name: "Todo" })).toHaveAttribute("aria-checked", "true");
+  const priority = screen.getByRole("radio", { name: "Todo (priority)" });
+  expect(priority).toHaveTextContent("Todo (priority)");
+  await user.keyboard("{ArrowDown}{Enter}");
+  await waitFor(() => expect(api.changeQueuedTask).toHaveBeenCalledWith(task.id, { status: "priority" }));
   expect(await screen.findByRole("button", { name: "Todo state: Todo (priority)" })).toBeVisible();
+  expect(screen.queryByRole("dialog", { name: "Todo state" })).not.toBeInTheDocument();
 });
 it("moves todos between lists and deletes through the action menu", async () => {
   const user = userEvent.setup(); fixture(); await selectWork(user);

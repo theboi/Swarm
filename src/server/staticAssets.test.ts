@@ -8,6 +8,20 @@ import request from "supertest";
 import { createDashboardRouter, staticAssetDirectory } from "./staticAssets.js";
 
 describe("staticAssetDirectory", () => {
+  it("serves nested appearance settings HTML before route fragment directories", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "swarm-settings-export-"));
+    try {
+      await mkdir(join(directory, "settings", "appearance"), { recursive: true });
+      await writeFile(join(directory, "settings", "appearance.html"), "<h1>Appearance export</h1>");
+      await writeFile(join(directory, "settings.html"), "<h1>Settings export</h1>");
+      await writeFile(join(directory, "index.html"), "<h1>Root export</h1>");
+      const app = express().use(createDashboardRouter(directory));
+      for (const path of ["/settings/appearance", "/settings/appearance/", "/settings/appearance?theme=light"]) {
+        expect((await request(app).get(path).expect(200)).text).toBe("<h1>Appearance export</h1>");
+      }
+      expect((await request(app).get("/settings").expect(200)).text).toBe("<h1>Settings export</h1>");
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
   it("serves screen HTML before Next's adjacent fragment directories can redirect the URL", async () => {
     const directory = await mkdtemp(join(tmpdir(), "swarm-next-export-"));
     try {

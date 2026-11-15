@@ -1,0 +1,66 @@
+@use "@/app/_theme" as breakpoints;
+
+.navigation {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-block-end: var(--border-width) solid var(--border);
+  background: var(--surface);
+}
+
+.group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+
+  > p {
+    display: none;
+    margin: 0;
+    padding: 0 12px 8px;
+    color: var(--fg-muted);
+    font-size: var(--text-micro);
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+}
+
+.link {
+  display: flex;
+  min-height: var(--control-compact-height);
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  text-decoration: none;
+
+  &[aria-current="page"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 750;
+  }
+
+  &:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+}
+
+@media #{breakpoints.$tablet-and-desktop} {
+  .navigation {
+    flex-direction: column;
+    align-self: stretch;
+    gap: 24px;
+    padding: 20px 12px;
+    border-block-end: 0;
+    border-inline-end: var(--border-width) solid var(--border);
+  }
+
+  .group > p { display: block; }
+  .group { flex-direction: column; gap: 4px; }
+}

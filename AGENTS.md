@@ -5,7 +5,9 @@
 - Run npm commands from the repository root. `client/` is an npm workspace.
 - Swarm code lives in `src/` and `client/`; reusable skills live in `.agents/skills/`.
 - The `edenmind` symlink is a local shared-UI dependency on `../EdenMind`.
-  Do not modify that checkout as part of Swarm work.
+  Make shared Eden component changes in that actual checkout, following its
+  scoped instructions. Navigation chrome is copied and owned by Swarm;
+  do not modify Eden navigation as part of Swarm navigation work.
 - Keep `.env`, `.data`, credential homes, dependency installs and generated builds out of Git.
 - The existing EdenMind Swarm remains live on ports 4310 and 4311. Do not stop,
   restart or replace it, install the LaunchAgent template, or launch this copy

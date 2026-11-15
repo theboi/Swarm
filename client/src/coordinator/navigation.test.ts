@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { filePath, parseAppRoute } from "./navigation.js";
+import { filePath, pagePath, parseAppRoute } from "./navigation.js";
 
 describe("navigation", () => {
+  it("opens appearance settings and canonicalizes the settings entry", () => {
+    expect(pagePath("settings")).toBe("/settings/appearance");
+    expect(parseAppRoute({ pathname: "/settings/appearance", search: "" })).toMatchObject({ page: "settings", canonicalPath: "/settings/appearance" });
+    expect(parseAppRoute({ pathname: "/settings", search: "" })).toMatchObject({ page: "settings", canonicalPath: "/settings/appearance" });
+    expect(parseAppRoute({ pathname: "/settings/appearance/", search: "" })).toMatchObject({ page: "settings", canonicalPath: "/settings/appearance" });
+  });
   it.each([
     ["/home", "", "home"],
     ["/accounts", "", "accounts"],

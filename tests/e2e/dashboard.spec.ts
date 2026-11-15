@@ -32,6 +32,7 @@ test.describe("Home dashboard", () => {
 
       await page.getByRole("link", { name: "Queued tasks" }).click();
       await expect(page.getByRole("region", { name: "Queued tasks" })).toBeVisible();
+      if (viewport.width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("link", { name: "Chats" }).click();
       await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
       await page.getByRole("link", { name: "Home" }).click();

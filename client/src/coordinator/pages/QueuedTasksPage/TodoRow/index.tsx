@@ -26,8 +26,9 @@ export function TodoRow({ task, api, onAction }: { task: QueuedTask; api: Coordi
     </div>
     <div className={styles.actions}>
       <EdenDropdown label="Todo state" hideLabel hideHeader portalled clearable={false} disabled={busy} density="compact"
+        values={[task.status]} onChange={values => { const status = QUEUED_TASK_STATUSES.find(status => status === values[0]); if (status) change(status); }}
         trigger={<EdenButton density="compact" appearance="borderless" isFloating={false} aria-label={`Todo state: ${STATES[task.status].label}`}><EdenBadge tone={STATES[task.status].tone}>{STATES[task.status].label}</EdenBadge><EdenIcon name="chevronDown" size={14} /></EdenButton>}
-        options={[{ selection: "none", items: QUEUED_TASK_STATUSES.map(status => ({ value: status, current: status === task.status, label: <EdenBadge tone={STATES[status].tone}>{STATES[status].label}</EdenBadge>, onSelect: () => change(status) })) }]} />
+        options={[{ selection: "single", items: QUEUED_TASK_STATUSES.map(status => ({ value: status, textValue: STATES[status].label, label: <EdenBadge tone={STATES[status].tone}>{STATES[status].label}</EdenBadge> })) }]} />
       <EdenDropdown label="Todo actions" hideLabel hideHeader align="end" portalled disabled={busy} density="compact"
         trigger={<EdenButton density="compact" appearance="borderless" isFloating={false} aria-label="Todo actions"><EdenIcon name="moreHorizontal" size={18} /></EdenButton>}
         options={[{ selection: "none", items: [

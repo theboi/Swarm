@@ -72,7 +72,7 @@ for (const width of [390, 1440]) {
     expect(page.url()).toBe(listURL);
     await expect(page.getByRole("button", { name: "Edit description" })).toBeVisible();
     await page.getByRole("button", { name: "Todo state: Todo", exact: true }).click();
-    await page.getByRole("button", { name: "Todo (priority)", exact: true }).click();
+    await page.getByRole("radio", { name: "Todo (priority)", exact: true }).click();
     await expect(page.getByRole("button", { name: "Todo state: Todo (priority)" })).toBeVisible();
     await page.getByRole("button", { name: "Edit description" }).click();
     await expect(page.getByRole("textbox", { name: "Description", exact: true })).toBeFocused();
@@ -100,9 +100,9 @@ for (const width of [390, 1440]) {
     if (width < 768) await page.getByRole("button", { name: "Lists", exact: true }).click();
     await page.getByRole("button", { name: destination, exact: true }).click();
     await page.getByRole("button", { name: "Todo state: Todo (priority)" }).click();
-    await page.getByRole("button", { name: "In Progress", exact: true }).click();
+    await page.getByRole("radio", { name: "In Progress", exact: true }).click();
     await page.getByRole("button", { name: "Todo state: In Progress" }).click();
-    await page.getByRole("button", { name: "Complete", exact: true }).click();
+    await page.getByRole("radio", { name: "Complete", exact: true }).click();
     await page.reload();
     await expect(page.getByRole("button", { name: "Todo state: Complete" })).toBeVisible();
     await page.getByRole("button", { name: "Todo actions" }).click();

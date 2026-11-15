@@ -10,6 +10,7 @@ async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
+  if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("link", { name: "Chats", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
 }
@@ -95,6 +96,7 @@ test.describe("Chats", () => {
       else await expect(page.locator(".app-nav")).toBeVisible();
       await composer.blur();
       await page.getByRole("link", { name: "Home", exact: true }).click();
+      if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("link", { name: "Chats", exact: true }).click();
       await page.getByRole("button", { name: "bot3", exact: true }).click();
       await expect(composer).toHaveValue(`Unsent draft at ${width}`);

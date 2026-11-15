@@ -13,6 +13,7 @@ const paths: Record<AppPage, string> = {
   accounts: "/accounts",
   "queued-tasks": "/queued-tasks",
   chats: "/chats",
+  settings: "/settings/appearance",
 };
 
 export function pagePath(page: AppPage): string {
@@ -32,7 +33,7 @@ export function parseAppRoute({ pathname, search }: Pick<Location, "pathname" | 
     : isBotProfileAccountId(requestedAccount) || isMacosBotId(requestedAccount)
       ? requestedAccount
       : null;
-  const page = openFilePath ? "chats" : (Object.entries(paths).find(([, path]) => path === pathname)?.[0] as AppPage | undefined) ?? "home";
+  const page = openFilePath ? "chats" : /^\/settings(?:\/appearance)?\/?$/.test(pathname) ? "settings" : (Object.entries(paths).find(([, path]) => path === pathname)?.[0] as AppPage | undefined) ?? "home";
   const canonicalPath = openFilePath ? filePath(openFilePath, fileAccountId) : page === "queued-tasks" && params.get("list") ? `/queued-tasks?${new URLSearchParams({ list: params.get("list")! })}` : pagePath(page);
   return { page, openFilePath, fileAccountId, canonicalPath };
 }
