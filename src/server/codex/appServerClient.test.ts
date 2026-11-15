@@ -442,6 +442,15 @@ describe("AppServerClient", () => {
     await client.close();
   });
 
+  it("lists local chats across workspaces after the coordinator moves", async () => {
+    const client = await readyClient({ account: "claudiothe", workspaceRoot: "/Users/claudiothe/Dev/Swarm" });
+    await client.listAllThreads();
+    const requests = server!.received.filter((message) => message.method === "thread/list");
+    expect(requests).toHaveLength(2);
+    for (const request of requests) expect(request.params).not.toHaveProperty("cwd");
+    await client.close();
+  });
+
   it("uses the configured coordinator workspace for claudiothe rather than a bot clone", async () => {
     const localWorkspace = "/Users/claudiothe/Dev/EdenMind";
     const client = await readyClient({ account: "claudiothe", workspaceRoot: localWorkspace });

@@ -1,6 +1,7 @@
 import {
   isBotProfileAccountId,
   isMacosBotId,
+  LOCAL_ACCOUNT_ID,
   type AccountId,
   type BotProfileAccountId,
   type ChatExecutionSettings,
@@ -196,7 +197,7 @@ export class AppServerClient {
       const page: { data: Array<Record<string, unknown>>; nextCursor: string | null } = await this.rpc.request("thread/list", {
         archived: null,
         cursor,
-        cwd,
+        ...(this.account === LOCAL_ACCOUNT_ID ? {} : { cwd }),
         limit: 100,
         sortDirection: "desc",
         sortKey: "updated_at",

@@ -427,9 +427,27 @@ async function createRuntime(config: SwarmConfig) {
     const current = threadCache.get(thread.accountId) ?? [];
     cacheThreads(thread.accountId, [thread, ...current.filter((candidate) => candidate.id !== thread.id)]);
   };
+  const privateActivityWorkerPath = fileURLToPath(new URL("./codex/privateActivityWorker.js", import.meta.url));
   const threads = async (id: AccountId): Promise<ThreadSummary[]> => {
     const listed = (await (await liveClient(id)).listAllThreads()).map((thread) => asThread(id, thread, projectWorkspaceFor(id)));
-    const recovered = await Promise.all(listed.map((thread) => recoverThreadActivity(thread, rolloutReaders.get(id)!)));
+    const slot = slotFor(id);
+    let activityReader: Parameters<typeof recoverThreadActivity>[1] = rolloutReaders.get(id)!;
+    if (slot && listed.length) {
+      const password = config.accountPasswords[slot.macosUser];
+      if (password) {
+        try {
+          const activity = object(await runBotPtyJsonResultWorker(slot.macosUser, password, privateActivityWorkerPath, { codexHome: slot.codexHome, threadIds: listed.map((thread) => thread.id) }));
+          activityReader = { readRecentActivity: async (threadId) => {
+            const entry = object(activity[threadId]);
+            if (entry.activity !== "active" && entry.activity !== "idle") return undefined;
+            return { activity: entry.activity, ...(typeof entry.turnId === "string" ? { turnId: entry.turnId } : {}), ...(entry.terminal === true ? { terminal: true } : {}) };
+          } };
+        } catch (error) {
+          logger.warn("activity", { event: "private_activity_read_failed", account: id, error: error instanceof Error ? error.message : "failed" });
+        }
+      }
+    }
+    const recovered = await Promise.all(listed.map((thread) => recoverThreadActivity(thread, activityReader)));
     return cacheThreads(id, recovered);
   };
   const refreshAllRateLimits = async () => {
