@@ -117,6 +117,8 @@ export class AppServerClient {
   accountInfo: AccountReadResult | undefined;
   private transcript = initialTranscriptState;
   private readonly trackedThreadIds = new Set<string>();
+  private readonly transcriptReadAt = new Map<string, number>();
+  private readonly transcriptReads = new Map<string, Promise<void>>();
   private readonly unloadedThreadIds = new Set<string>();
   private readonly turnSettingsByThread = new Map<string, ChatExecutionSettings>();
   private readonly eventListeners = new Set<(event: NormalizedAppServerEvent) => void>();
@@ -231,13 +233,23 @@ export class AppServerClient {
     }
     this.trackedThreadIds.add(threadId);
     this.hydrateThreadRead(threadId, response);
+    this.transcriptReadAt.set(threadId, Date.now());
     return response;
   }
 
   async readTranscript(threadId: string) {
     const scope = { accountId: this.account, threadId };
-    if (!this.trackedThreadIds.has(threadId) || transcriptRecoveryState(this.transcript, scope) !== "complete") {
-      await this.readThread(threadId, { includeTurns: true });
+    // Hydration completeness says nothing about messages written through another
+    // Codex connection. Periodically reconcile while retaining short-lived live
+    // deltas between canonical reads.
+    const stale = Date.now() - (this.transcriptReadAt.get(threadId) ?? -Infinity) >= 5_000;
+    const pending = this.transcriptReads.get(threadId);
+    if (pending) await pending;
+    else if (stale || !this.trackedThreadIds.has(threadId) || transcriptRecoveryState(this.transcript, scope) !== "complete") {
+      const read = this.readThread(threadId, { includeTurns: true }).then(() => undefined)
+        .finally(() => this.transcriptReads.delete(threadId));
+      this.transcriptReads.set(threadId, read);
+      await read;
     }
     return this.transcriptSnapshot().items.filter((item) => item.threadId === threadId);
   }

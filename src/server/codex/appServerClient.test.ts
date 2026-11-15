@@ -30,6 +30,7 @@ afterEach(async () => {
   server = undefined;
   approvalJournal = undefined;
   threadHistory = fullThreadHistory();
+  vi.restoreAllMocks();
 });
 
 function safeThreadEcho(overrides: Record<string, unknown> = {}) {
@@ -121,6 +122,45 @@ describe("AppServerClient", () => {
       expect.objectContaining({ id: "item-1" }),
       expect.objectContaining({ id: "item-2", payload: expect.objectContaining({ text: "live update" }) }),
     ]));
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(1);
+    await client.close();
+  });
+
+  it("refreshes hydrated history after its freshness window even without live events", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const client = await readyClient();
+    await client.readTranscript("thread-1");
+    threadHistory = [{ id: "turn-1", startedAt: 10, status: "completed", itemsView: "full", items: [
+      { type: "agentMessage", id: "item-1", text: "hello" },
+      { type: "agentMessage", id: "item-final", text: "Final answer from another connection" },
+    ] }];
+    clock.mockReturnValue(now + 5_000);
+    await expect(client.readTranscript("thread-1")).resolves.toContainEqual(expect.objectContaining({ id: "item-final", turnStatus: "completed" }));
+    expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(2);
+    await client.close();
+  });
+
+  it("retains cached content after a failed refresh and retries the next request", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const fallback = vi.fn()
+      .mockResolvedValueOnce({ thread: { id: "thread-1", turns: fullThreadHistory() } })
+      .mockRejectedValueOnce(new Error("rollout temporarily unavailable"))
+      .mockResolvedValueOnce({ thread: { id: "thread-1", turns: [{ id: "turn-1", startedAt: 10, itemsView: "full", items: [{ type: "agentMessage", id: "item-final", text: "Recovered ending" }] }] } });
+    const client = await readyClient({ threadReadError: "active writer", readLockedThread: fallback });
+    await client.readTranscript("thread-1");
+    clock.mockReturnValue(now + 5_000);
+    await expect(client.readTranscript("thread-1")).rejects.toThrow("active writer");
+    expect(client.transcriptSnapshot().items).toContainEqual(expect.objectContaining({ id: "item-1" }));
+    await expect(client.readTranscript("thread-1")).resolves.toContainEqual(expect.objectContaining({ id: "item-final" }));
+    expect(fallback).toHaveBeenCalledTimes(3);
+    await client.close();
+  });
+
+  it("shares one canonical read across simultaneous transcript refreshes", async () => {
+    const client = await readyClient();
+    await Promise.all([client.readTranscript("thread-1"), client.readTranscript("thread-1")]);
     expect(server!.received.filter((message) => message.method === "thread/read")).toHaveLength(1);
     await client.close();
   });
