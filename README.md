@@ -174,9 +174,10 @@ npm run profiles:migrate -- --bot bot1 --dry-run
 Do not run `--apply`, sign in, or test Desktop until a new explicit canary
 authorization has been recorded. `bot2` through `bot8` are outside that canary.
 
-The dashboard uses a plain queued task list. Each todo stores a title, prompt,
-and completion state in `manifests/queued-tasks.json`. Tasks are not assigned
-to accounts automatically.
+The dashboard groups queued todos into lists. Each todo stores its exact description,
+creation date and state (Todo, Todo (priority), In Progress, Complete) in Git-tracked
+`manifests/queued-tasks.json`. Tasks are not assigned to accounts automatically.
+Send to... starts a new chat with the description verbatim; states remain manual.
 
 ## Run and verify
 
@@ -221,8 +222,9 @@ multiple chats subject only to that account's own Codex usage limits.
 
 - `/home` shows account usage and pending approvals.
 - `/accounts` shows connection, authentication, Git, and usage state.
-- `/queued-tasks` shows a plain todo list with title, prompt, and completion checkbox.
-  Todos are saved atomically to `manifests/queued-tasks.json` and survive restarts.
+- `/queued-tasks` shows Lists; `/queued-tasks?list=<id>` opens one list’s todos.
+  Descriptions, creation dates and states are saved atomically to the Git-tracked
+  `manifests/queued-tasks.json` and survive restarts. Mobile uses list/detail navigation.
 - `/chats` is the multi-account chat workspace.
 - `/chats?open=docs/path/file.md` opens a repository Markdown file in the
   Chats reader; the file path is URL encoded in links.

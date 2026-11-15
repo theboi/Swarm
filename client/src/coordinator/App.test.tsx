@@ -16,10 +16,12 @@ Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value:
 
 const api: CoordinatorApi = {
   listQueuedTasks: async () => ({ data: [] }),
-  addQueuedTask: async () => ({ data: [] }),
-  editQueuedTask: async () => ({ data: [] }),
-  deleteQueuedTask: async () => ({ data: [] }),
-  completeQueuedTask: async () => ({ data: [] }),
+  listQueuedTaskLists: async () => ({ data: [] }),
+  createQueuedTaskList: async (name) => ({ data: { id: "work", name, createdAt: "2026-11-15T10:00:00Z" } }),
+  addQueuedTask: async (listId, description) => ({ data: { id: "todo-1", listId, description, createdAt: "2026-11-15T10:00:00Z", status: "todo" } }),
+  editQueuedTask: async (id, description) => ({ data: { id, listId: "work", description, createdAt: "2026-11-15T10:00:00Z", status: "todo" } }),
+  deleteQueuedTask: async (id) => ({ data: { id } }),
+  changeQueuedTask: async (id, input) => ({ data: { id, listId: "work", description: "Description", createdAt: "2026-11-15T10:00:00Z", status: "todo", ...input } }),
   getSession: async () => ({ authenticated: true }),
   getSnapshot: async () => snapshot,
   setAutoPilot: async () => ({ data: { enabled: false } }),
@@ -108,19 +110,11 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/queued-tasks");
   });
 
-  it("adds a todo with its title and prompt", async () => {
-    const user = userEvent.setup();
-    const task = { id: "todo-1", title: "Fix login", prompt: "Investigate the login error", completed: false };
-    const addQueuedTask = vi.fn(async () => ({ data: [task] }));
-    render(<App api={{ ...api, addQueuedTask }} />);
-    await user.click(await screen.findByRole("link", { name: "Queued tasks" }));
-    await screen.findByText("No queued tasks yet.");
-    await user.type(screen.getByLabelText("Title"), task.title);
-    await user.type(screen.getByLabelText("Prompt"), task.prompt);
-    await user.click(screen.getByRole("button", { name: "Add todo" }));
-    expect(addQueuedTask).toHaveBeenCalledWith(task.title, task.prompt);
-    expect(await screen.findByText(task.title)).toBeVisible();
-    expect(screen.getByText(task.prompt)).toBeVisible();
+  it("preserves a selected todo list through canonical route initialization", async () => {
+    window.history.replaceState(null, "", "/queued-tasks?list=work");
+    render(<App api={{ ...api, listQueuedTaskLists: async () => ({ data: [{ id: "work", name: "Work", createdAt: "2026-11-15T10:00:00Z" }] }) }} />);
+    expect(await screen.findByRole("button", { name: "Add todo" })).toBeVisible();
+    expect(window.location.search).toBe("?list=work");
   });
 
   it("uses popstate to restore a prior canonical page", async () => {

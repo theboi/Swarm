@@ -1,3 +1,4 @@
+import { createQueuedTaskRouter } from "./queuedTaskRoutes.js";
 import { resolve } from "node:path";
 import { QueuedTasks } from "../tasks/queuedTasks.js";
 import { randomUUID } from "node:crypto";
@@ -203,35 +204,7 @@ export function createApiRouter(services: CoordinatorRouteServices) {
   }));
   router.get("/snapshot", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.snapshot())));
   router.get("/health", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await services.health())));
-  router.get("/queued-tasks", requireSession(services.sessions), asyncRoute(async (_request, response) => sendData(response, await queuedTasks.list())));
-  router.post("/queued-tasks", ...securedMutation, asyncRoute(async (request, response) => {
-    const { title, prompt } = record(request.body);
-    if (typeof title !== "string" || !title.trim() || title.length > 200 || typeof prompt !== "string" || !prompt.trim() || prompt.length > 32000) {
-      apiError(response, 400, "INVALID_REQUEST", "A title (up to 200 characters) and prompt (up to 32000 characters) are required"); return;
-    }
-    sendData(response, await queuedTasks.add(title, prompt));
-  }));
-  router.put("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
-    const { title, prompt } = record(request.body);
-    if (typeof title !== "string" || !title.trim() || title.length > 200 || typeof prompt !== "string" || !prompt.trim() || prompt.length > 32000) {
-      apiError(response, 400, "INVALID_REQUEST", "A title (up to 200 characters) and prompt (up to 32000 characters) are required"); return;
-    }
-    const id = param(request.params.id);
-    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
-    sendData(response, await queuedTasks.edit(id, title, prompt));
-  }));
-  router.delete("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
-    const id = param(request.params.id);
-    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
-    sendData(response, await queuedTasks.remove(id));
-  }));
-  router.patch("/queued-tasks/:id", ...securedMutation, asyncRoute(async (request, response) => {
-    const { completed } = record(request.body);
-    if (typeof completed !== "boolean") { apiError(response, 400, "INVALID_REQUEST", "Completed must be a boolean"); return; }
-    const id = param(request.params.id);
-    if (!(await queuedTasks.list()).some(task => task.id === id)) { apiError(response, 404, "NOT_FOUND", "Queued task not found"); return; }
-    sendData(response, await queuedTasks.complete(id, completed));
-  }));
+  router.use(createQueuedTaskRouter(queuedTasks, [requireSession(services.sessions)], securedMutation));
 
   router.post("/accounts/rate-limits/refresh", ...securedMutation, asyncRoute(async (_request, response) => sendData(response, await services.refreshAllRateLimits())));
   router.post("/accounts/:account/primary", ...securedMutation, asyncRoute(async (request, response) => {

@@ -168,10 +168,10 @@ it("uses JSON for todo deletion and preserves a retry message ID when sending", 
   const fetch = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { headers: { "content-type": "application/json" } }));
   vi.stubGlobal("fetch", fetch);
   const api = createHttpCoordinatorApi();
-  await api.editQueuedTask("todo/1", "Title", "Prompt");
+  await api.editQueuedTask("todo/1", " Exact description\n");
   await api.deleteQueuedTask("todo/1");
   await api.startTurn("bot3/acc1", "new-chat", "Prompt", undefined, "stable-message-id");
-  expect(fetch).toHaveBeenCalledWith("/api/v1/queued-tasks/todo%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ title: "Title", prompt: "Prompt" }) }));
+  expect(fetch).toHaveBeenCalledWith("/api/v1/queued-tasks/todo%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ description: " Exact description\n" }) }));
   expect(fetch).toHaveBeenCalledWith("/api/v1/queued-tasks/todo%2F1", expect.objectContaining({ method: "DELETE", body: "{}" }));
   expect(fetch).toHaveBeenCalledWith("/api/v1/accounts/bot3%2Facc1/threads/new-chat/turns", expect.objectContaining({ body: JSON.stringify({ text: "Prompt", clientUserMessageId: "stable-message-id" }) }));
 });

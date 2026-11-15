@@ -287,20 +287,6 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 
-.queued-tasks-page { max-inline-size: 860px; }
-.queued-task-form { display: grid; gap: 8px; margin-block: 24px; }
-.queued-task-form button { justify-self: start; margin-block-start: 8px; }
-.queued-task-list { display: grid; gap: 24px; padding: 0; list-style: none; }
-.queued-task-title { display: flex; align-items: center; gap: 12px; min-block-size: 44px; overflow-wrap: anywhere; }
-.queued-task-title input { width: 20px; height: 20px; }
-.queued-task-list p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
-.queued-task-header { display: flex; align-items: start; flex-wrap: wrap; gap: 16px; }
-.queued-task-header > .queued-task-title { flex: 1; min-inline-size: min(100%, 160px); }
-.queued-task-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.queued-task-actions .primary-button { margin: 0; }
-.queued-task-send { display: grid; gap: 8px; margin-block-start: 16px; }
-.queued-task-send select { inline-size: 100%; min-block-size: 44px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); padding: 8px 12px; }
-
 /* Page composition; shared Eden primitives own control and card surfaces. */
 .subagent-content { display: grid; grid-template-rows: auto minmax(160px, 1fr) auto; min-block-size: 0; block-size: min(680px, calc(100dvh - 180px)); }
 .app-shell { font-family: var(--ui-font); }
@@ -318,7 +304,6 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 .account-summary-row { border: 0; background: transparent; padding: 0; }
 .account-summary-row__button { padding: 12px; border-radius: var(--radius-sm); }
 .account-summary-row__button:hover { background: var(--surface-2); }
-.queued-task-list > li { padding: 20px; }
 .chat-compose { gap: 12px; padding: 16px; }
 .chat-compose__field { border-radius: 0; padding: 0; }
 .chat-compose__settings-grid { gap: 12px; }

@@ -1,4 +1,4 @@
-import type { QueuedTask } from "../shared/queuedTasks.js";
+import type { QueuedTask, QueuedTaskList, QueuedTaskStatus } from "../shared/queuedTasks.js";
 import type {
   ApiResult,
   AccountSnapshot,
@@ -35,11 +35,13 @@ export interface ProfileLoginResponse {
 }
 
 export interface CoordinatorApi {
-  listQueuedTasks(): Promise<ApiResult<QueuedTask[]>>;
-  addQueuedTask(title: string, prompt: string): Promise<ApiResult<QueuedTask[]>>;
-  editQueuedTask(id: string, title: string, prompt: string): Promise<ApiResult<QueuedTask[]>>;
-  deleteQueuedTask(id: string): Promise<ApiResult<QueuedTask[]>>;
-  completeQueuedTask(id: string, completed: boolean): Promise<ApiResult<QueuedTask[]>>;
+  listQueuedTaskLists(): Promise<ApiResult<QueuedTaskList[]>>;
+  createQueuedTaskList(name: string): Promise<ApiResult<QueuedTaskList>>;
+  listQueuedTasks(listId: string): Promise<ApiResult<QueuedTask[]>>;
+  addQueuedTask(listId: string, description: string): Promise<ApiResult<QueuedTask>>;
+  editQueuedTask(id: string, description: string): Promise<ApiResult<QueuedTask>>;
+  deleteQueuedTask(id: string): Promise<ApiResult<{ id: string }>>;
+  changeQueuedTask(id: string, input: { status?: QueuedTaskStatus; listId?: string }): Promise<ApiResult<QueuedTask>>;
   getSession(): Promise<SessionState>;
   getSnapshot(): Promise<CoordinatorSnapshot>;
   setAutoPilot(enabled: boolean): Promise<ApiResult<AutoPilotState>>;
@@ -130,11 +132,13 @@ export function createHttpCoordinatorApi(): CoordinatorApi {
     return result;
   };
   return {
-    listQueuedTasks: () => request<QueuedTask[]>("/queued-tasks"),
-    addQueuedTask: (title, prompt) => request<QueuedTask[]>("/queued-tasks", { method: "POST", body: JSON.stringify({ title, prompt }) }),
-    editQueuedTask: (id, title, prompt) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ title, prompt }) }),
-    deleteQueuedTask: (id) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({}) }),
-    completeQueuedTask: (id, completed) => request<QueuedTask[]>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    listQueuedTaskLists: () => request<QueuedTaskList[]>("/queued-task-lists"),
+    createQueuedTaskList: (name) => request<QueuedTaskList>("/queued-task-lists", { method: "POST", body: JSON.stringify({ name }) }),
+    listQueuedTasks: (listId) => request<QueuedTask[]>(`/queued-tasks?listId=${encodeURIComponent(listId)}`),
+    addQueuedTask: (listId, description) => request<QueuedTask>("/queued-tasks", { method: "POST", body: JSON.stringify({ listId, description }) }),
+    editQueuedTask: (id, description) => request<QueuedTask>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ description }) }),
+    deleteQueuedTask: (id) => request<{ id: string }>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({}) }),
+    changeQueuedTask: (id, input) => request<QueuedTask>(`/queued-tasks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) }),
     getSession: () => read<SessionState>("/auth/session"),
     getSnapshot: () => read<CoordinatorSnapshot>("/snapshot"),
     setAutoPilot: (enabled) => request<AutoPilotState>("/auto-pilot", { method: "POST", body: JSON.stringify({ enabled }) }),

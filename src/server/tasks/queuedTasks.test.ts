@@ -1,38 +1,57 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { QueuedTasks } from "./queuedTasks.js";
 
-describe("QueuedTasks", () => {
-  it("persists concurrent additions and completion across reloads", async () => {
-    const path = join(await mkdtemp(join(tmpdir(), "swarm-queue-")), "tasks.json");
-    const queue = new QueuedTasks(path);
-    expect(await queue.list()).toEqual([]);
-    await Promise.all([queue.add(" First ", "Prompt one"), queue.add("Second", "Prompt two")]);
-    const tasks = await new QueuedTasks(path).list();
-    expect(tasks.map(task => task.title)).toEqual(["First", "Second"]);
-    await queue.complete(tasks[0].id, true);
-    expect((await new QueuedTasks(path).list())[0].completed).toBe(true);
-    expect(JSON.parse(await readFile(path, "utf8")).schemaVersion).toBe(1);
-  });
-  it("rejects empty titles and prompts without writing", async () => {
-    const queue = new QueuedTasks(join(await mkdtemp(join(tmpdir(), "swarm-queue-")), "tasks.json"));
-    await expect(queue.add(" ", "prompt")).rejects.toThrow();
-    await expect(queue.add("Title", " ")).rejects.toThrow();
-    expect(await queue.list()).toEqual([]);
-  });
-});
-
-it("edits and deletes a todo durably without changing other todos", async () => {
+async function fixture() {
   const path = join(await mkdtemp(join(tmpdir(), "swarm-queue-")), "tasks.json");
-  const queue = new QueuedTasks(path);
-  await queue.add("First", "Original prompt");
-  const tasks = await queue.add("Second", "Keep this prompt");
-  await queue.edit(tasks[0].id, " Updated ", " Updated prompt ");
-  expect((await new QueuedTasks(path).list())[0]).toEqual({ ...tasks[0], title: "Updated", prompt: "Updated prompt" });
-  await queue.remove(tasks[0].id);
-  expect(await new QueuedTasks(path).list()).toEqual([tasks[1]]);
-  await expect(queue.edit(tasks[1].id, " ", "Prompt")).rejects.toThrow();
-  await expect(queue.remove("missing")).rejects.toThrow();
+  return { path, queue: new QueuedTasks(path) };
+}
+it("persists lists and concurrent description-only todos with stable creation dates", async () => {
+  const { path, queue } = await fixture();
+  expect(await queue.lists()).toEqual([]);
+  const list = await queue.createList(" Work ");
+  const other = await queue.createList("Personal");
+  const [first, second] = await Promise.all([queue.add(list.id, "  Exact\n description.\n"), queue.add(list.id, "Second")]);
+  const reloaded = new QueuedTasks(path);
+  expect(await reloaded.lists()).toEqual([{ ...list, name: "Work" }, other]);
+  expect(await reloaded.list(list.id)).toEqual([first, second]);
+  expect(first).toEqual({ id: expect.any(String), listId: list.id, description: "  Exact\n description.\n", createdAt: expect.any(String), status: "todo" });
+  expect(Number.isFinite(Date.parse(first.createdAt))).toBe(true);
+  expect(await reloaded.list(other.id)).toEqual([]);
+  expect(JSON.parse(await readFile(path, "utf8")).schemaVersion).toBe(2);
+});
+it("edits, changes state, moves and deletes without changing creation time or other todos", async () => {
+  const { path, queue } = await fixture();
+  const source = await queue.createList("Source");
+  const target = await queue.createList("Target");
+  const task = await queue.add(source.id, "Original");
+  const untouched = await queue.add(source.id, "Untouched");
+  await queue.edit(task.id, " Edited\n");
+  for (const status of ["priority", "in-progress", "complete", "todo"] as const) {
+    expect((await queue.change(task.id, { status })).status).toBe(status);
+  }
+  await queue.change(task.id, { listId: target.id });
+  expect(await queue.list(source.id)).toEqual([untouched]);
+  expect(await new QueuedTasks(path).list(target.id)).toEqual([{ ...task, description: " Edited\n", listId: target.id }]);
+  await queue.remove(task.id);
+  expect(await new QueuedTasks(path).list(target.id)).toEqual([]);
+});
+it("rejects invalid commands without poisoning subsequent mutations", async () => {
+  const { queue } = await fixture();
+  await expect(queue.createList(" ")).rejects.toThrow();
+  const list = await queue.createList("Work");
+  await expect(queue.add(list.id, " ")).rejects.toThrow();
+  await expect(queue.add(list.id, "a".repeat(32001))).rejects.toThrow();
+  await expect(queue.add("missing", "Text")).rejects.toThrow("List not found");
+  const task = await queue.add(list.id, "Text");
+  await expect(queue.change(task.id, { listId: "missing" })).rejects.toThrow("List not found");
+  await expect(queue.change(task.id, { status: "invalid" as "todo" })).rejects.toThrow();
+  await expect(queue.edit(task.id, " ")).rejects.toThrow();
+  await expect(queue.remove("missing")).rejects.toThrow("Todo not found");
+  await expect(queue.list("missing")).rejects.toThrow("List not found");
+  expect(await queue.list(list.id)).toEqual([task]);
+  await queue.remove(task.id);
+  expect(await queue.list(list.id)).toEqual([]);
 });

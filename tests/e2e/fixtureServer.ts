@@ -1,3 +1,4 @@
+import { createQueuedTaskRouter } from "../../src/server/http/queuedTaskRoutes.js";
 import { QueuedTasks } from "../../src/server/tasks/queuedTasks.js";
 import { createDashboardRouter } from "../../src/server/staticAssets.js";
 import { tmpdir } from "node:os";
@@ -234,11 +235,7 @@ function attachFixtureApi(app: Express, state: FixtureState): void {
   });
 
   app.use("/api/v1", (request, response, next) => requireFixtureSession(request, response) ? next() : undefined);
-  app.get("/api/v1/queued-tasks", async (_request, response) => sendData(response, await queue.list()));
-  app.post("/api/v1/queued-tasks", async (request, response) => sendData(response, await queue.add(request.body.title, request.body.prompt)));
-  app.put("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.edit(request.params.id, request.body.title, request.body.prompt)));
-  app.delete("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.remove(request.params.id)));
-  app.patch("/api/v1/queued-tasks/:id", async (request, response) => sendData(response, await queue.complete(request.params.id, request.body.completed)));
+  app.use("/api/v1", createQueuedTaskRouter(queue, [], []));
   app.get("/api/v1/snapshot", (_request, response) => sendData(response, state.snapshot));
   app.post("/api/v1/accounts/rate-limits/refresh", (_request, response) => sendData(response, state.snapshot.accounts));
   app.post("/api/v1/accounts/:accountId/primary", (request, response) => {

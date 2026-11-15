@@ -1,0 +1,10 @@
+.row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px 24px; padding-block: 20px; border-block-end: 1px solid var(--border); min-inline-size: 0; }
+.content { flex: 1; min-inline-size: min(100%, 240px); display: grid; gap: 8px; }
+.descriptionText { min-inline-size: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 400; font-size: var(--text-body); line-height: 1.6; }
+.date { color: var(--fg-muted); font-size: var(--text-meta); }
+.actions { display: flex; align-items: center; gap: 4px; }
+.error { flex-basis: 100%; }
+@media (max-width: 767px) {
+  .content { flex-basis: 100%; }
+  .actions { margin-inline-start: auto; }
+}

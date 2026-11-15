@@ -1,5 +1,5 @@
 import express from "express";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { QueuedTasks } from "../tasks/queuedTasks.js";
@@ -17,13 +17,13 @@ const health: HealthSnapshot = {
 };
 const snapshot: CoordinatorSnapshot = { generatedAt: 1, autoPilot: { enabled: false }, accounts: [], tasks: [], dispatches: [], threads: [], pendingApprovals: [], health };
 
-async function fixture() {
+async function fixture(queuePath?: string) {
   const passwordHash = await createPasswordHash("correct password", "route-test-salt");
   const sessionStore = new SessionStore("session-secret");
   const openTerminal = vi.fn(async () => undefined);
   const origins = new Set(["http://127.0.0.1:4310", "http://localhost:4310"]);
   const services: CoordinatorRouteServices = {
-    queuedTasks: new QueuedTasks(join(await mkdtemp(join(tmpdir(), "swarm-route-")), "tasks.json")),
+    queuedTasks: new QueuedTasks(queuePath ?? join(await mkdtemp(join(tmpdir(), "swarm-route-")), "tasks.json")),
     config: { loginEmail: "claudio@example.test", loginPasswordHash: passwordHash, trustManagedProxy: false, host: "127.0.0.1", port: 4310, terminalPort: 4311 },
     sessions: sessionStore,
     throttle: new LoginThrottle(),
@@ -64,6 +64,14 @@ async function fixture() {
 }
 
 describe("coordinator HTTP routes", () => {
+  it("returns a safe JSON error when queued task storage cannot be read", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), "swarm-route-")), "tasks.json");
+    await writeFile(path, '{"schemaVersion":1}');
+    const { app, services } = await fixture(path);
+    const session = await services.sessions.createSession("claudio@example.test");
+    const result = await request(app).get("/api/v1/queued-task-lists").set("Cookie", `swarm_session=${session}`).expect(500);
+    expect(result.body).toEqual({ error: { code: "OPERATION_FAILED", message: "Unable to access queued tasks. Try again." } });
+  });
   it("never accepts autonomous dispatch provenance from the browser", async () => {
     const { app, services } = await fixture();
     const session = await services.sessions.createSession("claudio@example.test");
@@ -72,40 +80,38 @@ describe("coordinator HTTP routes", () => {
       .send({ accountId: "bot1", origin: "auto_pilot" }).expect(404);
     expect(services.launch).not.toHaveBeenCalled();
   });
-  it("authenticates, validates and persists the plain todo list", async () => {
-    const { app, services } = await fixture();
-    const origin = "http://127.0.0.1:4310";
-    await request(app).get("/api/v1/queued-tasks").expect(401);
-    await request(app).post("/api/v1/queued-tasks").set("origin", origin).send({ title: "Title", prompt: "Prompt" }).expect(401);
-    const session = await services.sessions.createSession("claudio@example.test");
-    const cookie = `swarm_session=${session}`;
-    await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", "https://wrong.test").send({ title: "Title", prompt: "Prompt" }).expect(403);
-    await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: " ", prompt: "Prompt" }).expect(400);
-    const added = await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: "Title", prompt: "Prompt" }).expect(200);
-    const id = added.body.data[0].id;
-    await request(app).patch(`/api/v1/queued-tasks/${id}`).set("Cookie", cookie).set("origin", origin).send({ completed: true }).expect(200);
-    const loaded = await request(app).get("/api/v1/queued-tasks").set("Cookie", cookie).expect(200);
-    expect(loaded.body.data).toEqual([{ id, title: "Title", prompt: "Prompt", completed: true }]);
-    await request(app).patch("/api/v1/queued-tasks/missing").set("Cookie", cookie).set("origin", origin).send({ completed: true }).expect(404);
-  });
-
-  it("protects todo editing and deletion and persists the result", async () => {
+  it("authenticates lists and preserves scoped description-only todos", async () => {
     const { app, services } = await fixture();
     const origin = "http://127.0.0.1:4310";
     const session = await services.sessions.createSession("claudio@example.test");
     const cookie = `swarm_session=${session}`;
-    const added = await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ title: "Original", prompt: "Prompt" });
-    const path = `/api/v1/queued-tasks/${added.body.data[0].id}`;
-    await request(app).put(path).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(401);
-    await request(app).delete(path).set("origin", origin).send({}).expect(401);
-    await request(app).put(path).set("Cookie", cookie).set("origin", "https://wrong.test").send({ title: "Edited", prompt: "New prompt" }).expect(403);
+    await request(app).get("/api/v1/queued-task-lists").expect(401);
+    await request(app).post("/api/v1/queued-task-lists").set("origin", origin).send({ name: "Work" }).expect(401);
+    await request(app).post("/api/v1/queued-task-lists").set("Cookie", cookie).set("origin", "https://wrong.test").send({ name: "Work" }).expect(403);
+    const list = (await request(app).post("/api/v1/queued-task-lists").set("Cookie", cookie).set("origin", origin).send({ name: "Work" }).expect(200)).body.data;
+    const other = (await request(app).post("/api/v1/queued-task-lists").set("Cookie", cookie).set("origin", origin).send({ name: "Other" }).expect(200)).body.data;
+    const description = "  Exact description.\n";
+    const task = (await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send({ listId: list.id, description }).expect(200)).body.data;
+    expect(task).toEqual({ id: expect.any(String), listId: list.id, description, createdAt: expect.any(String), status: "todo" });
+    const path = `/api/v1/queued-tasks/${task.id}`;
+    await request(app).get("/api/v1/queued-tasks").set("Cookie", cookie).expect(400);
+    await request(app).get("/api/v1/queued-tasks?listId=missing").set("Cookie", cookie).expect(404);
+    for (const body of [{ title: "No", prompt: "No" }, { listId: list.id, description: " " }, { listId: list.id, description, title: "No" }]) {
+      const invalid = await request(app).post("/api/v1/queued-tasks").set("Cookie", cookie).set("origin", origin).send(body).expect(400);
+      expect(invalid.body).toMatchObject({ error: { code: "INVALID_REQUEST", message: expect.any(String) } });
+    }
+    await request(app).put(path).set("origin", origin).send({ description: "Edited" }).expect(401);
     await request(app).delete(path).set("Cookie", cookie).set("origin", "https://wrong.test").send({}).expect(403);
-    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: " ", prompt: "New prompt" }).expect(400);
-    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(200);
-    expect((await request(app).get("/api/v1/queued-tasks").set("Cookie", cookie)).body.data[0]).toMatchObject({ title: "Edited", prompt: "New prompt", completed: false });
-    await request(app).delete(path).set("Cookie", cookie).set("origin", origin).send({}).expect(200, { data: [] });
+    await request(app).patch(path).set("Cookie", cookie).set("origin", origin).send({ status: "bogus" }).expect(400);
+    await request(app).patch(path).set("Cookie", cookie).set("origin", origin).send({ listId: "missing" }).expect(404);
+    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ description: " Edited\n" }).expect(200);
+    await request(app).patch(path).set("Cookie", cookie).set("origin", origin).send({ status: "priority" }).expect(200);
+    await request(app).patch(path).set("Cookie", cookie).set("origin", origin).send({ listId: other.id }).expect(200);
+    expect((await request(app).get(`/api/v1/queued-tasks?listId=${list.id}`).set("Cookie", cookie)).body.data).toEqual([]);
+    expect((await request(app).get(`/api/v1/queued-tasks?listId=${other.id}`).set("Cookie", cookie)).body.data).toEqual([{ ...task, description: " Edited\n", listId: other.id, status: "priority" }]);
+    await request(app).delete(path).set("Cookie", cookie).set("origin", origin).send({}).expect(200, { data: { id: task.id } });
     await request(app).delete(path).set("Cookie", cookie).set("origin", origin).send({}).expect(404);
-    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ title: "Edited", prompt: "New prompt" }).expect(404);
+    await request(app).put(path).set("Cookie", cookie).set("origin", origin).send({ description: "Edited" }).expect(404);
   });
 
   it("uses a generic two-step login and a strict session cookie", async () => {
