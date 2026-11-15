@@ -11,7 +11,7 @@ export function TurnOptions({ models, settings, onChange }: { models: ChatModelO
     event.currentTarget.open = false;
     event.currentTarget.querySelector("summary")?.focus();
   }}>
-    <EdenButton asChild density="compact" appearance="secondary" isFloating={false}><summary>Turn options</summary></EdenButton>
+    <EdenButton asChild density="superCompact" appearance="borderless" isFloating={false}><summary>Turn options</summary></EdenButton>
     <fieldset className="chat-compose__settings"><legend>Turn settings</legend>
       <div className="chat-compose__settings-grid">
         <EdenDropdown label="Model" density="compact" portalled clearable={false} values={[settings.model ?? ""]} disabled={!models.length}

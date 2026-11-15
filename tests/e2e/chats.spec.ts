@@ -134,7 +134,7 @@ test.describe("Chats", () => {
     expect((optionsBox?.y ?? 0) + (optionsBox?.height ?? 0)).toBeLessThanOrEqual(844);
   });
 
-  test("hides navigation while composing and keeps a 44px Send target within a narrow viewport", async ({ page }) => {
+  test("hides navigation while composing and uses superCompact Send within a narrow viewport", async ({ page }) => {
     const viewportWidth = 280;
     await page.setViewportSize({ width: viewportWidth, height: 568 });
     await signIn(page);
@@ -151,6 +151,7 @@ test.describe("Chats", () => {
     await page.getByLabel("Message", { exact: true }).fill("Fixture operator message");
     await expect(send).toBeEnabled();
     await expect(nav).toBeHidden();
+    await page.screenshot({ path: test.info().outputPath("plain-transcript-mobile.png") });
 
     await page.locator(".transcript-item__links").first().evaluate((links) => {
       const anchor = document.createElement("a");
@@ -167,8 +168,8 @@ test.describe("Chats", () => {
     const [sendBox, longLinkBox] = await Promise.all([send.boundingBox(), longLink.boundingBox()]);
     expect(sendBox).not.toBeNull();
     expect(longLinkBox).not.toBeNull();
-    expect(sendBox!.width).toBeGreaterThanOrEqual(44);
-    expect(sendBox!.height).toBeGreaterThanOrEqual(44);
+    expect(sendBox!.width).toBeGreaterThanOrEqual(28);
+    expect(sendBox!.height).toBeGreaterThanOrEqual(28);
     expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(viewportWidth);
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(568);
     expect(longLinkBox!.x + longLinkBox!.width).toBeLessThanOrEqual(viewportWidth);
@@ -187,7 +188,17 @@ test.describe("Chats", () => {
     const transcript = page.getByTestId("transcript-scroll");
     await expect.poll(async () => transcript.evaluate((element) => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(2);
     const command = transcript.getByRole("article", { name: "commandExecution" });
-    await command.getByRole("button", { name: "Expand Command" }).click();
+    await expect(command.getByText("Command", { exact: true })).toHaveCount(0);
+    await expect(command.getByRole("button", { name: /^Expand Command:/ })).toContainText("git status --short");
+    const files = transcript.getByRole("article", { name: "fileChange" });
+    await expect(files.getByRole("link")).toHaveCount(0);
+    for (const article of [command, files, transcript.getByRole("article", { name: "agentMessage" }).first()]) {
+      await expect(article).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(article).toHaveCSS("border-top-width", "0px");
+      await expect(article).toHaveCSS("box-shadow", "none");
+    }
+    await page.screenshot({ path: test.info().outputPath("plain-transcript-desktop.png") });
+    await command.getByRole("button", { name: /^Expand Command:/ }).click();
     await expect(command.locator("pre").nth(0)).toHaveText("git status --short");
     await expect(command.locator("pre").nth(1)).toHaveText(" M workers-masterplan/swarm/src/client/App.tsx\n");
     await transcript.evaluate((element) => { element.scrollTop = 72; });
@@ -203,6 +214,7 @@ test.describe("Chats", () => {
     await viewer.getByRole("button", { name: "Close modal" }).click();
     await expect(viewer).toHaveCount(0);
     await expect.poll(async () => Math.abs(await transcript.evaluate((element) => element.scrollTop) - scrollBeforeViewer)).toBeLessThanOrEqual(1);
+    await page.getByRole("button", { name: /^Expand Files changed:/ }).click();
     await page.getByRole("link", { name: "src/client/App.tsx", exact: true }).click();
     const sourceViewer = page.getByRole("dialog", { name: "App.tsx" });
     await expect(sourceViewer.locator("pre")).toHaveText("export function App() { return null; }");
@@ -214,7 +226,7 @@ test.describe("Chats", () => {
       const box = button.getBoundingClientRect();
       return { width: box.width, height: box.height };
     }));
-    expect(targetSizes.every(({ width, height }) => width >= 36 && height >= 36)).toBe(true);
+    expect(targetSizes.every(({ width, height }) => width >= 28 && height >= 28)).toBe(true);
 
     await page.getByRole("button", { name: "Decline approval" }).first().click();
     const toast = page.locator('.rt-ToastRoot[data-state="open"]');

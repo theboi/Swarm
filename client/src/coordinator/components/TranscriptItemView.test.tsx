@@ -7,10 +7,24 @@ import { TranscriptItemView } from "./TranscriptItemView";
 afterEach(cleanup);
 
 describe("TranscriptItemView", () => {
+  it("previews only the first nonempty activity line and lets a live action collapse again", async () => {
+    const user = userEvent.setup();
+    render(<TranscriptItemView active item={{ id: "command-preview", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "commandExecution", status: "inProgress", createdAt: null, payload: { command: "\n git status --short\nsecond command", aggregatedOutput: "Read docs/runbook.md" } }} onOpenMarkdown={() => undefined} />);
+    const disclosure = screen.getByRole("button", { name: "Expand Command: git status --short" });
+    expect(disclosure).toHaveTextContent("git status --short");
+    expect(disclosure).not.toHaveTextContent("second command");
+    expect(screen.queryByRole("link")).toBeNull();
+    await user.click(disclosure);
+    expect(screen.getByRole("link", { name: "docs/runbook.md" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Collapse Command: git status --short" }));
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByLabelText("Thinking in progress")).toBeVisible();
+  });
+
   it("does not parse collapsed reasoning as Markdown until it is expanded", () => {
     render(<TranscriptItemView item={{ id: "large-reason", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: ["**Detailed** reasoning\n\n".repeat(100)] } }} onOpenMarkdown={() => undefined} />);
     expect(document.querySelector(".transcript-item__markdown")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Expand Thinking" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Expand Thinking:/ }));
     expect(document.querySelector(".transcript-item__markdown strong")).not.toBeNull();
   });
 
@@ -26,7 +40,13 @@ describe("TranscriptItemView", () => {
   ] as const)("gives %s a concise human-facing label", (type, label) => {
     render(<TranscriptItemView item={{ id: `${type}-1`, accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type, status: "completed", createdAt: null, payload: { text: "Details" } }} onOpenMarkdown={() => undefined} />);
 
-    expect(screen.getByRole("article", { name: type })).toHaveTextContent(label);
+    const article = screen.getByRole("article", { name: type });
+    expect(article).toHaveTextContent("Details");
+    if (type === "userMessage" || type === "agentMessage") expect(article).toHaveTextContent(label);
+    else {
+      expect(screen.queryByText(label)).toBeNull();
+      expect(screen.getByRole("button", { name: `Expand ${label}: Details` })).toHaveTextContent("Details");
+    }
   });
 
   it("retains a safe serialized payload when specialized transcript content is absent", () => {
@@ -42,10 +62,10 @@ describe("TranscriptItemView", () => {
 
     const list = document.getElementById("transcript-body-files-1");
     expect(list).toHaveClass("transcript-item__body--collapsed");
-    await user.click(screen.getByRole("button", { name: "Expand Files changed" }));
+    await user.click(screen.getByRole("button", { name: /^Expand Files changed:/ }));
 
     expect(list).not.toHaveClass("transcript-item__body--collapsed");
-    expect(screen.getByRole("button", { name: "Collapse Files changed" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Collapse Files changed:/ })).toBeVisible();
   });
 
   it("marks a live reasoning summary as actively streaming", () => {
@@ -94,6 +114,8 @@ describe("TranscriptItemView", () => {
   it("links every structured changed file through the owning account's file query", () => {
     render(<TranscriptItemView item={{ id: "source-change", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "fileChange", status: "completed", createdAt: null, payload: { changes: [{ path: "src/client/App.tsx", kind: "update" }] } }} onOpenMarkdown={() => undefined} />);
 
+    expect(screen.queryByRole("link", { name: "src/client/App.tsx" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Expand Files changed:/ }));
     expect(screen.getByRole("link", { name: "src/client/App.tsx" })).toHaveAttribute("href", "/?file=src%2Fclient%2FApp.tsx&account=bot3");
   });
 

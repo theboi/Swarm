@@ -29,7 +29,7 @@ for (const width of [320, 375, 768, 1280]) {
     const toggle = page.getByRole("button", { name: /Show turn details/ });
     await toggle.scrollIntoViewIfNeeded();
     const box = await toggle.boundingBox();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(28);
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width);
     if (width === 375 || width === 1280) await page.screenshot({ path: test.info().outputPath(`collapsed-${width}.png`) });

@@ -61,7 +61,7 @@ function TranscriptTurn({ turn, activeReasoningId, onOpenMarkdown, reveal }: { t
   const hiddenCount = turn.finalId ? turn.items.filter((item) => item.id !== turn.finalId && !turn.steerIds.has(item.id)).length : 0;
   const collapsed = Boolean(turn.finalId && !expanded);
   return <div className="transcript-turn" ref={container}>
-    {hiddenCount ? <EdenButton density="compact" appearance="secondary" isFloating={false} className="transcript-load-earlier transcript-turn__toggle" type="button" aria-expanded={!collapsed} onClick={() => setExpanded((value) => !value)}>
+    {hiddenCount ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier transcript-turn__toggle" type="button" aria-expanded={!collapsed} onClick={() => setExpanded((value) => !value)}>
       {collapsed ? <EdenIcon name="chevronDown" aria-hidden="true" size={16} /> : <EdenIcon name="chevronUp" aria-hidden="true" size={16} />}
       {collapsed ? "Show turn details" : "Hide turn details"} <span>({hiddenCount})</span>
     </EdenButton> : null}
@@ -96,7 +96,7 @@ export const TranscriptTurns = memo(function TranscriptTurns({ items, activeReas
     offset = end;
   }
   return <>
-    {hiddenCount > 0 ? <EdenButton density="compact" appearance="secondary" isFloating={false} className="transcript-load-earlier" type="button" onClick={() => setVisibleCount((value) => value + RENDER_BATCH)}>Show earlier messages</EdenButton> : null}
+    {hiddenCount > 0 ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier" type="button" onClick={() => setVisibleCount((value) => value + RENDER_BATCH)}>Show earlier messages</EdenButton> : null}
     {visibleTurns.map((turn) => <TranscriptTurn key={turn.key} turn={turn} reveal={reveal} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
   </>;
 });

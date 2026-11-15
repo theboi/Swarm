@@ -10,7 +10,7 @@ to the independent Swarm repository without changing the shared design system.
   prompts; retain “Steer this turn…” while working. Grow with content up to 200px,
   also constrained to 30dvh on short viewports, then scroll internally. Shrink
   after deletion and restore a persisted draft's size on mount.
-- Turn options uses a non-floating compact EdenButton as the native disclosure
+- Turn options uses a non-floating borderless superCompact EdenButton as the native disclosure
   trigger, immediately before Steer in the same footer group. Keep settings
   reachable by pointer/keyboard and bounded above the composer.
 - Chats occupies the available dynamic viewport, minus mobile navigation and
@@ -21,3 +21,12 @@ to the independent Swarm repository without changing the shared design system.
   the chat picker only while open. Do not reserve an empty third column.
 
 Fixture browser checks may use port 4340. Never alter live processes or ports.
+
+- Assistant replies and activity items have no card shell, border, shadow or
+  surface fill. User messages retain their distinct bubble.
+- Activity disclosures show an icon and the first nonempty content line, not a
+  category heading. Keep accessible category labels and a running indicator.
+  Activity details and extracted green file links appear only when expanded.
+- Chat-view EdenButtons use borderless appearance and superCompact density,
+  including composer, transcript, turn history and subagent controls. Shared
+  primitive geometry is not overridden locally.

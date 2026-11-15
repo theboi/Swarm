@@ -200,13 +200,13 @@ describe("ChatsPage", () => {
     expect(within(account).getByRole("img", { name: "bot3 has unread replies" })).toBeVisible();
   });
 
-  it("keeps turn settings in the action row before Steer with a shared compact trigger", async () => {
+  it("keeps turn settings before Steer with a borderless superCompact trigger", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
     const options = screen.getByText("Turn options");
     const steer = screen.getByRole("button", { name: "Steer" });
-    expect(options).toHaveClass("density-compact");
+    expect(options).toHaveClass("density-superCompact", "appearance-borderless");
     expect(options.closest(".chat-compose__turn-actions")).toBe(steer.parentElement);
     expect(options.compareDocumentPosition(steer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(options);
