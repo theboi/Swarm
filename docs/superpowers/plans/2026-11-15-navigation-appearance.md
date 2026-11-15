@@ -23,7 +23,7 @@ Files: actual Eden `EdenDropdown/{index.tsx,index.test.tsx,styles.module.scss}`,
 - [x] Write failing tests for badge labels and readable summaries/accessibility.
 - [x] Add ReactNode labels, optional textValue, derived readable summaries and label-only action insets.
 - [x] Run dropdown tests/lint/typecheck; integrate queue single-select badges and verify keyboard mutation.
-- [ ] Commit verified integration.
+- [x] Commit verified integration.
 
 ## Task 2: Appearance and shared settings shell
 
@@ -32,7 +32,7 @@ Files: `AppearanceProvider/`, `app/layout.tsx`, `app/SwarmApp/index.tsx`, `App.t
 - [x] Test saved-light, blocked storage, theme application and canonical settings routing before implementation.
 - [x] Implement provider API `useAppearance(): {theme: 'dark'|'light', setTheme(theme): void}` and early bootstrap.
 - [x] Add optional ReactNode navigation slot preserving default Eden behavior; link layout and breakpoints.
-- [ ] Verify focused tests, direct exported routes and appearance navigation/reload in browser; commit.
+- [x] Verify focused tests, direct exported routes and appearance navigation/reload in browser; commit.
 
 ## Task 3: Swarm-owned chrome
 
@@ -40,5 +40,5 @@ Files: `AppShell.tsx`, `AppShell.test.tsx`, new `SwarmNavigation/{index.tsx,styl
 
 - [x] Write failing tests for Settings links, tablet range, More dismissal/focus and modified links.
 - [x] Copy Eden rail/bottom composition without upload/topbar; icon-only rails and local More disclosure.
-- [ ] Run focused tests, full typecheck/build and viewport browser checks; fix observable regressions.
-- [ ] Review diff against scope, update verification evidence, pull/commit/push only relevant files.
+- [x] Run focused tests, full typecheck/build and viewport browser checks; fix observable regressions.
+- [x] Review diff against scope, update verification evidence, pull/commit/push only relevant files.
