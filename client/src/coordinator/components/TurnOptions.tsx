@@ -1,10 +1,17 @@
 import { EdenDropdown } from "@/components/primitives/EdenDropdown";
+import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
 import type { ChatExecutionSettings, ChatModelOption } from "../../shared/contracts.js";
 
 export function TurnOptions({ models, settings, onChange }: { models: ChatModelOption[]; settings: ChatExecutionSettings; onChange: (settings: ChatExecutionSettings) => void }) {
   const selectedModel = models.find((model) => model.model === settings.model) ?? null;
-  return <details className="chat-compose__options">
-    <summary>Turn options</summary>
+  return <details className="chat-compose__options" onKeyDown={(event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || !event.currentTarget.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.open = false;
+    event.currentTarget.querySelector("summary")?.focus();
+  }}>
+    <EdenButton asChild density="compact" appearance="secondary" isFloating={false}><summary>Turn options</summary></EdenButton>
     <fieldset className="chat-compose__settings"><legend>Turn settings</legend>
       <div className="chat-compose__settings-grid">
         <EdenDropdown label="Model" density="compact" portalled clearable={false} values={[settings.model ?? ""]} disabled={!models.length}

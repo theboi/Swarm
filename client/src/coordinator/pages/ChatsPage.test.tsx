@@ -192,6 +192,30 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "New chat" }).querySelector("svg")).not.toBeNull();
   });
 
+  it("keeps account choices quiet while retaining unread status", () => {
+    setViewport(1440);
+    render(<ChatsPage snapshot={chatSnapshot} api={api} unreadTurnKeys={new Set(["bot3\u0000thread-2"])} />);
+    const account = screen.getByRole("button", { name: "bot3" });
+    expect(account).toHaveTextContent(/^bot3$/);
+    expect(within(account).getByRole("img", { name: "bot3 has unread replies" })).toBeVisible();
+  });
+
+  it("keeps turn settings in the action row before Steer with a shared compact trigger", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    const options = screen.getByText("Turn options");
+    const steer = screen.getByRole("button", { name: "Steer" });
+    expect(options).toHaveClass("density-compact");
+    expect(options.closest(".chat-compose__turn-actions")).toBe(steer.parentElement);
+    expect(options.compareDocumentPosition(steer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(options);
+    expect(screen.getByRole("group", { name: "Turn settings" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("group", { name: "Turn settings", hidden: true })).not.toBeVisible();
+    expect(options).toHaveFocus();
+  });
+
   it("opens referenced subagents as compact pills with their own transcript and composer", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -340,7 +364,7 @@ describe("ChatsPage", () => {
 
     await waitFor(() => expect(screen.queryByLabelText("Codex is thinking")).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", "Write a message…");
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", "Work with Swarm...");
   });
 
   it("steers an externally owned active turn using the turn ID recovered from its rollout", async () => {
@@ -892,7 +916,7 @@ describe("ChatsPage", () => {
     expect(startTurn).toHaveBeenCalledWith("bot3", "thread-1", "Also inspect the latest failure.", expect.any(Object));
     expect(markTurnActive).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
-    expect(screen.getByText("Message queued for resume.")).toBeVisible();
+    expect(await screen.findByText("Message queued for resume.")).toBeVisible();
   });
 
   it("shows a yellow account wait indicator whenever one of its chats hit a usage limit", () => {

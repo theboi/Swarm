@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { FIXTURE_CREDENTIALS } from "./fixtureData.js";
+import type { ThreadSummary } from "../../src/shared/contracts.js";
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/");
@@ -22,6 +23,64 @@ async function selectBot3Thread(page: Page, name: string): Promise<void> {
 
 test.describe("Chats", () => {
   test.describe.configure({ mode: "serial" });
+
+  for (const width of [390, 1440]) {
+    test(`contains long chat lists inside the viewport at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 720 });
+      await page.route("**/api/v1/accounts/bot3/threads", async route => {
+        const response = await route.fetch();
+        const body = await response.json() as { data: ThreadSummary[] };
+        const template = body.data[0]!;
+        await route.fulfill({ response, json: { ...body, data: [...body.data, ...Array.from({ length: 80 }, (_, index) => ({ ...template, id: `overflow-${index}`, name: `Overflow chat ${index}`, activity: "idle" }))] } });
+      });
+      await signIn(page);
+      const account = page.getByRole("button", { name: "bot3", exact: true });
+      await account.click();
+      if (width < 768) await account.click();
+      const list = page.locator(".thread-picker__list");
+      await expect(list.getByRole("button")).toHaveCount(82);
+      const dimensions = await list.evaluate(element => ({ height: element.clientHeight, content: element.scrollHeight }));
+      expect(dimensions.content).toBeGreaterThan(dimensions.height);
+      expect(dimensions.height).toBeLessThan(720);
+      await list.getByRole("button", { name: "Overflow chat 79", exact: true }).scrollIntoViewIfNeeded();
+      await expect(list.getByRole("button", { name: "Overflow chat 79", exact: true })).toBeInViewport();
+      const bounds = await page.locator(".chats-page").boundingBox();
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
+      expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
+      if (width < 768) await account.click();
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
+      await expect(page.locator(".chat-panel__header")).toBeInViewport();
+    });
+
+    test(`grows and caps the Eden composer without moving its actions off-screen at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 720 });
+      await signIn(page);
+      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      const input = page.getByRole("textbox", { name: "Message", exact: true });
+      const surface = page.locator(".chat-compose__field [data-eden-textarea] .rt-TextAreaRoot");
+      const baseline = (await surface.boundingBox())!.height;
+      await input.fill("A line\n".repeat(6));
+      await expect.poll(async () => (await surface.boundingBox())!.height).toBeGreaterThan(baseline);
+      await input.fill("A long draft line\n".repeat(50));
+      await expect.poll(async () => (await surface.boundingBox())!.height).toBeLessThanOrEqual(200);
+      expect(await input.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
+      const options = page.getByText("Turn options", { exact: true });
+      const steer = page.getByRole("button", { name: "Steer", exact: true });
+      const optionsBox = (await options.boundingBox())!;
+      const steerBox = (await steer.boundingBox())!;
+      expect(optionsBox.x + optionsBox.width).toBeLessThanOrEqual(steerBox.x);
+      expect(Math.abs(optionsBox.y - steerBox.y)).toBeLessThanOrEqual(1);
+      await page.reload();
+      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await expect(input).toHaveValue("A long draft line\n".repeat(50));
+      expect((await surface.boundingBox())!.height).toBeLessThanOrEqual(200);
+      await input.fill("Short draft");
+      await expect.poll(async () => (await surface.boundingBox())!.height).toBeLessThanOrEqual(baseline + 1);
+      await expect(input).toHaveAttribute("placeholder", "Work with Swarm...");
+    });
+  }
 
   for (const width of [390, 1440]) {
     test(`retains an unsent chat draft across page navigation and reload at ${width}px`, async ({ page }) => {
