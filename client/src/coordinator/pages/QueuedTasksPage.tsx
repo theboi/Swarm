@@ -23,10 +23,10 @@ function _QueuedTasksPage({ api, onOpenChat }: Props) {
     return () => window.removeEventListener("popstate", update);
   }, []);
   function select(id: string | null) {
-    window.history.pushState(null, "", id ? `/queued-tasks?${new URLSearchParams({ list: id })}` : "/queued-tasks");
+    window.history.pushState(null, "", id ? `/todos?${new URLSearchParams({ list: id })}` : "/todos");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
-  return <section className={styles.page} aria-label="Queued tasks" data-selected={Boolean(selectedId)} aria-busy={pending}>
+  return <section className={styles.page} aria-label="Todos" data-selected={Boolean(selectedId)} aria-busy={pending}>
     <aside className={styles.lists} aria-label="Task lists"><QueryBoundary><ListsPanel api={api} selectedId={selectedId} onSelect={select} /></QueryBoundary></aside>
     <div className={styles.detail}>
       {selectedId && <EdenButton className={styles.back} density="compact" appearance="borderless" isFloating={false} onClick={() => select(null)}><EdenIcon name="arrowLeft" size={16} />Lists</EdenButton>}

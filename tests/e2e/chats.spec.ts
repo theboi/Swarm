@@ -12,14 +12,16 @@ async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
   if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("link", { name: "Chats", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Chat workspace" })).toBeVisible();
 }
 
 async function selectBot3Thread(page: Page, name: string): Promise<void> {
   const account = page.getByRole("button", { name: "bot3" });
-  if (await account.getAttribute("aria-pressed") !== "true") await account.click();
+  const compact = (page.viewportSize()?.width ?? 1440) <= 768;
+  if (compact || await account.getAttribute("aria-pressed") !== "true") await account.click();
   const thread = page.getByRole("button", { name });
   await expect(thread).toHaveAttribute("aria-pressed", "true");
+  if (compact) await thread.click();
 }
 
 test.describe("Chats", () => {
@@ -37,7 +39,6 @@ test.describe("Chats", () => {
       await signIn(page);
       const account = page.getByRole("button", { name: "bot3", exact: true });
       await account.click();
-      if (width <= 768) await account.click();
       const list = page.locator(".thread-picker__list");
       await expect(list.getByRole("button")).toHaveCount(82);
       const dimensions = await list.evaluate(element => ({ height: element.clientHeight, content: element.scrollHeight }));
@@ -49,7 +50,7 @@ test.describe("Chats", () => {
       expect(bounds!.y).toBeGreaterThanOrEqual(0);
       expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(720);
       expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
-      if (width <= 768) await account.click();
+      if (width <= 768) await list.getByRole("button", { name: "T0 · Graph planning", exact: true }).click();
       const panel = (await page.locator(".chat-panel").boundingBox())!;
       expect(panel.x + panel.width).toBeCloseTo(width, 0);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
@@ -59,7 +60,7 @@ test.describe("Chats", () => {
     test(`grows and caps the Eden composer without moving its actions off-screen at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 720 });
       await signIn(page);
-      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await selectBot3Thread(page, "T0 · Graph planning");
       const input = page.getByRole("textbox", { name: "Message", exact: true });
       const surface = page.locator(".chat-compose__field [data-eden-textarea] .rt-TextAreaRoot");
       const baseline = (await surface.boundingBox())!.height;
@@ -76,7 +77,7 @@ test.describe("Chats", () => {
       expect(optionsBox.x + optionsBox.width).toBeLessThanOrEqual(steerBox.x);
       expect(Math.abs(optionsBox.y - steerBox.y)).toBeLessThanOrEqual(1);
       await page.reload();
-      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await selectBot3Thread(page, "T0 · Graph planning");
       await expect(input).toHaveValue("A long draft line\n".repeat(50));
       expect((await surface.boundingBox())!.height).toBeLessThanOrEqual(200);
       await input.fill("Short draft");
@@ -89,7 +90,7 @@ test.describe("Chats", () => {
     test(`retains an unsent chat draft across page navigation and reload at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await signIn(page);
-      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await selectBot3Thread(page, "T0 · Graph planning");
       const composer = page.getByLabel("Message", { exact: true });
       await composer.fill(`Unsent draft at ${width}`);
       if (width < 768) await expect(page.locator(".app-nav")).toBeHidden();
@@ -98,32 +99,35 @@ test.describe("Chats", () => {
       await page.getByRole("link", { name: "Home", exact: true }).click();
       if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("link", { name: "Chats", exact: true }).click();
-      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await selectBot3Thread(page, "T0 · Graph planning");
       await expect(composer).toHaveValue(`Unsent draft at ${width}`);
       await page.reload();
-      await page.getByRole("button", { name: "bot3", exact: true }).click();
+      await selectBot3Thread(page, "T0 · Graph planning");
       await expect(composer).toHaveValue(`Unsent draft at ${width}`);
     });
   }
 
-  test("reveals bot3 chats only after its compact picker is re-clicked", async ({ page }) => {
+  test("opens chats from a shared list and returns with Back to chats", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
-
-    const bot3 = page.getByRole("button", { name: "bot3" });
-    await bot3.click();
-    await expect(bot3).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("button", { name: "T0 · Graph planning" })).toHaveCount(0);
-    await bot3.click();
-    await expect(page.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
-    await bot3.click();
-    await expect(page.getByRole("button", { name: "T0 · Graph planning" })).toHaveCount(0);
+    await page.getByRole("button", { name: "bot3", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New chat" })).toHaveClass(/density-compact/);
+    await page.screenshot({ path: test.info().outputPath("mobile-chat-list.png") });
+    await page.getByRole("button", { name: "T0 · Graph planning" }).click();
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Unsent mobile draft");
+    await page.getByRole("button", { name: "Back to chats" }).click();
+    await expect(page.getByRole("list", { name: "Chats" })).toBeVisible();
+    await page.getByRole("button", { name: "T0 · Graph planning" }).click();
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue("Unsent mobile draft");
   });
 
   test("keeps the selected chat composer and turn options on-screen on a narrow viewport", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
 
+    await selectBot3Thread(page, "T0 · Graph planning");
     const composer = page.locator(".chat-compose");
     await expect(composer).toBeVisible();
     const composerBox = await composer.boundingBox();

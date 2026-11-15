@@ -11,7 +11,7 @@ export interface AppRoute {
 const paths: Record<AppPage, string> = {
   home: "/home",
   accounts: "/accounts",
-  "queued-tasks": "/queued-tasks",
+  "todos": "/todos",
   chats: "/chats",
   settings: "/settings/appearance",
 };
@@ -25,6 +25,7 @@ export function filePath(path: string, accountId?: AccountId | null): string {
 }
 
 export function parseAppRoute({ pathname, search }: Pick<Location, "pathname" | "search">): AppRoute {
+  pathname = pathname.replace(/\/$/, "") || "/";
   const params = new URLSearchParams(search);
   const openFilePath = params.get("file") ?? (pathname === "/chats" ? params.get("open") : null);
   const requestedAccount = params.get("account");
@@ -34,6 +35,6 @@ export function parseAppRoute({ pathname, search }: Pick<Location, "pathname" | 
       ? requestedAccount
       : null;
   const page = openFilePath ? "chats" : /^\/settings(?:\/appearance)?\/?$/.test(pathname) ? "settings" : (Object.entries(paths).find(([, path]) => path === pathname)?.[0] as AppPage | undefined) ?? "home";
-  const canonicalPath = openFilePath ? filePath(openFilePath, fileAccountId) : page === "queued-tasks" && params.get("list") ? `/queued-tasks?${new URLSearchParams({ list: params.get("list")! })}` : pagePath(page);
+  const canonicalPath = openFilePath ? filePath(openFilePath, fileAccountId) : page === "todos" && params.get("list") ? `/todos?${new URLSearchParams({ list: params.get("list")! })}` : pagePath(page);
   return { page, openFilePath, fileAccountId, canonicalPath };
 }

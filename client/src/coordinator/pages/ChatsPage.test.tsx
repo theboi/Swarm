@@ -35,6 +35,44 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("does not mark hidden mobile chat replies read, including a request finishing after Back", async () => {
+    setViewport(390);
+    const user = userEvent.setup();
+    const markThreadRead = vi.fn();
+    let finish!: (value: { data: TranscriptItem[] }) => void;
+    const readTranscript = vi.fn(() => new Promise<{ data: TranscriptItem[] }>(resolve => { finish = resolve; }));
+    const props = { snapshot: chatSnapshot, api: { ...api, readTranscript }, markThreadRead, unreadTurnKeys: new Set(["bot3\u0000thread-1"]) };
+    const view = render(<ChatsPage {...props} />);
+    expect(markThreadRead).not.toHaveBeenCalled();
+    expect(readTranscript).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    expect(markThreadRead).toHaveBeenCalledWith("bot3", "thread-1");
+    await user.click(screen.getByRole("button", { name: "Back to chats" }));
+    markThreadRead.mockClear();
+    await act(async () => { finish({ data: chatTranscript }); });
+    view.rerender(<ChatsPage {...props} unreadTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+    expect(markThreadRead).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("T0 · Graph planning has an unread reply")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    expect(markThreadRead).toHaveBeenCalledWith("bot3", "thread-1");
+  });
+
+  it("shows a shared chat list first on mobile and preserves a draft through Back to chats", async () => {
+    setViewport(390);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    expect(screen.getByRole("list", { name: "Chats" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New chat" })).toHaveClass("density-compact", "appearance-primary");
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Keep this mobile draft");
+    await user.click(screen.getByRole("button", { name: "Back to chats" }));
+    expect(screen.getByRole("list", { name: "Chats" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "bot3" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this mobile draft");
+  });
+
   it("retains new typing when an earlier send finishes", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -250,22 +288,20 @@ describe("ChatsPage", () => {
     expect(markTurnActive).toHaveBeenCalledWith("bot3", "child-thread", "child-next-turn");
   });
 
-  it("groups chats by macOS account and toggles the selected bot3 picker only on a re-click", async () => {
+  it("keeps accounts available while navigating into a chat and back to its list", async () => {
     setViewport(390);
     const user = userEvent.setup();
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
-
     expect(screen.getByRole("button", { name: "bot3" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "bot3" }));
     expect(screen.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "bot3" }));
-    expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "bot3" }));
     await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
-    expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Rename chat" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "bot1" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Rename chat" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Back to chats" }));
+    expect(screen.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "bot1" }));
+    expect(screen.getByRole("button", { name: "Account recovery" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "bot3" })).toBeVisible();
   });
 
   it("selects the owning account when Queued tasks opens a mapped chat", async () => {
@@ -307,7 +343,7 @@ describe("ChatsPage", () => {
 
     render(<ChatsPage snapshot={lazySnapshot} api={{ ...api, listThreads }} />);
 
-    expect(screen.getByRole("region", { name: "Chats" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Chat workspace" })).toBeVisible();
     expect(screen.getByRole("status", { name: "Loading chats" })).toBeVisible();
     expect(listThreads).toHaveBeenCalledWith("bot3");
     resolveThreads?.({ data: chatSnapshot.threads.filter((thread) => thread.accountId === "bot3") });
@@ -349,7 +385,7 @@ describe("ChatsPage", () => {
 
     expect(screen.getByLabelText("Codex is thinking")).toBeVisible();
     expect(screen.getByRole("button", { name: "Steer" })).toBeEnabled();
-    expect(screen.getByText("Thinking", { selector: ".thread-picker__copy small" })).toBeVisible();
+    expect(screen.getByText("Thinking", { selector: ".thread-picker__status" })).toBeVisible();
   });
 
   it("reconciles the local chat summary when a completed turn changes the coordinator snapshot to idle", async () => {
@@ -417,7 +453,7 @@ describe("ChatsPage", () => {
 
     expect(await screen.findByLabelText("Codex is thinking")).toBeVisible();
     expect(screen.getByRole("button", { name: "Steer" })).toBeEnabled();
-    expect(screen.getByText("Thinking", { selector: ".thread-picker__copy small" })).toBeVisible();
+    expect(screen.getByText("Thinking", { selector: ".thread-picker__status" })).toBeVisible();
     await user.type(screen.getByRole("textbox", { name: "Message" }), "Use the new requirements.");
     await user.click(screen.getByRole("button", { name: "Steer" }));
     expect(steerTurn).toHaveBeenCalledWith("bot3", "thread-2", "turn-live", "Use the new requirements.");
@@ -1115,6 +1151,7 @@ describe("ChatsPage", () => {
     setViewport(390);
     const user = userEvent.setup();
     render(<ChatsPage snapshot={chatSnapshot} api={api} activeTurnIds={new Map([["bot3\u0000thread-1", "turn-1"]])} />);
+    await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
 
     await screen.findByRole("article", { name: "userMessage" });
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();

@@ -21,10 +21,10 @@ function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat,
   const { snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const { page } = route;
   if (page === "settings") return <AppearanceSettings onNavigate={() => onNavigate("settings")} />;
-  const title = page === "home" ? "Home" : page === "queued-tasks" ? "Queued tasks" : page === "chats" ? "Chats" : "Accounts";
+  const title = page === "home" ? "Home" : page === "todos" ? "Todos" : page === "chats" ? "Chats" : "Accounts";
   if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
   if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ addAccount: api.addAccount, cancelAccountLogin: api.cancelAccountLogin, connectAccount: api.connectAccount, makePrimary: api.makePrimary, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits, startAccountLogin: api.startAccountLogin }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
-  if (page === "queued-tasks") return <QueuedTasksPage api={api} onOpenChat={onOpenLaunchedChat} />;
+  if (page === "todos") return <QueuedTasksPage api={api} onOpenChat={onOpenLaunchedChat} />;
   if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={!route.openFilePath && selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={route.fileAccountId ?? selectedChat?.accountId ?? (route.openFilePath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openFilePath} onOpenMarkdownPathChange={onOpenFilePathChange} transcriptRevisions={transcriptRevisions} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
   return (
     <section className="page" aria-label={title}>

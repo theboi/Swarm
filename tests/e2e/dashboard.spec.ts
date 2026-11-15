@@ -30,11 +30,11 @@ test.describe("Home dashboard", () => {
       await expect(page.getByRole("heading", { name: "Attention queue" })).toBeVisible();
       await expect(page.getByRole("button", { name: /Review launch/ })).toHaveCount(0);
 
-      await page.getByRole("link", { name: "Queued tasks" }).click();
-      await expect(page.getByRole("region", { name: "Queued tasks" })).toBeVisible();
+      await page.getByRole("link", { name: "Todos" }).click();
+      await expect(page.getByRole("region", { name: "Todos" })).toBeVisible();
       if (viewport.width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
       await page.getByRole("link", { name: "Chats" }).click();
-      await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Chat workspace" })).toBeVisible();
       await page.getByRole("link", { name: "Home" }).click();
       await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
     });

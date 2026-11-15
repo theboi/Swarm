@@ -16,17 +16,30 @@ to the independent Swarm repository without changing the shared design system.
 - Chats occupies the available dynamic viewport, minus mobile navigation and
   safe areas when visible. Account/chat lists and transcript scroll within their
   own regions; long lists must not expand the page or clip its header/composer.
-- At the existing 768px compact-picker breakpoint, retain the navigation rail
-  and account column, let the conversation fill the remaining width, and overlay
-  the chat picker only while open. Do not reserve an empty third column.
+- Use one EdenListCard Chats section and EdenListCardItem rows, retaining activity,
+  attention/unread indicators and the pinned account usage footer. New chat is a
+  non-floating primary EdenButton with compact density above the list.
+- At widths up to 768px, show the chat list first and open the conversation on
+  selection. Back to chats restores the list without losing drafts. Keep the
+  accounts picker unchanged; at 768px retain the rail and account column. The
+  list and conversation occupy the same content area, without an overlay or an
+  empty third column. Hidden conversations must not fetch or clear unread replies.
 
 - Assistant replies and activity items have no card shell, border, shadow or
   surface fill. User messages retain their distinct bubble.
 - Activity disclosures show an icon and the first nonempty content line, not a
   category heading. Keep accessible category labels and a running indicator.
   Activity details and extracted green file links appear only when expanded.
+- Thinking previews use the summary and reveal separate content on expansion.
+  If only content exists, preview its first line. If both are blank, show
+  Thinking... instead of JSON. Summary-only activities remain readable on expand.
+- Plain/source view uses the canonical monospace font and preserves whitespace.
+  Copy takes exact raw source, handles missing/denied clipboard APIs with native
+  selection fallback, restores focus/selection, and reports failure truthfully.
+  Copied feedback expires after two seconds and does not apply to changed source.
 - Chat-view EdenButtons use borderless appearance and superCompact density,
   including composer, transcript, turn history and subagent controls. Shared
-  primitive geometry is not overridden locally.
+  primitive geometry is not overridden locally. New chat is the compact/primary
+  exception above the list.
 
 Fixture browser checks may use port 4340. Never alter live processes or ports.

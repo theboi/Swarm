@@ -2,6 +2,8 @@ import { useEdenModal } from "@/components/overlay/EdenOverlayProvider/useEdenMo
 import { EdenRadioCardGroup } from "@/components/primitives/EdenRadioCardGroup";
 import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
 import { EdenTextArea } from "@/components/primitives/EdenTextArea";
+import { EdenListCard } from "@/components/primitives/EdenListCard";
+import { EdenListCardItem } from "@/components/primitives/EdenListCard/EdenListCardItem";
 import { EdenField } from "@/components/primitives/EdenField";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EdenIcon } from "@/components/primitives/EdenIcon/EdenIcon";
@@ -100,7 +102,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const requestedInitialThreadId = initialTarget?.threadId ?? initialThreadId;
   const requestedInitialAccountId = initialTarget?.accountId ?? initialAccountId;
   const [accountId, setAccountId] = useState<AccountId | null>(() => requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId));
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(() => !requestedInitialThreadId && !openMarkdownPath);
   const [threadId, setThreadId] = useState<string | null>(() => requestedInitialThreadId ?? threadsFor(snapshot, requestedInitialAccountId ?? initialAccount(snapshot, requestedInitialThreadId, initialAccountId))[0]?.id ?? null);
   const [isDraftChat, setIsDraftChat] = useState(false);
   const [createdThread, setCreatedThread] = useState<ThreadSummary | null>(null);
@@ -142,10 +144,11 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const selectedTranscriptKeyRef = useRef<string | null>(null);
   const itemsRef = useRef<TranscriptItem[]>([]);
   const transcriptRequestsRef = useRef(new Map<string, { running: boolean; pending: boolean; scrollOnSuccess: boolean }>());
-  itemsRef.current = items;
-  selectedTranscriptKeyRef.current = accountId && threadId && !isDraftChat ? `${accountId}\u0000${threadId}` : null;
-  const scopedTranscriptRevision = transcriptRevisions?.get(`${accountId}\u0000${threadId}`) ?? 0;
   const compact = useCompactPicker();
+  const conversationVisible = !compact || !pickerOpen;
+  itemsRef.current = items;
+  selectedTranscriptKeyRef.current = accountId && threadId && !isDraftChat && conversationVisible ? `${accountId}\u0000${threadId}` : null;
+  const scopedTranscriptRevision = transcriptRevisions?.get(`${accountId}\u0000${threadId}`) ?? 0;
   const threads = useMemo(() => {
     const listed = accountId ? threadsByAccount[accountId] ?? [] : [];
     return createdThread && createdThread.accountId === accountId && !listed.some((thread) => thread.id === createdThread.id) ? [...listed, createdThread] : listed;
@@ -188,6 +191,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   useEffect(() => {
     if (!initialTarget) return;
     setPendingTarget(initialTarget);
+    setPickerOpen(false);
     setAccountId(initialTarget.accountId);
     setThreadId(initialTarget.threadId);
     setIsDraftChat(false);
@@ -211,6 +215,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, [isDraftChat, pendingTarget, threads]);
 
   useEffect(() => {
+    if (!conversationVisible) return;
     if (!accountId || !threadId || isDraftChat) { selectedTranscriptKeyRef.current = null; setItems([]); return; }
     const openedKey = `${accountId}\u0000${threadId}`;
     selectedTranscriptKeyRef.current = openedKey;
@@ -248,14 +253,14 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       }
     };
     void drain();
-  }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision, scopedTranscriptRevision]);
+  }, [api, accountId, threadId, isDraftChat, markThreadRead, rememberSubagents, transcriptRevision, liveTranscriptRevision, scopedTranscriptRevision, conversationVisible]);
 
   useEffect(() => {
-    if (!accountId || !threadId || isDraftChat) return;
+    if (!accountId || !threadId || isDraftChat || !conversationVisible) return;
     const key = `${accountId}\u0000${threadId}`;
     if (!unreadTurnKeys.has(key) && !attentionTurnKeys.has(key)) return;
     markThreadRead(accountId, threadId);
-  }, [accountId, attentionTurnKeys, isDraftChat, markThreadRead, threadId, unreadTurnKeys]);
+  }, [accountId, attentionTurnKeys, isDraftChat, markThreadRead, threadId, unreadTurnKeys, conversationVisible]);
 
   useLayoutEffect(() => {
     if (!scrollRequest || !scrollRef.current) return;
@@ -264,13 +269,13 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     const timer = window.setTimeout(scroll, 0);
     const settledTimer = window.setTimeout(scroll, 150);
     return () => { window.clearTimeout(timer); window.clearTimeout(settledTimer); };
-  }, [scrollRequest]);
+  }, [scrollRequest, compact, pickerOpen]);
 
   useEffect(() => {
-    if (!accountId || (!threadId && !isDraftChat)) return;
+    if (!accountId || (!threadId && !isDraftChat) || (compact && pickerOpen)) return;
     const timer = window.setTimeout(() => composerRef.current?.focus(), 0);
     return () => window.clearTimeout(timer);
-  }, [accountId, threadId, isDraftChat]);
+  }, [accountId, threadId, isDraftChat, compact, pickerOpen]);
 
   useEffect(() => {
     if (!accountId) { setModels([]); return; }
@@ -308,10 +313,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   const chooseAccount = (nextAccountId: AccountId) => {
-    if (nextAccountId === accountId) { setPickerOpen((open) => !open); return; }
+    setPickerOpen(true);
+    if (nextAccountId === accountId) return;
     setAccountId(nextAccountId);
     setIsDraftChat(false);
-    setPickerOpen(false);
   };
 
   const chooseThread = (nextThreadId: string) => {
@@ -556,7 +561,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   };
 
   useEffect(() => {
-    if (!accountId || !threadId || isDraftChat) return;
+    if (!accountId || !threadId || isDraftChat || !conversationVisible) return;
     const refreshVisible = () => {
       if (globalThis.document.visibilityState === "visible") setTranscriptRevision((revision) => revision + 1);
     };
@@ -567,7 +572,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
       if (timer !== undefined) window.clearInterval(timer);
       globalThis.document.removeEventListener("visibilitychange", refreshVisible);
     };
-  }, [accountId, isDraftChat, isThinking, threadId]);
+  }, [accountId, isDraftChat, isThinking, threadId, conversationVisible]);
 
   useEffect(() => {
     if (!limitExhausted) return;
@@ -648,10 +653,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     actionButtons: <EdenButton density="superCompact" appearance="borderless" isFloating={false} disabled={!renameDraft.trim() || renaming} onClick={() => void renameChat()}>{renaming ? "Renaming…" : "Rename"}</EdenButton>,
   });
   return (
-    <section className="chats-page" aria-label="Chats">
+    <section className="chats-page" aria-label="Chat workspace">
       {message ? <Toast onDismiss={() => setMessage(null)}>{message}</Toast> : null}
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
-      <div className="chats-workspace">
+      <div className="chats-workspace" data-picker-open={pickerOpen}>
         <nav className={`chat-account-picker ${compact ? "chat-account-picker--pills" : ""}`} aria-label="Accounts">
           <div className="chat-account-picker__heading"><span>Accounts</span><span>{snapshot.accounts.length}</span></div>
           {snapshot.accounts.map((account) => {
@@ -668,9 +673,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           })}
         </nav>
         {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
-          <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><EdenIcon name="plus" aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></EdenButton>
-          <div className="thread-picker__heading"><span>Chats</span><span>{threads.length}</span></div>
-          <div className="thread-picker__list">{loadingAccountId === accountId && threads.length === 0 ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : threads.length ? threads.map((thread) => {
+          <EdenButton density="compact" appearance="primary" isFloating={false} className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><EdenIcon name="plus" aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></EdenButton>
+          <div className="thread-picker__list"><EdenListCard sections={{ chats: { title: "Chats", items: threads, emptyState: loadingAccountId === accountId ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : "No chats for this account." } }} getItemKey={(thread) => thread.id} renderItem={(thread) => {
             const name = thread.name ?? "Unnamed chat";
             const threadKey = `${thread.accountId}\u0000${thread.id}`;
             const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active" || (thread.id === threadId && subagentThinking) || hasActiveDescendant(thread.id, thread.accountId, subagentGraph, activeTurnKeys, activeThreadIds);
@@ -678,12 +682,16 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const hasUnread = unreadTurnKeys.has(threadKey);
             const needsAttention = attentionTurnKeys.has(threadKey);
             const status = thinking ? "Thinking" : waitingForLimit ? "Waiting for limit" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
-            return <button key={thread.id} type="button" aria-label={name} aria-pressed={thread.id === threadId} onClick={() => chooseThread(thread.id)}><span className="thread-picker__icon">{thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <EdenIcon name="messageSquarePlus" aria-hidden="true" size={16} strokeWidth={1.75} />}</span><span className="thread-picker__copy"><strong>{name}</strong><small>{status}</small></span>{hasUnread ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot chat-row-notification" role="img" aria-label={`${name} needs attention`} /> : null}</button>;
-          }) : <p className="thread-picker__empty">No chats for this account.</p>}</div>
+            return <EdenListCardItem aria-label={name} title={name} selected={thread.id === threadId} onClick={() => chooseThread(thread.id)}
+              leading={thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <EdenIcon name="messageSquarePlus" aria-hidden="true" size={16} />}
+              metadata={<span className="thread-picker__status">{status}</span>}
+              trailing={<span className="thread-picker__trailing">{hasUnread ? <span className="notification-dot" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot" role="img" aria-label={`${name} needs attention`} /> : null}<EdenIcon name="chevronRight" aria-hidden="true" size={16} /></span>} />;
+          }} /></div>
           {selectedAccount ? <footer className="thread-picker__usage"><AccountUsageBar account={selectedAccount} showLabels /></footer> : null}
         </aside> : null}
-        <section className="chat-panel" aria-label={selectedChatName}>
+        <section className="chat-panel" hidden={compact && pickerOpen} aria-label={selectedChatName}>
           <header className="chat-panel__header">
+            {compact ? <EdenButton className="chat-panel__back" density="superCompact" appearance="borderless" isFloating={false} aria-label="Back to chats" onClick={() => setPickerOpen(true)}><EdenIcon name="arrowLeft" aria-hidden="true" size={16} />Chats</EdenButton> : null}
             <div className="chat-panel__title"><span className="chat-panel__account">{accountId ?? "No account"}</span><h2 id="selected-chat-title">{selectedChatName}</h2>{isThinking ? <span className="chat-thinking" aria-label="Codex is thinking"><span className="loading-spinner" aria-hidden="true" />Thinking</span> : null}</div>
             <div className="chat-panel__tools"><EdenButton density="superCompact" appearance="borderless" isFloating={false} className={`chat-tool${resumeEnabled ? " chat-tool--primary" : ""}`} type="button" aria-label={`${resumeEnabled ? "Disable" : "Enable"} automatic resume`} aria-pressed={resumeEnabled} title={`${resumeEnabled ? "Disable" : "Enable"} automatic resume`} disabled={!selectedThread || !accountId || isDraftChat || resumeUpdating} onClick={() => void toggleAutomaticResume()}>Auto-resume <span aria-hidden="true">{resumeEnabled ? "On" : "Off"}</span></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-tool chat-tool--icon" type="button" aria-label="Archive chat" title="Archive chat" disabled={!selectedThread || !accountId || isDraftChat} onClick={() => selectedThread && accountId && void run(() => api.archiveThread(accountId, selectedThread.id), "Chat archived.", () => { setThreadsByAccount((current) => ({ ...current, [accountId]: (current[accountId] ?? []).filter((thread) => thread.id !== selectedThread.id) })); if (createdThread?.id === selectedThread.id) setCreatedThread(null); })}><EdenIcon name="archive" aria-hidden="true" size={17} strokeWidth={1.75} /></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-tool chat-tool--icon" type="button" aria-label="Move to another account" title="Move to another account" disabled={!selectedThread || !accountId || isDraftChat || !api.moveThreadToAccount} onClick={openMove}><EdenIcon name="arrowRightLeft" aria-hidden="true" size={17} strokeWidth={1.75} /></EdenButton>{terminalCommand ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-tool chat-tool--icon" type="button" aria-label="Copy open-terminal command" title="Copy open-terminal command" onClick={() => void copyTerminalCommand()}><EdenIcon name="squareTerminal" aria-hidden="true" size={17} strokeWidth={1.75} /></EdenButton> : null}</div>
           </header>

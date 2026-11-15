@@ -11,7 +11,7 @@ export function staticAssetDirectory(serverModuleUrl: string): string {
 export function createDashboardRouter(directory: string): express.Router {
   const router = express.Router();
   const root = resolve(directory);
-  router.get(["/", "/home", "/accounts", "/queued-tasks", "/chats", "/settings", "/settings/appearance"], (request, response) => {
+  router.get(["/", "/home", "/accounts", "/todos", "/chats", "/settings", "/settings/appearance"], (request, response) => {
     const page = request.path.replace(/^\/+|\/+$/g, "");
     response.sendFile(page ? `${page}.html` : "index.html", { root });
   });

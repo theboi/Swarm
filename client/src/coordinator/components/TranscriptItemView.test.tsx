@@ -3,10 +3,57 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
 import { TranscriptItemView } from "./TranscriptItemView";
+import type { TranscriptItem } from "../../shared/contracts";
 
 afterEach(cleanup);
 
 describe("TranscriptItemView", () => {
+  it("copies new streamed source after a previous copy instead of leaving stale success feedback", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const item: TranscriptItem = { id: "stream-copy", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "First reply" } };
+    const view = render(<TranscriptItemView item={item} onOpenMarkdown={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Copy message source" }));
+    expect(screen.getByRole("button", { name: "Message source copied" })).toBeVisible();
+    view.rerender(<TranscriptItemView item={{ ...item, payload: { text: "First reply\nMore source" } }} onOpenMarkdown={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Copy message source" }));
+    expect(writeText).toHaveBeenLastCalledWith("First reply\nMore source");
+    expect(screen.getByRole("button", { name: "Message source copied" })).toBeVisible();
+  });
+
+  it("shows an error instead of copied feedback when neither clipboard method succeeds", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
+    render(<TranscriptItemView item={{ id: "copy-denied", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "Reply" } }} onOpenMarkdown={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Copy message source" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to copy");
+    expect(screen.queryByRole("button", { name: "Message source copied" })).toBeNull();
+  });
+
+  it.each([{ summary: [], content: [] }, { summary: ["  "], content: ["\n"] }, {}])("shows Thinking... for empty reasoning %j", (payload) => {
+    render(<TranscriptItemView item={{ id: "empty-reason", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload }} onOpenMarkdown={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Expand Thinking: Thinking..." })).toHaveTextContent("Thinking...");
+    expect(screen.queryByText(/summary|content/)).toBeNull();
+  });
+
+  it("previews a reasoning summary but reveals its separate content on expansion", () => {
+    render(<TranscriptItemView item={{ id: "full-reason", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: ["Checking the implementation"], content: ["Detailed **reasoning** docs/runbook.md"] } }} onOpenMarkdown={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Expand Thinking: Checking the implementation" })).toBeVisible();
+    expect(screen.queryByText("reasoning", { selector: "strong" })).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Thinking: Checking the implementation" }));
+    expect(screen.getByText("reasoning", { selector: "strong" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "docs/runbook.md" })).toBeVisible();
+  });
+
+  it("does not lose content-only reasoning", () => {
+    render(<TranscriptItemView item={{ id: "content-reason", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: [], content: ["Inspecting the task"] } }} onOpenMarkdown={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Expand Thinking:/ }));
+    expect(screen.getByText("Inspecting the task", { selector: "p" })).toBeVisible();
+  });
+
   it("previews only the first nonempty activity line and lets a live action collapse again", async () => {
     const user = userEvent.setup();
     render(<TranscriptItemView active item={{ id: "command-preview", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "commandExecution", status: "inProgress", createdAt: null, payload: { command: "\n git status --short\nsecond command", aggregatedOutput: "Read docs/runbook.md" } }} onOpenMarkdown={() => undefined} />);
@@ -38,7 +85,7 @@ describe("TranscriptItemView", () => {
     ["subAgentActivity", "Worker activity"],
     ["opaque", "Event"],
   ] as const)("gives %s a concise human-facing label", (type, label) => {
-    render(<TranscriptItemView item={{ id: `${type}-1`, accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type, status: "completed", createdAt: null, payload: { text: "Details" } }} onOpenMarkdown={() => undefined} />);
+    render(<TranscriptItemView item={{ id: `${type}-1`, accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type, status: "completed", createdAt: null, payload: type === "reasoning" ? { summary: ["Details"] } : { text: "Details" } }} onOpenMarkdown={() => undefined} />);
 
     const article = screen.getByRole("article", { name: type });
     expect(article).toHaveTextContent("Details");

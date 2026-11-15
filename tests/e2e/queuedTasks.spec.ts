@@ -7,7 +7,7 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("link", { name: "Queued tasks" }).click();
+  await page.getByRole("link", { name: "Todos" }).click();
 }
 
 test("keeps long descriptions and many todos within their rows at narrow widths", async ({ page }) => {
@@ -42,8 +42,8 @@ test("mobile Back and Lists recovery work after a missing-list read", async ({ p
   await createList(page, `Navigation ${Date.now()}`);
   await page.goBack();
   await expect(page.getByRole("button", { name: "Create List" })).toBeVisible();
-  await page.goto("/queued-tasks?list=missing");
-  await expect(page.getByRole("region", { name: "Queued tasks" }).getByRole("alert")).toContainText("List not found");
+  await page.goto("/todos?list=missing");
+  await expect(page.getByRole("region", { name: "Todos" }).getByRole("alert")).toContainText("List not found");
   await page.getByRole("button", { name: "Lists", exact: true }).click();
   await expect(page.getByRole("button", { name: "Create List" })).toBeVisible();
 });
@@ -131,6 +131,6 @@ for (const width of [390, 1440]) {
     const sent = page.waitForRequest(request => request.method() === "POST" && /accounts\/bot3\/threads\/[^/]+\/turns$/.test(new URL(request.url()).pathname));
     await page.getByRole("button", { name: "Send", exact: true }).click();
     expect((await sent).postDataJSON()).toMatchObject({ text: description, clientUserMessageId: expect.any(String) });
-    await expect(page.getByRole("region", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Chat workspace" })).toBeVisible();
   });
 }

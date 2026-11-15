@@ -1,12 +1,13 @@
 import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
 import { EdenIcon, type IconName } from "@/components/primitives/EdenIcon/EdenIcon";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import type { TranscriptItem } from "../../shared/contracts.js";
 import { filePath } from "../navigation.js";
+import { copyMessageSource } from "./TranscriptItemView/copyMessageSource.js";
 
 const filePathPattern = /(?:^|[\s(])((?:\.{1,2}\/|\/)?[A-Za-z0-9_./-]+?\.[A-Za-z0-9]{1,16})(?=$|[\s,)\]])/g;
 
@@ -16,13 +17,19 @@ function stringValues(item: TranscriptItem): string[] {
     const text = payload.content.flatMap((part) => part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string" ? [(part as Record<string, string>).text] : []);
     return text.length ? text : [JSON.stringify(payload)];
   }
-  if (item.type === "reasoning" && Array.isArray(payload.summary)) {
-    const summary = payload.summary.filter((value): value is string => typeof value === "string");
-    return summary.length ? summary : [JSON.stringify(payload)];
+  if (item.type === "reasoning") {
+    const content = reasoningText(payload.content);
+    const summary = reasoningText(payload.summary);
+    return content.length ? content : summary.length ? summary : ["Thinking..."];
   }
   const values = [payload.text, payload.command, payload.aggregatedOutput];
   const known = values.filter((value): value is string => typeof value === "string");
   return known.length ? known : [JSON.stringify(payload)];
+}
+
+function reasoningText(value: unknown): string[] {
+  const parts = Array.isArray(value) ? value : [value];
+  return parts.flatMap((part) => typeof part === "string" ? [part] : part && typeof part === "object" && "text" in part && typeof part.text === "string" ? [part.text] : []).filter((part) => part.trim());
 }
 
 function filePaths(values: string[]): string[] {
@@ -39,7 +46,7 @@ function changedFilePaths(item: TranscriptItem): string[] {
 function workspaceFileHref(href: string | undefined): string | null {
   if (!href || href.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("//")) return null;
   const path = href.replace(/^<|>$/g, "").replace(/[?#].*$/, "").replace(/:\d+$/, "");
-  return ["/", "/home", "/accounts", "/queued-tasks", "/chats"].includes(path) ? null : path;
+  return ["/", "/home", "/accounts", "/todos", "/chats"].includes(path) ? null : path;
 }
 
 function fileChangeValues(item: TranscriptItem): string[] {
@@ -70,7 +77,13 @@ const messageDateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "mediu
 export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpenMarkdown, active = false }: { item: TranscriptItem; onOpenMarkdown: (path: string) => void; active?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [renderMarkdown, setRenderMarkdown] = useState(true);
-  const [sourceCopied, setSourceCopied] = useState(false);
+  const [copied, setCopied] = useState<{ source: string } | null>(null);
+  const [copyError, setCopyError] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(null), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
   const { values, paths } = useMemo(() => {
     const changes = fileChangeValues(item);
     const values = changes.length ? changes : stringValues(item);
@@ -83,10 +96,22 @@ export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpe
   const supportsMarkdown = item.type === "userMessage" || item.type === "agentMessage" || item.type === "plan" || item.type === "reasoning";
   const isMessage = item.type === "userMessage" || item.type === "agentMessage";
   const messageSource = values.join("\n\n");
+  const sourceCopied = copied?.source === messageSource;
   const createdAtMs = item.createdAt !== null && item.createdAt < 10_000_000_000 ? item.createdAt * 1_000 : item.createdAt;
   const bodyId = `transcript-body-${item.id}`;
   const isExpanded = expanded;
-  const preview = values.find((value) => value.trim())?.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const previewValues = item.type === "reasoning" ? reasoningText(item.payload.summary) : [];
+  const preview = (previewValues.length ? previewValues : values).find((value) => value.trim())?.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  async function copySource() {
+    setCopyError(false);
+    try {
+      await copyMessageSource(messageSource);
+      setCopied({ source: messageSource });
+    } catch {
+      setCopied(null);
+      setCopyError(true);
+    }
+  }
   return (
     <article className={`transcript-item transcript-item--${item.type}${active ? " transcript-item--active" : ""}`} aria-label={item.type} data-transcript-type={item.type} data-transcript-id={item.id}>
       {collapsible ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-item__disclosure" type="button" aria-label={`${isExpanded ? "Collapse" : "Expand"} ${presentation.label}: ${preview}`} aria-controls={bodyId} aria-expanded={isExpanded} onClick={() => setExpanded((value) => !value)}>
@@ -103,9 +128,10 @@ export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpe
       }}>{path}</a>)}</div> : null}
       {isMessage || (supportsMarkdown && isExpanded) ? <div className="transcript-item__source-actions">
         {isMessage && createdAtMs !== null ? <time dateTime={new Date(createdAtMs).toISOString()}>{messageDateFormat.format(createdAtMs)}</time> : null}
-        {isMessage ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={sourceCopied ? "Message source copied" : "Copy message source"} title={sourceCopied ? "Copied" : "Copy message source"} onClick={() => { void navigator.clipboard.writeText(messageSource).then(() => setSourceCopied(true)); }}>{sourceCopied ? <EdenIcon name="check" aria-hidden="true" size={14} /> : <EdenIcon name="copy" aria-hidden="true" size={14} />}</EdenButton> : null}
+        {isMessage ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={sourceCopied ? "Message source copied" : "Copy message source"} title={sourceCopied ? "Copied" : "Copy message source"} onClick={() => void copySource()}>{sourceCopied ? <EdenIcon name="check" aria-hidden="true" size={14} /> : <EdenIcon name="copy" aria-hidden="true" size={14} />}</EdenButton> : null}
         {supportsMarkdown ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={renderMarkdown ? "Show plain text" : "Render Markdown"} title={renderMarkdown ? "Show plain text" : "Render Markdown"} aria-pressed={renderMarkdown} onClick={() => setRenderMarkdown((enabled) => !enabled)}><EdenIcon name="code2" aria-hidden="true" size={14} strokeWidth={1.75} /></EdenButton> : null}
       </div> : null}
+      {copyError ? <p role="alert">Unable to copy. Select the message text and copy it manually.</p> : null}
     </article>
   );
 });

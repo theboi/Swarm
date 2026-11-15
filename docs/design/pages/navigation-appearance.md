@@ -9,7 +9,7 @@ Selected navigation foregrounds use Eden's `--accent-strong` token so labels
 meet normal-text contrast in both themes; Eden's own navigation is unchanged.
 
 Mobile uses Eden's floating 72px bottom bar, 8px side insets and safe-area-aware
-14px bottom spacing. Home, Accounts and Queued tasks are direct destinations;
+14px bottom spacing. Home, Accounts and Todos are direct destinations;
 More exposes Chats and Settings, dismisses outside/on Escape/after navigation,
 and restores trigger focus on Escape. Notification dots also reach More.
 Reserve 100px plus safe-area below content. Chat typing hides navigation and

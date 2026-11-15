@@ -1,4 +1,6 @@
-# Queued tasks
+# Todos
+
+The canonical frontend route is `/todos`; list selection uses `/todos?list=<id>`.
 
 Eden's linked design authority owns shared geometry, typography, tokens and states.
 

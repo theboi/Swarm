@@ -222,7 +222,7 @@ multiple chats subject only to that account's own Codex usage limits.
 
 - `/home` shows account usage and pending approvals.
 - `/accounts` shows connection, authentication, Git, and usage state.
-- `/queued-tasks` shows Lists; `/queued-tasks?list=<id>` opens one list’s todos.
+- `/todos` shows Lists; `/todos?list=<id>` opens one list’s todos.
   Descriptions, creation dates and states are saved atomically to the Git-tracked
   `manifests/queued-tasks.json` and survive restarts. Mobile uses list/detail navigation.
 - `/chats` is the multi-account chat workspace.

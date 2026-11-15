@@ -11,7 +11,7 @@ vi.mock("../store/coordinatorStore.js", () => ({ useCoordinatorStore: () => ({ s
   { id: "bot6/acc1", connection: "disconnected", authentication: "unknown" },
   { id: "claudiothe", connection: "connected", authentication: "authenticated" },
 ] } }) }));
-afterEach(() => { cleanup(); window.history.replaceState(null, "", "/queued-tasks"); });
+afterEach(() => { cleanup(); window.history.replaceState(null, "", "/todos"); });
 const task: QueuedTask = { id: "todo-1", listId: "work", description: "  Find and fix\n the login error.\n", createdAt: "2026-11-15T10:00:00Z", status: "todo" };
 function fixture() {
   let tasks = [{ ...task }];
@@ -35,6 +35,14 @@ async function selectWork(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Work" }));
   await screen.findByRole("button", { name: "Edit description" });
 }
+it("keeps list selection and the Lists action on the Todos route", async () => {
+  const user = userEvent.setup(); fixture();
+  await selectWork(user);
+  expect(screen.getByRole("region", { name: "Todos" })).toBeVisible();
+  expect(window.location.pathname + window.location.search).toBe("/todos?list=work");
+  await user.click(screen.getByRole("button", { name: "Lists" }));
+  expect(window.location.pathname + window.location.search).toBe("/todos");
+});
 it("selects lists, edits exact descriptions and changes state through badge choices", async () => {
   const user = userEvent.setup(); const { api } = fixture();
   await selectWork(user);

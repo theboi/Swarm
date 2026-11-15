@@ -23,7 +23,7 @@ describe("AppShell", () => {
 
     const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(navigation).toHaveAttribute("data-variant", "desktop");
-    for (const label of ["Home", "Accounts", "Queued tasks", "Chats", "Settings"]) {
+    for (const label of ["Home", "Accounts", "Todos", "Chats", "Settings"]) {
       const control = screen.getByRole("link", { name: label });
       expect(getComputedStyle(control).minWidth).toBe("44px");
       expect(getComputedStyle(control).minHeight).toBe("44px");
@@ -39,7 +39,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: "Primary navigation" })).toHaveAttribute("data-variant", "tablet");
     expect(screen.getByRole("link", { name: "Home" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Accounts" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Queued tasks" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Todos" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Chats" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Home" }).textContent).toBe("");
   });
@@ -51,7 +51,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: "Primary navigation" })).toHaveAttribute("data-variant", "mobile");
     expect(screen.getByRole("link", { name: "Home" })).toHaveTextContent("Home");
     expect(screen.getByRole("link", { name: "Accounts" })).toHaveTextContent("Accounts");
-    expect(screen.getByRole("link", { name: "Queued tasks" })).toHaveTextContent("Queued tasks");
+    expect(screen.getByRole("link", { name: "Todos" })).toHaveTextContent("Todos");
     expect(screen.queryByRole("link", { name: "Chats" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(screen.getByRole("link", { name: "Chats" })).toHaveTextContent("Chats");

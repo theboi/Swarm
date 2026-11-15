@@ -8,7 +8,7 @@ import styles from "./styles.module.scss";
 const NAVIGATION = [
   { id: "home", label: "Home", icon: "house" },
   { id: "accounts", label: "Accounts", icon: "usersRound" },
-  { id: "queued-tasks", label: "Queued tasks", icon: "listTodo" },
+  { id: "todos", label: "Todos", icon: "listTodo" },
   { id: "chats", label: "Chats", icon: "messagesSquare" },
   { id: "settings", label: "Settings", icon: "settings" },
 ] satisfies { id: AppPage; label: string; icon: IconName }[];

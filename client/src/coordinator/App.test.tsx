@@ -57,19 +57,19 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("navigates between the labeled Home, Queued tasks, and Chats screens by keyboard", async () => {
+  it("navigates between the labeled Home, Todos, and Chats screens by keyboard", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<App api={api} />);
 
     await screen.findByRole("heading", { name: "Home" });
-    screen.getByRole("link", { name: "Queued tasks" }).focus();
+    screen.getByRole("link", { name: "Todos" }).focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("region", { name: "Queued tasks" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Todos" })).toBeVisible();
 
     screen.getByRole("link", { name: "Chats" }).focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("region", { name: "Chats" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Chat workspace" })).toBeVisible();
   });
 
   it("passes the account terminal action from the app shell to Home", async () => {
@@ -102,25 +102,25 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    const queue = await screen.findByRole("link", { name: "Queued tasks" });
-    expect(queue).toHaveAttribute("href", "/queued-tasks");
+    const queue = await screen.findByRole("link", { name: "Todos" });
+    expect(queue).toHaveAttribute("href", "/todos");
     await user.click(queue);
 
-    expect(screen.getByRole("region", { name: "Queued tasks" })).toBeVisible();
-    expect(window.location.pathname).toBe("/queued-tasks");
+    expect(screen.getByRole("region", { name: "Todos" })).toBeVisible();
+    expect(window.location.pathname).toBe("/todos");
   });
 
   it("preserves a selected todo list through canonical route initialization", async () => {
-    window.history.replaceState(null, "", "/queued-tasks?list=work");
+    window.history.replaceState(null, "", "/todos?list=work");
     render(<App api={{ ...api, listQueuedTaskLists: async () => ({ data: [{ id: "work", name: "Work", createdAt: "2026-11-15T10:00:00Z" }] }) }} />);
     expect(await screen.findByRole("button", { name: "Add todo" })).toBeVisible();
     expect(window.location.search).toBe("?list=work");
   });
 
   it("uses popstate to restore a prior canonical page", async () => {
-    window.history.replaceState(null, "", "/queued-tasks");
+    window.history.replaceState(null, "", "/todos");
     render(<App api={api} />);
-    await screen.findByRole("region", { name: "Queued tasks" });
+    await screen.findByRole("region", { name: "Todos" });
 
     await act(async () => {
       window.history.replaceState(null, "", "/accounts");
