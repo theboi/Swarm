@@ -1,7 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { FIXTURE_CREDENTIALS } from "./fixtureData.js";
+import { createFixtureState, FIXTURE_CREDENTIALS } from "./fixtureData.js";
+import type { TranscriptItem } from "../../src/shared/contracts.js";
 
-async function openChat(page: Page) {
+async function openChat(page: Page, items?: TranscriptItem[]) {
+  const fixture = createFixtureState();
+  // Other journeys archive chats; this read-only view must not depend on their state.
+  await page.route("**/api/v1/snapshot", route => route.fulfill({ json: { data: fixture.snapshot } }));
+  await page.route("**/api/v1/accounts/bot3/threads", route => route.fulfill({ json: { data: fixture.snapshot.threads.filter(thread => thread.accountId === "bot3") } }));
+  await page.route("**/api/v1/accounts/bot3/threads/thread-1", route => route.fulfill({ json: { data: items ?? fixture.transcripts.get("bot3:thread-1") } }));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByLabel("Email").fill(FIXTURE_CREDENTIALS.email);
@@ -33,12 +39,11 @@ for (const mode of ["available", "missing", "rejected"] as const) {
 }
 
 test("source is monospace and thinking summaries reveal separate content", async ({ page }) => {
-  await page.route("**/api/v1/accounts/bot3/threads/thread-1", route => route.fulfill({ json: { data: [
+  await openChat(page, [
     { id: "source-1", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "agentMessage", status: "completed", createdAt: null, payload: { text: "**Raw** message\n  indentation" } },
     { id: "reason-empty", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: [" "], content: [] } },
     { id: "reason-full", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "reasoning", status: "completed", createdAt: null, payload: { summary: ["Inspecting the implementation"], content: ["Detailed **reasoning** docs/runbook.md"] } },
-  ] } }));
-  await openChat(page);
+  ]);
   const message = page.getByRole("article", { name: "agentMessage" });
   await message.getByRole("button", { name: "Show plain text" }).click();
   await expect(message.locator("pre")).toHaveText("**Raw** message\n  indentation");

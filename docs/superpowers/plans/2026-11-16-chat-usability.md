@@ -10,11 +10,15 @@
 - [x] Add failing reasoning tests for empty payloads, separate summary/content and content-only payloads. Render summary as preview, content on expansion, and Thinking... for both empty; source uses monospace.
 - [x] Add list/back regression tests, replace bespoke chat rows with shared list controls and make New chat compact/primary. Keep account presentation intact and constrain internal scroll areas.
 - [x] Rename frontend /queued-tasks to /todos, including navigation, generated static route and list-selection URLs. Preserve /api/v1/queued-tasks and manifests/queued-tasks.json.
-- [ ] Run focused tests, typecheck/build, responsive browser checks and read-only review. Update contracts, pull, commit and push verified changes without restarting live Swarm.
+- [x] Run focused tests, typecheck/build, responsive browser checks and read-only review. Update contracts, pull, commit and push verified changes without restarting live Swarm.
 
 ## Verification checkpoint
 
-- 135 focused tests passed before the final unread guard, plus the new unread regression passed after observing its expected failure.
+- 172 affected unit/integration tests pass across chat, transcript, clipboard, route, navigation, Todos, API and static-asset suites.
 - Production build and client/server typechecks pass.
 - Read-only review caught hidden mobile details clearing unread notifications. Detail visibility now gates reads, read marking, polling and late-response acceptance; the follow-up review found no remaining issue.
 - Static frontend tests observed /todos returning a directory redirect before the fix; /todos, /todos/ and selected-list HTML now serve without redirects. Frontend parsing canonicalizes the trailing slash.
+- Final production browser run: 20 chat, turn-history and transcript-usability journeys pass, including real clipboard reads after available, missing and rejected Clipboard API writes; monospace source; separate thinking content; mobile Back/draft restoration; and viewport containment from 280px to 1440px.
+- Four dashboard and six Todos browser journeys also passed in the earlier combined run. Main agent directly inspected desktop, mobile-list, mobile-conversation and source/thinking screenshots.
+- Browser regression found an autosizing textarea measured while its detail stage was hidden. Mounting only the textarea when visible fixes baseline sizing without losing its parent-owned persisted draft. Clipboard browser cases now isolate their read-only fixture state from other journeys that archive chats.
+- Scoped ESLint diagnostic categories/counts match the pre-existing baseline; no new diagnostics. Actual Eden shared components and live processes were not changed or restarted.

@@ -24,6 +24,8 @@ to the independent Swarm repository without changing the shared design system.
   accounts picker unchanged; at 768px retain the rail and account column. The
   list and conversation occupy the same content area, without an overlay or an
   empty third column. Hidden conversations must not fetch or clear unread replies.
+  Mount the autosizing textarea only in the visible detail stage, retaining its
+  persisted draft above that boundary so initial measurements and restoration agree.
 
 - Assistant replies and activity items have no card shell, border, shadow or
   surface fill. User messages retain their distinct bubble.
