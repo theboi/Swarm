@@ -8,6 +8,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it("offers only appearance navigation and switches the selected color theme", () => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   render(<AppearanceProvider><AppearanceSettings onNavigate={() => {}} /></AppearanceProvider>);
+  expect(screen.getByRole("heading", { level: 1, name: "Appearance" })).toBeInTheDocument();
   const navigation = screen.getByRole("navigation", { name: "Settings sections" });
   expect(within(navigation).getAllByRole("link")).toHaveLength(1);
   expect(within(navigation).getByRole("link", { name: "Appearance" })).toHaveAttribute("aria-current", "page");

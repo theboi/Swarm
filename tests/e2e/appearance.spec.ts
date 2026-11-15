@@ -23,11 +23,32 @@ for (const width of [320, 768, 1024, 1440]) {
     await page.screenshot({ path: `/tmp/swarm-appearance-light-${width}.png`, fullPage: true });
     const settingsNav = page.getByRole("navigation", { name: "Settings sections" });
     await expect(settingsNav.getByRole("link", { name: "Appearance" })).toHaveAttribute("aria-current", "page");
+    const selectedContrast = await settingsNav.getByRole("link", { name: "Appearance" }).evaluate(link => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d")!;
+      function luminance(color: string) {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        const rgb = context.getImageData(0, 0, 1, 1).data;
+        return [0.2126, 0.7152, 0.0722].reduce((total, weight, index) => {
+          const channel = rgb[index]! / 255;
+          return total + weight * (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+        }, 0);
+      }
+      const style = getComputedStyle(link);
+      const foreground = luminance(style.color);
+      const background = luminance(style.backgroundColor);
+      return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+    expect(selectedContrast).toBeGreaterThanOrEqual(4.5);
     if (width < 768) {
       const more = nav.getByRole("button", { name: "More", exact: true });
       await more.click();
       await expect(nav.getByRole("link", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "page");
-      await nav.getByRole("link", { name: "Chats", exact: true }).focus();
+      await page.keyboard.press("Tab");
+      await expect(nav.getByRole("link", { name: "Chats", exact: true })).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(more).toBeFocused();
       await expect(more).toHaveAttribute("aria-expanded", "false");
@@ -37,6 +58,8 @@ for (const width of [320, 768, 1024, 1440]) {
     }
     await page.getByRole("button", { name: "Dark", exact: true }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator(".radix-themes").first()).toHaveClass(/dark/);
+    await expect(page.locator(".app-shell")).toHaveCSS("background-color", "rgb(21, 25, 27)");
     await page.screenshot({ path: `/tmp/swarm-appearance-dark-${width}.png`, fullPage: true });
     await nav.getByRole("link", { name: "Home", exact: true }).click();
     if (width < 768) await nav.getByRole("button", { name: "More", exact: true }).click();

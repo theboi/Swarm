@@ -1,3 +1,4 @@
+import { VisuallyHidden } from "@radix-ui/themes";
 import { EdenCard } from "@/components/primitives/EdenCard";
 import { EdenCardButton } from "@/components/primitives/EdenCardButton";
 import { EdenIcon } from "@/components/primitives/EdenIcon/EdenIcon";
@@ -10,6 +11,7 @@ export function AppearanceSettings({ onNavigate }: { onNavigate: () => void }) {
   const { theme, setTheme } = useAppearance();
   return <SettingsLayout sections={[]} navigation={<SettingsNavigation onNavigate={onNavigate} />}>
     <div className={styles.content}>
+      <VisuallyHidden asChild><h1>Appearance</h1></VisuallyHidden>
       <EdenCard asChild><section aria-label="Color theme" className={styles.card}>
         <h2>Color theme</h2>
         <div role="group" aria-label="Color theme choices" className={styles.options}>

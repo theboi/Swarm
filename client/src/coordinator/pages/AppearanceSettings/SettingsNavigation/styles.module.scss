@@ -41,13 +41,13 @@
 
   &[aria-current="page"] {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-strong);
     font-weight: 750;
   }
 
   &:hover {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-strong);
   }
 }
 

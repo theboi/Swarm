@@ -5,6 +5,8 @@ Eden navigation remains unchanged and is not shared. There is no top bar or
 upload action. The tablet (768–1279px) and desktop (1280px+) rail is 88px wide,
 icon-only, with native accessible links and the Settings utility at the bottom.
 Rail links retain Eden's stationary 48px surfaces and accent selected state.
+Selected navigation foregrounds use Eden's `--accent-strong` token so labels
+meet normal-text contrast in both themes; Eden's own navigation is unchanged.
 
 Mobile uses Eden's floating 72px bottom bar, 8px side insets and safe-area-aware
 14px bottom spacing. Home, Accounts and Queued tasks are direct destinations;
