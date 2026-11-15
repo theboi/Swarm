@@ -27,7 +27,9 @@ for (const width of [320, 375, 768, 1280]) {
     if (width <= 768) await page.getByRole("button", { name: "T0 · Graph planning", exact: true }).click();
     await expect(page.getByText("Final answer", { exact: true })).toBeVisible();
     await expect(page.getByText("Keep the final answer short")).toBeVisible();
-    await expect(page.locator(".transcript-item")).toHaveCount(2);
+    await expect(page.getByText("Original request", { exact: true })).toBeVisible();
+    await expect(page.locator(".transcript-item")).toHaveCount(3);
+    await expect(page.locator('[data-transcript-id="progress-0"]')).toHaveCount(0);
     const toggle = page.getByRole("button", { name: /Show turn details/ });
     await toggle.scrollIntoViewIfNeeded();
     const box = await toggle.boundingBox();
@@ -40,7 +42,9 @@ for (const width of [320, 375, 768, 1280]) {
     await expect(page.getByText("Original request", { exact: true })).toBeVisible();
     await expect(page.locator(".transcript-item")).toHaveCount(items.length);
     await page.keyboard.press("Space");
-    await expect(page.locator(".transcript-item")).toHaveCount(2);
+    await expect(page.getByText("Original request", { exact: true })).toBeVisible();
+    await expect(page.locator(".transcript-item")).toHaveCount(3);
+    await expect(page.locator('[data-transcript-id="progress-0"]')).toHaveCount(0);
     const textbox = page.getByRole("textbox", { name: "Message", exact: true });
     await textbox.fill("Typing stays responsive");
     await expect(textbox).toHaveValue("Typing stays responsive");
