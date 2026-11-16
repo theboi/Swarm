@@ -18,8 +18,8 @@ export function ChatAccountUsage({ account }: { account: AccountSnapshot }) {
       <EdenIcon name={expanded ? "chevronDown" : "chevronUp"} size={16} aria-hidden="true" />
     </EdenButton>
     {expanded ? <div id={id} className={styles.details}>
-      <RateLimitBar label="Five-hour" window={fiveHour} forceEmpty={remainingPercent(weekly) === 0} />
-      <RateLimitBar label="Weekly" window={weekly} />
+      <RateLimitBar density="compact" label="Five-hour" window={fiveHour} forceEmpty={remainingPercent(weekly) === 0} />
+      <RateLimitBar density="compact" label="Weekly" window={weekly} />
     </div> : null}
   </footer>;
 }

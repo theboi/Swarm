@@ -9,7 +9,8 @@ import { normalizeExecutionSettings } from "../../turnSettings.js";
 import type { ChatsApi, SubagentReference } from "./types.js";
 import { turnIdFromStart } from "./turnStart.js";
 import { useChatDraft } from "./useChatDraft.js";
-export function SubagentChatDialog({ accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onTranscript, onOpenMarkdown, report, reportError }: {
+export function SubagentChatDialog({ compact = false, accountId, reference, api, models, settings, activeTurnKeys, activeTurnIds, markTurnActive, onSettingsChange, onTranscript, onOpenMarkdown, report, reportError }: {
+  compact?: boolean;
   accountId: AccountId;
   reference: SubagentReference;
   api: ChatsApi;
@@ -112,7 +113,7 @@ export function SubagentChatDialog({ accountId, reference, api, models, settings
         {loading ? <div className="transcript-working"><span className="loading-spinner" aria-hidden="true" /><span>Loading subagent…</span></div> : items.length ? <TranscriptTurns items={items} activeReasoningId={thinking ? [...items].reverse().find((item) => item.turnId === latestTurnId && item.type === "reasoning")?.id : undefined} onOpenMarkdown={onOpenMarkdown} /> : <div className="transcript-empty"><p>No messages in this subagent yet.</p></div>}
       </div>
       <form className="chat-compose subagent-dialog__composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-        <div className="chat-compose__field"><EdenTextArea aria-label="Message" rows={2} resize="none" autoResize maxAutoHeight={200} style={{ maxHeight: "30dvh" }} placeholder={thinking ? "Steer this turn…" : "Work with Swarm..."} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
+        <div className="chat-compose__field"><EdenTextArea density={compact ? "compact" : "default"} aria-label="Message" rows={2} resize="none" autoResize maxAutoHeight={200} style={{ maxHeight: "30dvh" }} placeholder={thinking ? "Steer this turn…" : "Work with Swarm..."} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
         <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><TurnOptions models={models} settings={settings} onChange={onSettingsChange} /><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Steer" title="Steer" disabled={!latestTurnId || !draft.trim()} onClick={() => void steer()}><EdenIcon name="cornerUpRight" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Interrupt" title="Interrupt" disabled={!latestTurnId || !thinking} onClick={() => void interrupt()}><EdenIcon name="circleStop" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton></div><EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={thinking || !draft.trim()}><EdenIcon name="send" aria-hidden="true" size={16} strokeWidth={2} /></EdenButton></div>
       </form>
   </div>;

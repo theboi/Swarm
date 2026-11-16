@@ -14,6 +14,8 @@ import type { MarkdownDocument } from "../api.js";
 import type { ChatTarget } from "./ChatsPage/types.js";
 import { SubagentChatDialog } from "./ChatsPage/SubagentChatDialog.js";
 import { useChatDraft } from "./ChatsPage/useChatDraft.js";
+import { enqueueMessage, useMessageQueue } from "./ChatsPage/messageQueue.js";
+import { QueuedMessages } from "./ChatsPage/QueuedMessages/index.js";
 import { subagentReferences, hasActiveDescendant } from "./ChatsPage/subagents.js";
 import { turnIdFromStart, queuedTurnFromStart } from "./ChatsPage/turnStart.js";
 import type { ChatsApi, SubagentReference } from "./ChatsPage/types.js";
@@ -114,6 +116,8 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const [scrollRequest, setScrollRequest] = useState(0);
   const [draft, setDraft] = useChatDraft(accountId, isDraftChat ? null : threadId);
+  const queuedMessages = useMessageQueue();
+  const hasQueuedMessages = !isDraftChat && queuedMessages.some(message => message.accountId === accountId && message.threadId === threadId);
   const [models, setModels] = useState<ChatModelOption[]>([]);
   const [executionSettings, setExecutionSettings] = useState<ChatExecutionSettings>({ permissionMode: "ask_for_approval" });
   const [settingsByChat, setSettingsByChat] = useState<Record<string, ChatExecutionSettings>>(readChatExecutionSettings);
@@ -289,6 +293,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   }, [scrollRequest, compact, pickerOpen]);
 
   useEffect(() => {
+    if (compact) return;
     if (!accountId || (!threadId && !isDraftChat) || (compact && pickerOpen)) return;
     if (globalThis.document.activeElement?.closest('[role="tablist"]')) return;
     const timer = window.setTimeout(() => {
@@ -465,7 +470,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   const sendMessage = async () => {
     const text = draft.trim();
-    if (!accountId || !text || isWorking || resumeNeedsSignIn || (!isDraftChat && !selectedThread)) return;
+    if (!accountId || !text || isWorking || hasQueuedMessages || resumeNeedsSignIn || (!isDraftChat && !selectedThread)) return;
     const turnSettings = normalizeExecutionSettings(models, executionSettings);
     try {
       if (isDraftChat) {
@@ -539,7 +544,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const canInterrupt = Boolean(selectedThread && accountId && latestTurnId && (isThinking || selectedThread.capabilities.canInterrupt));
   const selectedChatName = isDraftChat ? "New chat" : selectedThread?.name ?? "No chat selected";
   const resumeNeedsSignIn = selectedAccount?.authentication === "unauthenticated" || selectedAccount?.connection === "action_required";
-  const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking && !resumeNeedsSignIn);
+  const canSend = Boolean(accountId && (isDraftChat || selectedThread) && !isWorking && !hasQueuedMessages && !resumeNeedsSignIn);
   const scrollToBottom = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
@@ -652,7 +657,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
   const subagentModal = useEdenModal({
     title: openSubagent ? `Subagent ${openSubagent.label}` : "Subagent", size: "wide",
     open: Boolean(openSubagent && accountId && openSubagentSettings),
-    onClose: () => setOpenSubagent(null), content: openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onTranscript={rememberSubagents} onOpenMarkdown={(path) => void openMarkdown(path)} report={report} reportError={reportError} /> : null,
+    onClose: () => setOpenSubagent(null), content: openSubagent && accountId && openSubagentSettings ? <SubagentChatDialog compact={compact} accountId={accountId} reference={openSubagent} api={api} models={models} settings={openSubagentSettings} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} markTurnActive={markTurnActive} onSettingsChange={updateSubagentSettings} onTranscript={rememberSubagents} onOpenMarkdown={(path) => void openMarkdown(path)} report={report} reportError={reportError} /> : null,
   });
   const moveModal = useEdenModal({
     title: "Move to another account", open: moveOpen, dismissible: !moving,
@@ -669,10 +674,30 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     content: <EdenField label="Chat name" value={renameDraft} onChange={event => setRenameDraft(event.target.value)} />,
     actionButtons: <EdenButton density="superCompact" appearance="borderless" isFloating={false} disabled={!renameDraft.trim() || renaming} onClick={() => void renameChat()}>{renaming ? "Renaming…" : "Rename"}</EdenButton>,
   });
+  const chatList = <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
+          <EdenButton density="compact" appearance="primary" isFloating={false} className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><EdenIcon name="plus" aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></EdenButton>
+          <div className="thread-picker__list"><EdenListCard sections={{ chats: { title: "Chats", items: threads, emptyState: loadingAccountId === accountId ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : "No chats for this account." } }} getItemKey={(thread) => thread.id} renderItem={(thread) => {
+            const name = thread.name ?? "Unnamed chat";
+            const threadKey = `${thread.accountId}\u0000${thread.id}`;
+            const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active" || (thread.id === threadId && subagentThinking) || hasActiveDescendant(thread.id, thread.accountId, subagentGraph, activeTurnKeys, activeThreadIds);
+            const waitingForLimit = isWaitingForLimit(snapshot, limitExhaustedTurnKeys, thread.accountId, thread.id);
+            const hasUnread = unreadTurnKeys.has(threadKey);
+            const needsAttention = attentionTurnKeys.has(threadKey);
+            const status = thinking ? "Thinking" : waitingForLimit ? "Waiting for limit" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
+            return <EdenListCardItem aria-label={name} title={name} selected={!compact && thread.id === threadId} onClick={() => chooseThread(thread.id)}
+              leading={thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <EdenIcon name="messageSquarePlus" aria-hidden="true" size={16} />}
+              metadata={<span className="thread-picker__status">{status}</span>}
+              trailing={<span className="thread-picker__trailing">{hasUnread ? <span className="notification-dot" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot" role="img" aria-label={`${name} needs attention`} /> : null}<EdenIcon name="chevronRight" aria-hidden="true" size={16} /></span>} />;
+          }} /></div>
+          {selectedAccount ? <ChatAccountUsage key={selectedAccount.id} account={selectedAccount} /> : null}
+        </aside>;
+
   return (
     <section className="chats-page" aria-label="Chat workspace">
       {message ? <Toast onDismiss={() => setMessage(null)}>{message}</Toast> : null}
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
+      <div className="chats-workspace" data-picker-open={pickerOpen}>
+      {!compact ? chatList : null}
       <EdenTabs aria-label="Accounts" className="chats-tabs" scrollable selectedTab={accountId ?? ""} setSelectedTab={(id) => { const account = snapshot.accounts.find(account => account.id === id); if (account) chooseAccount(account.id); }} tabs={snapshot.accounts.map((account) => {
             const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
             const accountActiveThreadIds = new Set(accountThreads.filter((thread) => thread.activity === "active").map((thread) => thread.id));
@@ -685,24 +710,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
             return { key: account.id, "aria-label": account.id, label: <span className="chat-account-tab"><AccountStatusIndicator account={account} working={accountThinking} waitingForLimit={accountLimitHit} /><span>{account.id}</span>{accountHasUnread ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span> };
           })}>
-      <div className="chats-workspace" data-picker-open={pickerOpen}>
-        {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
-          <EdenButton density="compact" appearance="primary" isFloating={false} className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><EdenIcon name="plus" aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></EdenButton>
-          <div className="thread-picker__list"><EdenListCard sections={{ chats: { title: "Chats", items: threads, emptyState: loadingAccountId === accountId ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : "No chats for this account." } }} getItemKey={(thread) => thread.id} renderItem={(thread) => {
-            const name = thread.name ?? "Unnamed chat";
-            const threadKey = `${thread.accountId}\u0000${thread.id}`;
-            const thinking = activeTurnKeys.has(threadKey) || thread.activity === "active" || (thread.id === threadId && subagentThinking) || hasActiveDescendant(thread.id, thread.accountId, subagentGraph, activeTurnKeys, activeThreadIds);
-            const waitingForLimit = isWaitingForLimit(snapshot, limitExhaustedTurnKeys, thread.accountId, thread.id);
-            const hasUnread = unreadTurnKeys.has(threadKey);
-            const needsAttention = attentionTurnKeys.has(threadKey);
-            const status = thinking ? "Thinking" : waitingForLimit ? "Waiting for limit" : thread.capabilities.canSteer ? "Working" : "Ready for messages";
-            return <EdenListCardItem aria-label={name} title={name} selected={thread.id === threadId} onClick={() => chooseThread(thread.id)}
-              leading={thinking ? <span className="loading-spinner" role="img" aria-label={`${name} working`} /> : <EdenIcon name="messageSquarePlus" aria-hidden="true" size={16} />}
-              metadata={<span className="thread-picker__status">{status}</span>}
-              trailing={<span className="thread-picker__trailing">{hasUnread ? <span className="notification-dot" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot" role="img" aria-label={`${name} needs attention`} /> : null}<EdenIcon name="chevronRight" aria-hidden="true" size={16} /></span>} />;
-          }} /></div>
-          {selectedAccount ? <ChatAccountUsage key={selectedAccount.id} account={selectedAccount} /> : null}
-        </aside> : null}
+        {compact && pickerOpen ? chatList : null}
         <section className="chat-panel" hidden={compact && pickerOpen} aria-label={selectedChatName}>
           <div className="chat-panel__toolbar">
             {compact ? <EdenButton className="chat-panel__back" density="superCompact" appearance="borderless" isFloating={false} aria-label="Back to chats" onClick={() => setPickerOpen(true)}><EdenIcon name="arrowLeft" aria-hidden="true" size={16} />Chats</EdenButton> : null}
@@ -714,18 +722,19 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
             const missingPermissions = isPermissionGrant(decision) && (!permissions || Object.keys(permissions).length === 0);
             return <EdenButton density="superCompact" appearance="borderless" isFloating={false} key={decision} type="button" disabled={missingPermissions} onClick={() => void run(() => api.decideApproval(approval, decision, permissions), "Approval response sent.")}>{approvalLabel(decision)}</EdenButton>;
           })}</div></section>)}</div> : null}
-          {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><EdenIcon name="network" aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) || activeThreadIds.has(subagent.threadId) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</EdenButton>)}</nav> : null}
+          {subagents.length ? <nav className="subagent-pills" aria-label="Subagents">{subagents.map((subagent) => <EdenButton density="superCompact" appearance="secondary" isFloating={false} className="subagent-pill" key={subagent.threadId} type="button" aria-label={`Open subagent ${subagent.label}`} onClick={() => setOpenSubagent(subagent)}><EdenIcon name="network" aria-hidden="true" size={14} strokeWidth={1.75} /><span>{subagent.label}</span>{activeTurnKeys.has(`${accountId}\u0000${subagent.threadId}`) || activeThreadIds.has(subagent.threadId) ? <span className="loading-spinner" aria-label={`${subagent.label} working`} role="img" /> : null}</EdenButton>)}</nav> : null}
           <div className="transcript-region"><div className="transcript-scroll" data-testid="transcript-scroll" ref={scrollRef} aria-label="Conversation">{items.length ? <TranscriptTurns key={`${accountId}:${threadId}`} items={items} activeReasoningId={liveReasoningId} onOpenMarkdown={openMarkdown} /> : <div className="transcript-empty"><EdenIcon name="messageSquarePlus" aria-hidden="true" size={20} strokeWidth={1.5} /><p>{isDraftChat ? "Your chat will be created when you send the first message." : selectedThread ? "No messages in this chat yet." : "Choose a chat to view its messages."}</p></div>}{isThinking && !liveReasoningId ? <div className="transcript-working" aria-label="Codex is working"><span className="loading-spinner" aria-hidden="true" /><span>Thinking… Live updates will appear here.</span></div> : null}</div><div className="transcript-jump-controls" aria-label="Chat scroll controls"><EdenButton density="superCompact" appearance="secondary" isFloating type="button" aria-label="Scroll to bottom" title="Scroll to bottom" onClick={scrollToBottom}><EdenIcon name="arrowDown" aria-hidden="true" size={16} /></EdenButton></div></div>
           {limitExhausted ? <section className="chat-limit-notice" aria-label="Session limit reached" role="status"><p>{resumeStatus}</p></section> : null}
           {resumeNeedsSignIn && !limitExhausted && accountId ? <section className="chat-limit-notice" aria-label="Account sign-in required" role="status"><p>{`Sign in to ${accountId} to send messages.`}</p></section> : null}
           <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
+            <QueuedMessages accountId={accountId} threadId={isDraftChat ? null : threadId} />
             {pendingSteer && pendingSteer.accountId === accountId && pendingSteer.threadId === selectedThread?.id ? <section className="pending-steer" role="status" aria-label="Pending steer"><p>{pendingSteer.text}</p><div><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Edit pending steer" title="Edit" onClick={() => { setDraft(pendingSteer.text); setPendingSteer(null); composerRef.current?.focus(); }}><EdenIcon name="pencil" aria-hidden="true" size={14} /></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Cancel pending steer" title="Cancel" onClick={() => setPendingSteer(null)}><EdenIcon name="x" aria-hidden="true" size={14} /></EdenButton></div></section> : null}
-            <div className="chat-compose__field">{conversationVisible ? <EdenTextArea ref={composerRef} id="message" aria-label="Message" rows={2} resize="none" autoResize maxAutoHeight={200} style={{ maxHeight: "30dvh" }} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Work with Swarm..."} value={draft} onChange={(event) => setDraft(event.target.value)} /> : null}</div>
-            <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><TurnOptions models={models} settings={executionSettings} onChange={updateExecutionSettings} /><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Steer" title="Steer" disabled={!canSteer} onClick={() => void steerMessage()}><EdenIcon name="cornerUpRight" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Interrupt" title="Interrupt" disabled={!canInterrupt} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}><EdenIcon name="circleStop" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton></div><EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={!canSend}><EdenIcon name="send" aria-hidden="true" size={16} strokeWidth={2} /></EdenButton></div>
+            <div className="chat-compose__field">{conversationVisible ? <EdenTextArea density={compact ? "compact" : "default"} ref={composerRef} id="message" aria-label="Message" rows={2} resize="none" autoResize maxAutoHeight={200} style={{ maxHeight: "30dvh" }} disabled={!accountId || (!isDraftChat && !selectedThread)} placeholder={isWorking ? "Steer this turn…" : "Work with Swarm..."} value={draft} onChange={(event) => setDraft(event.target.value)} /> : null}</div>
+            <div className="chat-compose__footer"><div className="chat-compose__turn-actions"><TurnOptions models={models} settings={executionSettings} onChange={updateExecutionSettings} /><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Steer" title="Steer" disabled={!canSteer} onClick={() => void steerMessage()}><EdenIcon name="cornerUpRight" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Queue" title="Queue" disabled={!accountId || !selectedThread || isDraftChat || !draft.trim()} onClick={() => { if (!accountId || !selectedThread || !draft.trim()) return; enqueueMessage(accountId, selectedThread.id, draft, normalizeExecutionSettings(models, executionSettings)); setDraft("", draft); }}><EdenIcon name="listTodo" aria-hidden="true" size={16} />Queue</EdenButton><EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label="Interrupt" title="Interrupt" disabled={!canInterrupt} onClick={() => selectedThread && accountId && latestTurnId && void run(() => api.interruptTurn(accountId, selectedThread.id, latestTurnId), "Turn interrupted.")}><EdenIcon name="circleStop" aria-hidden="true" size={16} strokeWidth={1.75} /></EdenButton></div><EdenButton density="superCompact" appearance="borderless" isFloating={false} className="chat-compose__send" type="submit" aria-label="Send" title="Send" disabled={!canSend}><EdenIcon name="send" aria-hidden="true" size={16} strokeWidth={2} /></EdenButton></div>
           </form>
         </section>
-      </div>
       </EdenTabs>
+      </div>
       {fileModal.modal}{subagentModal.modal}{moveModal.modal}{renameModal.modal}
     </section>
   );

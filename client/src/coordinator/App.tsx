@@ -13,6 +13,7 @@ import { LOCAL_ACCOUNT_ID, type AccountId } from "../shared/contracts.js";
 import { Toast } from "./components/Toast.js";
 import { AppearanceProvider } from "./components/AppearanceProvider";
 import { AppearanceSettings } from "./pages/AppearanceSettings";
+import { useMessageQueueDelivery } from "./pages/ChatsPage/messageQueue.js";
 import { filePath, pagePath, parseAppRoute, type AppRoute } from "./navigation.js";
 
 type ChatSelection = { accountId: AccountId; threadId?: string };
@@ -37,7 +38,8 @@ function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat,
 function AuthenticatedApp({ api }: { api: CoordinatorApi }) {
   const [route, setRoute] = useState(() => parseAppRoute(window.location));
   const [selectedChat, setSelectedChat] = useState<ChatSelection | null>(null);
-  const { snapshot, refresh, markTurnActive } = useCoordinatorStore();
+  const { snapshot, refresh, markTurnActive, activeTurnKeys, limitExhaustedTurnKeys, isTurnSettled } = useCoordinatorStore();
+  useMessageQueueDelivery({ snapshot, refresh, markTurnActive, activeTurnKeys, limitExhaustedTurnKeys, isTurnSettled, api });
   const synchronizeRoute = useCallback(() => {
     const nextRoute = parseAppRoute(window.location);
     if (`${window.location.pathname}${window.location.search}` !== nextRoute.canonicalPath) window.history.replaceState(null, "", nextRoute.canonicalPath);

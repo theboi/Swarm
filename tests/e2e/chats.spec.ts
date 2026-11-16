@@ -19,7 +19,7 @@ async function selectBot3Thread(page: Page, name: string): Promise<void> {
   const compact = (page.viewportSize()?.width ?? 1440) <= 768;
   if (compact || await account.getAttribute("aria-selected") !== "true") await account.click();
   const thread = page.getByRole("button", { name });
-  await expect(thread).toHaveAttribute("aria-pressed", "true");
+  await expect(thread).toHaveAttribute("aria-pressed", compact ? "false" : "true");
   if (compact) await thread.click();
 }
 
@@ -51,7 +51,7 @@ test.describe("Chats", () => {
       expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(720);
       if (width <= 768) await list.getByRole("button", { name: "T0 · Graph planning", exact: true }).click();
       const panel = (await page.locator(".chat-panel").boundingBox())!;
-      expect(panel.x + panel.width).toBeCloseTo(width, 0);
+      expect(panel.x + panel.width).toBeCloseTo(width - 8, 0);
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
       await expect(page.locator(".chat-panel__toolbar")).toBeInViewport();
     });
@@ -149,7 +149,7 @@ test.describe("Chats", () => {
     if (await bot3.getAttribute("aria-selected") !== "true") await bot3.click();
     await bot3.click();
     const thread = page.getByRole("button", { name: "T0 · Graph planning" });
-    await expect(thread).toHaveAttribute("aria-pressed", "true");
+    await expect(thread).toHaveAttribute("aria-pressed", "false");
     await thread.click();
     await expect(thread).toHaveCount(0);
 

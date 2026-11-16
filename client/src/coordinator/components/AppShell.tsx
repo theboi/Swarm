@@ -15,9 +15,15 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
   const [variant, setVariant] = useState(() => viewportVariant(window.innerWidth));
   const [composerFocused, setComposerFocused] = useState(false);
   const pointerActive = useRef(false);
+  const shellRef = useRef<HTMLDivElement>(null);
   const composing = variant === "mobile" && activePage === "chats" && composerFocused;
 
   useEffect(() => {
+    const reconcile = () => setComposerFocused(document.activeElement instanceof HTMLTextAreaElement);
+    // Removing a focused textarea need not emit blur (Back, account changes, overlays).
+    const observer = new MutationObserver(() => { if (!pointerActive.current) reconcile(); });
+    if (shellRef.current) observer.observe(shellRef.current, { childList: true, subtree: true });
+    window.addEventListener("focus", reconcile);
     const update = () => setVariant(viewportVariant(window.innerWidth));
     const finishPointer = () => {
       pointerActive.current = false;
@@ -28,6 +34,8 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
     window.addEventListener("pointerup", finishPointer);
     window.addEventListener("pointercancel", finishPointer);
     return () => {
+      observer.disconnect();
+      window.removeEventListener("focus", reconcile);
       window.removeEventListener("resize", update);
       window.removeEventListener("pointerup", finishPointer);
       window.removeEventListener("pointercancel", finishPointer);
@@ -35,7 +43,7 @@ export function AppShell({ activePage, hasBreakingChangeNotification = false, on
   }, []);
 
   return (
-    <div className={`app-shell app-shell--${variant}${composing ? " app-shell--composing" : ""}`} data-testid="app-shell"
+    <div ref={shellRef} className={`app-shell app-shell--${variant}${composing ? " app-shell--composing" : ""}`} data-testid="app-shell"
       onPointerDownCapture={() => { pointerActive.current = true; }}
       onFocusCapture={(event) => { if (!pointerActive.current || event.target instanceof HTMLTextAreaElement) setComposerFocused(event.target instanceof HTMLTextAreaElement); }}
       onBlurCapture={(event) => { if (!pointerActive.current) setComposerFocused(event.relatedTarget instanceof HTMLTextAreaElement); }}>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,15 @@ import { setViewport } from "../test/fixtures";
 afterEach(cleanup);
 
 describe("AppShell", () => {
+  it("restores mobile navigation when a focused composer is removed without a blur event", async () => {
+    setViewport(390);
+    const view = render(<AppShell activePage="chats" onNavigate={() => undefined}><textarea aria-label="Message" /></AppShell>);
+    screen.getByRole("textbox").focus();
+    fireEvent.focus(screen.getByRole("textbox"));
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
+    view.rerender(<AppShell activePage="chats" onNavigate={() => undefined}><p>Chat list</p></AppShell>);
+    await waitFor(() => expect(screen.getByRole("navigation", { name: "Primary navigation" })).toBeVisible());
+  });
   it("hides mobile navigation while a chat composer is focused and restores it on blur", () => {
     setViewport(390);
     render(<AppShell activePage="chats" onNavigate={() => undefined}><textarea aria-label="Message" /></AppShell>);

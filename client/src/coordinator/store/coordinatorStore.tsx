@@ -17,6 +17,7 @@ interface CoordinatorStoreValue {
   unreadTurnKeys: ReadonlySet<string>;
   attentionTurnKeys: ReadonlySet<string>;
   markTurnActive: (accountId: string, threadId: string, turnId?: string) => void;
+  isTurnSettled: (accountId: string, threadId: string, turnId: string) => boolean;
   markThreadRead: (accountId: string, threadId: string) => void;
 }
 
@@ -95,6 +96,8 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   const [activeTurnKeys, setActiveTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [activeTurnIds, setActiveTurnIds] = useState<ReadonlyMap<string, string>>(() => new Map());
   const activeTurnIdsRef = useRef<ReadonlyMap<string, string>>(activeTurnIds);
+  const settledTurns = useRef(new Set<string>());
+  const isTurnSettled = useCallback((accountId: string, threadId: string, turnId: string) => settledTurns.current.has(`${accountId}\u0000${threadId}\u0000${turnId}`), []);
   activeTurnIdsRef.current = activeTurnIds;
   const [limitExhaustedTurnKeys, setLimitExhaustedTurnKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [unreadTurnKeys, setUnreadTurnKeys] = useState<ReadonlySet<string>>(readUnreadTurns);
@@ -104,6 +107,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
   pendingApprovalsRef.current = snapshot?.pendingApprovals ?? [];
   const attentionTurnKeys = useMemo(() => unreadApprovalTurnKeys(snapshot?.pendingApprovals ?? [], acknowledgedApprovalIds), [acknowledgedApprovalIds, snapshot?.pendingApprovals]);
   const markTurnActive = useCallback((accountId: string, threadId: string, turnId?: string) => {
+    if (turnId && isTurnSettled(accountId, threadId, turnId)) return;
     const key = `${accountId}\u0000${threadId}`;
     setActiveTurnKeys((current) => current.has(key) ? current : new Set([...current, key]));
     if (turnId) setActiveTurnIds((current) => {
@@ -111,7 +115,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
       activeTurnIdsRef.current = next;
       return next;
     });
-  }, []);
+  }, [isTurnSettled]);
   const markThreadRead = useCallback((accountId: string, threadId: string) => {
     const key = `${accountId}\u0000${threadId}`;
     setUnreadTurnKeys((current) => clearUnreadTurn(current, key));
@@ -233,6 +237,10 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
             }
             if (["completed", "failed", "interrupted", "limit_exhausted"].includes(String(eventPayload?.state))) {
               const eventTurnId = typeof eventPayload?.turnId === "string" ? eventPayload.turnId : undefined;
+              if (eventTurnId) {
+                settledTurns.current.add(`${key}\u0000${eventTurnId}`);
+                if (settledTurns.current.size > 1000) settledTurns.current.delete(settledTurns.current.values().next().value!);
+              }
               if (!shouldClearActiveTurn(activeTurnIdsRef.current.get(key), eventTurnId, eventPayload?.historical === true)) return;
               setActiveTurnKeys((current) => {
                 if (!current.has(key)) return current;
@@ -260,7 +268,7 @@ export function CoordinatorStoreProvider({ api, children }: { api: CoordinatorAp
     return () => { disposed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); if (transcriptTimer !== undefined) window.clearTimeout(transcriptTimer); if (refreshTimer !== undefined) window.clearTimeout(refreshTimer); };
   }, [refresh]);
 
-  const value = useMemo(() => ({ api, snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead }), [activeTurnIds, activeTurnKeys, api, attentionTurnKeys, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevisions, unreadTurnKeys]);
+  const value = useMemo(() => ({ isTurnSettled, api, snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead }), [isTurnSettled, activeTurnIds, activeTurnKeys, api, attentionTurnKeys, error, limitExhaustedTurnKeys, markThreadRead, markTurnActive, refresh, refreshUsage, snapshot, transcriptRevisions, unreadTurnKeys]);
   return <CoordinatorStore.Provider value={value}>{children}</CoordinatorStore.Provider>;
 }
 

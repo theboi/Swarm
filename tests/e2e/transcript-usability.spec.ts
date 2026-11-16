@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createFixtureState, FIXTURE_CREDENTIALS } from "./fixtureData.js";
-import type { TranscriptItem } from "../../src/shared/contracts.js";
+import type { CoordinatorSnapshot, TranscriptItem } from "../../src/shared/contracts.js";
 
-async function openChat(page: Page, items?: TranscriptItem[], width = 1440) {
+async function openChat(page: Page, items?: TranscriptItem[], width = 1440, snapshot?: CoordinatorSnapshot) {
   const fixture = createFixtureState();
+  if (snapshot) fixture.snapshot = snapshot;
   // Other journeys archive chats; this read-only view must not depend on their state.
   await page.route("**/api/v1/snapshot", route => route.fulfill({ json: { data: fixture.snapshot } }));
   await page.route("**/api/v1/accounts/bot3/threads", route => route.fulfill({ json: { data: fixture.snapshot.threads.filter(thread => thread.accountId === "bot3") } }));
@@ -56,16 +57,24 @@ for (const width of [320, 768, 1440]) {
     const picker = page.getByRole("complementary", { name: "Chats for bot3" });
     const tabBox = (await tabs.boundingBox())!;
     const pickerBox = (await picker.boundingBox())!;
-    expect(tabBox.y + tabBox.height).toBeLessThanOrEqual(pickerBox.y + 1);
+    if (width <= 768) expect(tabBox.y + tabBox.height).toBeLessThanOrEqual(pickerBox.y + 1);
+    else {
+      expect(tabBox.x).toBeGreaterThanOrEqual(pickerBox.x + pickerBox.width);
+      const panel = (await page.locator(".chat-panel").boundingBox())!;
+      expect(panel.y - (tabBox.y + tabBox.height)).toBeLessThanOrEqual(1);
+      expect(tabBox.y).toBeGreaterThan(0);
+    }
     await expect(page.locator(".chat-account-picker__heading")).toHaveCount(0);
     await expect(picker).toHaveCSS("border-left-width", "0px");
     await expect(picker).toHaveCSS("border-right-width", "0px");
     const selected = picker.getByRole("button", { name: "T0 · Graph planning", exact: true });
     // Compare settled shared states, not an intermediate selection animation frame.
     await selected.evaluate(element => element.getAnimations().forEach(animation => animation.finish()));
-    const selectedFill = await selected.evaluate(element => getComputedStyle(element).backgroundColor);
-    await selected.hover();
-    await expect(selected).toHaveCSS("background-color", selectedFill);
+    if (width > 768) {
+      const selectedFill = await selected.evaluate(element => getComputedStyle(element).backgroundColor);
+      await selected.hover();
+      await expect(selected).toHaveCSS("background-color", selectedFill);
+    } else await expect(selected).toHaveAttribute("aria-pressed", "false");
     const row = picker.getByRole("button", { name: "U1 · Coordinator UI", exact: true });
     await row.hover();
     await expect(row).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
@@ -76,6 +85,8 @@ for (const width of [320, 768, 1440]) {
     await expect(picker.getByLabel("Five-hour remaining: 60%")).toBeVisible();
     await expect(picker.getByLabel("Weekly remaining: 80%")).toBeVisible();
     await expect(picker.getByText(/^Resets /)).toHaveCount(2);
+    await expect(picker.locator(".rate-limit__label").first()).toHaveCSS("font-size", "13px");
+    await expect(picker.locator(".rate-limit small").first()).toHaveCSS("font-size", "13px");
     const workspaceColour = await page.evaluate(() => {
       const probe = document.createElement("span");
       probe.style.background = "var(--workspace-bg)";
@@ -93,6 +104,89 @@ for (const width of [320, 768, 1440]) {
     await expect(tabs.getByRole("tab").last()).toBeInViewport();
   });
 }
+
+test("mobile navigation survives repeated composer focus and Back while textarea stays compact", async ({ page }) => {
+  await openChat(page, undefined, 390);
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await expect(nav).toBeVisible();
+    const message = page.getByRole("textbox", { name: "Message", exact: true });
+    await expect(message).not.toBeFocused();
+    await expect(message.locator("..")).toHaveClass(/density-compact/);
+    await message.fill(`Keep draft ${cycle}`);
+    await expect(nav).toBeHidden();
+    await page.getByRole("button", { name: "Back to chats" }).click();
+    await expect(nav).toBeVisible();
+    const row = page.getByRole("button", { name: "T0 · Graph planning", exact: true });
+    await expect(row).toHaveAttribute("aria-pressed", "false");
+    await row.click();
+  }
+});
+
+for (const width of [390, 1440]) test(`queued messages wait for completion and deliver after leaving Chats at ${width}px`, async ({ page }) => {
+  const snapshot = createFixtureState().snapshot;
+  snapshot.pendingApprovals = [];
+  const thread = snapshot.threads.find(thread => thread.accountId === "bot3" && thread.id === "thread-1")!;
+  thread.activity = "active";
+  let emit: (message: unknown) => void = () => {};
+  await page.routeWebSocket("**/ws", socket => {
+    emit = message => socket.send(JSON.stringify(message));
+    emit({ type: "snapshot", sequence: 0, payload: snapshot });
+  });
+  const sent: unknown[] = [];
+  await page.route("**/api/v1/accounts/bot3/threads/thread-1/turns", async route => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { data: { turn: { id: "queue-turn" } } } });
+  });
+  await openChat(page, undefined, width, snapshot);
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await composer.fill("  Next response\nKeep exact whitespace.\n");
+  await page.getByRole("button", { name: "Queue", exact: true }).click();
+  await expect(composer).toHaveValue("");
+  await expect(page.getByRole("list", { name: "Queued messages" })).toContainText("Next response");
+  expect(sent).toHaveLength(0);
+  await page.screenshot({ path: test.info().outputPath(`message-queue-${width}.png`), fullPage: true });
+  await page.getByRole("link", { name: "Todos", exact: true }).click();
+  thread.activity = "idle";
+  emit({ type: "snapshot", sequence: 1, payload: snapshot });
+  await expect.poll(() => sent.length).toBe(1);
+  expect(sent[0]).toMatchObject({ text: "  Next response\nKeep exact whitespace.\n", clientUserMessageId: expect.any(String) });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("swarm.chat.queue.v1") ?? "[]"))).toEqual([]);
+});
+
+test("a second tab cannot retry or duplicate an in-flight queued message", async ({ page, context }) => {
+  const snapshot = createFixtureState().snapshot;
+  snapshot.pendingApprovals = [];
+  snapshot.threads.forEach(thread => { thread.activity = "idle"; });
+  await context.routeWebSocket("**/ws", socket => socket.send(JSON.stringify({ type: "snapshot", sequence: 0, payload: snapshot })));
+  let release!: () => void;
+  const acceptance = new Promise<void>(resolve => { release = resolve; });
+  let starts = 0;
+  await context.route("**/api/v1/accounts/bot3/threads/thread-1/turns", async route => {
+    starts++;
+    await acceptance;
+    await route.fulfill({ json: { data: { turn: { id: "owned-turn" } } } });
+  });
+  await openChat(page, undefined, 1440, snapshot);
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("Only send once");
+  await page.getByRole("button", { name: "Queue", exact: true }).click();
+  await expect.poll(() => starts).toBe(1);
+  const second = await context.newPage();
+  await second.route("**/api/v1/snapshot", route => route.fulfill({ json: { data: snapshot } }));
+  await second.goto("/chats");
+  await second.getByRole("tab", { name: "bot3", exact: true }).click();
+  await expect(second.getByRole("list", { name: "Queued messages" })).toContainText("Sending");
+  expect(await second.evaluate(async () => (await navigator.locks.query()).held?.filter(lock => lock.name === "swarm.chat.queue.delivery").length)).toBe(1);
+  await second.reload();
+  await second.getByRole("tab", { name: "bot3", exact: true }).click();
+  await expect(second.getByRole("list", { name: "Queued messages" })).toContainText("Sending");
+  await expect(second.getByRole("button", { name: "Retry queued message" })).toHaveCount(0);
+  expect(starts).toBe(1);
+  release();
+  await expect(page.getByRole("list", { name: "Queued messages" })).toHaveCount(0);
+  await expect(second.getByRole("list", { name: "Queued messages" })).toHaveCount(0);
+  await second.close();
+});
 
 test("history loads automatically in both directions and offloads distant Markdown", async ({ page }) => {
   const items: TranscriptItem[] = Array.from({ length: 300 }, (_, index) => ({ id: `lazy-${index}`, accountId: "bot3", threadId: "thread-1", turnId: "live-turn", type: "agentMessage", status: "completed", createdAt: null, payload: { text: `History entry ${index}\n\n${"Long message content. ".repeat(12)}` } }));

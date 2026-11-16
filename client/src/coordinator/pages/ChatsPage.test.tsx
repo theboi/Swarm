@@ -1,4 +1,4 @@
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithOverlays as render } from "../test/renderWithOverlays";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,38 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("queues a follow-up above the composer without steering or losing new typing", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    const startTurn = vi.fn(api.startTurn);
+    const steerTurn = vi.fn(api.steerTurn);
+    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, startTurn, steerTurn }} activeTurnKeys={new Set(["bot3\u0000thread-1"])} />);
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Follow up after this response");
+    await user.click(screen.getByRole("button", { name: "Queue" }));
+    expect(within(screen.getByRole("list", { name: "Queued messages" })).getByText("Follow up after this response")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+    expect(startTurn).not.toHaveBeenCalled();
+    expect(steerTurn).not.toHaveBeenCalled();
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "New draft");
+    await user.click(screen.getByRole("button", { name: "Remove queued message" }));
+    expect(screen.queryByRole("list", { name: "Queued messages" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New draft");
+  });
+
+  it("keeps desktop chat rows outside account tabs and mobile rows unselected without autofocus", async () => {
+    setViewport(1440);
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    expect(screen.getByRole("tabpanel", { name: "bot3" })).not.toContainElement(screen.getByRole("complementary", { name: "Chats for bot3" }));
+    view.unmount();
+    setViewport(390);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    const row = screen.getByRole("button", { name: "T0 · Graph planning" });
+    expect(row).not.toHaveAttribute("data-selected", "true");
+    await user.click(row);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message" })).toBeVisible());
+    expect(screen.getByRole("textbox", { name: "Message" })).not.toHaveFocus();
+  });
   it("expands compact usage into the Accounts bars with percentages and reset times", async () => {
     setViewport(1440);
     const user = userEvent.setup();
@@ -815,6 +847,8 @@ describe("ChatsPage", () => {
       expect(await screen.findByRole("article", { name: type })).toBeVisible();
     }
     const transcript = screen.getByTestId("transcript-scroll");
+    // Model a reader scrolling, so late initial measurements stop settling at the bottom.
+    fireEvent.wheel(transcript, { deltaY: -144 });
     transcript.scrollTop = 144;
     await user.click(screen.getByRole("link", { name: "docs/runbook.md" }));
     const viewer = await screen.findByRole("dialog", { name: "runbook.md" });

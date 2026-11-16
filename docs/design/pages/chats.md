@@ -4,13 +4,16 @@ Approved 15 November 2026. Retain the linked Eden Swarm chat contract for drafts
 transcripts, accessibility and mobile navigation. These local refinements apply
 to the independent Swarm repository without changing the shared design system.
 
-- Account choices use horizontal scrollable EdenTabs above the list/detail area
-  at every width, retaining identity/status and unread/attention dots. Omit the
+- Account choices use horizontal scrollable EdenTabs at the top of the right conversation column, not above the desktop chat list. Give tabs 8px outer space and no gap before their content. On mobile, show the list/detail stage below those same tabs.
+- Account choices retain identity/status and unread/attention dots at every width. Omit the
   Accounts/count heading. The selected account's chat-list total remains.
 - Main and subagent composers use EdenTextArea with “Work with Swarm...” for idle
   prompts; retain “Steer this turn…” while working. Grow with content up to 200px,
   also constrained to 30dvh on short viewports, then scroll internally. Shrink
   after deletion and restore a persisted draft's size on mount.
+  Mobile composers use EdenTextArea compact density, including subagent composers.
+- Queue sits immediately after Steer. It captures exact draft text and current turn settings in a per-account/thread FIFO, displayed above the textarea with remove and failed-delivery retry actions. Do not steer queued text or combine entries. Send one entry when its chat becomes idle; wait for that response before the next. Persist browser-owned entries across reload/navigation and run delivery at the authenticated app boundary. An open signed-in Swarm tab is required; this is not a server scheduler. Unknown/archived chats, disconnected accounts, approvals and limit handoffs pause delivery. Retain failures/uncertain submissions for explicit retry with the same client message ID; never loop retries or discard new typing. Manual Send cannot overtake pending queued messages.
+- A browser Web Lock elects one delivery tab; other tabs display the same persisted queue without resubmitting in-flight entries. Automatic delivery requires HTTPS or localhost and Web Locks support. Other browsers/origins retain messages with an actionable failure rather than risking duplicate delivery. Terminal turn events release the next message even when completion precedes acknowledgment or React never renders the intermediate active state.
 - Turn options uses a non-floating borderless superCompact EdenButton as the
   native disclosure trigger, immediately before Steer in the same footer group. Keep settings
   reachable by pointer/keyboard and bounded above the composer.
@@ -27,6 +30,7 @@ to the independent Swarm repository without changing the shared design system.
   empty third column. Hidden conversations must not fetch or clear unread replies.
   Mount the autosizing textarea only in the visible detail stage, retaining its
   persisted draft above that boundary so initial measurements and restoration agree.
+  Mobile chat rows do not show selected UI. Opening mobile detail does not focus the composer automatically. Hide navigation only during explicit textarea focus, and reconcile it when a focused control is removed without blur; Back must always restore navigation.
 
 - Assistant replies and activity items have no card shell, border, shadow or
   surface fill. User messages use stationary EdenCard surfaces with accent-soft
@@ -49,7 +53,7 @@ to the independent Swarm repository without changing the shared design system.
   selection fallback, restores focus/selection, and reports failure truthfully.
   Copied feedback expires after two seconds and does not apply to changed source.
 - Chat-view EdenButtons use superCompact density. Composer, transcript, turn
-  history and subagent controls retain borderless appearance. Auto-resume is a
+  history controls retain borderless appearance. Subagent pills use secondary appearance. Auto-resume is a
   secondary cycle icon toggle with `aria-pressed`; archive and transfer are
   secondary icon buttons. Preserve descriptive accessible names and tooltips.
   Scroll to bottom is a floating secondary icon button. There is no latest-user-
@@ -71,5 +75,6 @@ Fixture browser checks may use port 4340. Never alter live processes or ports.
 - The pinned compact usage footer expands by pointer/keyboard into the same
   five-hour/weekly RateLimitBars as Accounts, including percentages, reset times,
   unknown capacity and weekly exhaustion. Collapse returns the overlaid summary.
+  Expanded labels, percentages and reset times retain the collapsed summary's 13px size, without changing Accounts typography.
 - Page/content uses workspace-bg; account tabs and navigation retain shared bg.
   Keyboard account changes retain tab focus rather than focusing the composer.

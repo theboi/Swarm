@@ -24,7 +24,7 @@ remain unboxed. New chat fills the list column. History automatically mounts
 near the viewport and offloads distant content into measured placeholders,
 with memoized blocks/turns and no manual earlier-messages action.
 
-Accounts use horizontal scrollable EdenTabs above Chats, preserving status and unread
+Accounts use horizontal scrollable EdenTabs at the top of the right conversation column, with margins but no tab/content gap, preserving status and unread
 indicators. The chat list retains EdenListCard interaction states without local
 hover overrides or vertical column dividers. Its usage footer expands into the
 Accounts five-hour and weekly bars. Page stages use workspace-bg, navigation bg.
@@ -32,3 +32,5 @@ Accounts five-hour and weekly bars. Page stages use workspace-bg, navigation bg.
 The browser title is Swarm. Chats is the default and first destination, followed
 by Todos and Accounts, with Settings as a utility. Home is removed. Todos opens
 its first list by default and hosts the Accounts summary in a right-hand column.
+
+Chats supports browser-persisted per-chat FIFO messages above its composer, captured through Queue immediately after Steer and delivered one response at a time from the signed-in app boundary. Navigation within Swarm does not stop delivery; closed browsers do not deliver. Mobile textarea density is compact, chat rows have no selected fill, and automatic composer focus is suppressed. Focused-control removal restores bottom navigation. Subagent pills use secondary controls; expanded usage keeps compact 13px typography.
