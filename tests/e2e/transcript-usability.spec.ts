@@ -22,6 +22,35 @@ async function openChat(page: Page, items?: TranscriptItem[], width = 1440, snap
   await expect(page.getByRole("article", { name: "agentMessage" }).first()).toBeVisible();
 }
 
+test.describe("touch composer focus", () => {
+  test.use({ isMobile: true, hasTouch: true });
+  for (const width of [320, 390]) test(`uses zoom-safe editable text without widening the compact composer at ${width}px`, async ({ page }) => {
+    await openChat(page, undefined, width);
+    const input = page.getByRole("textbox", { name: "Message", exact: true });
+    await expect(input.locator("..")).toHaveClass(/density-compact/);
+    // iOS focuses sub-16px editable text by zooming the visual viewport.
+    expect(await input.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+    await expect(input).toHaveCSS("padding-top", "7px");
+    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute("content", /user-scalable=no|maximum-scale=1(?:,|$)/);
+    const field = page.locator(".chat-compose__field");
+    const baseline = (await field.boundingBox())!.width;
+    await input.fill("Work with Swarm ".repeat(40) + "x".repeat(500));
+    await input.pressSequentially(" more text");
+    expect((await field.boundingBox())!.width).toBeCloseTo(baseline, 0);
+    const bounds = (await input.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    expect(await input.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`touch-composer-${width}.png`) });
+  });
+});
+
+test("fine-pointer compact composers retain their smaller editable text", async ({ page }) => {
+  await openChat(page, undefined, 390);
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveCSS("font-size", "14px");
+});
+
 for (const [width, theme] of [[375, "dark"], [375, "light"], [1280, "dark"], [1280, "light"]] as const) {
   test(`user cards are green and centred and New chat fills its panel at ${width}px in ${theme}`, async ({ page }) => {
     await page.addInitScript(theme => localStorage.setItem("swarm.appearance.v1", theme), theme);
