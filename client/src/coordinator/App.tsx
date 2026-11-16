@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { CoordinatorApi } from "./api.js";
 import { AppShell, type AppPage } from "./components/AppShell.js";
-import { HomePage, type ChatTarget } from "./pages/HomePage.js";
+import type { ChatTarget } from "./pages/ChatsPage/types.js";
+import { AccountSummaryPanel } from "./components/AccountSummaryPanel.js";
 import { AccountsPage } from "./pages/AccountsPage.js";
 import { QueuedTasksPage } from "./pages/QueuedTasksPage.js";
 import { ChatsPage } from "./pages/ChatsPage.js";
@@ -21,10 +22,9 @@ function Page({ route, api, onOpenAccountChat, onOpenThread, onOpenLaunchedChat,
   const { snapshot, error, refresh, refreshUsage, transcriptRevisions, activeTurnKeys, activeTurnIds, limitExhaustedTurnKeys, unreadTurnKeys, attentionTurnKeys, markTurnActive, markThreadRead } = useCoordinatorStore();
   const { page } = route;
   if (page === "settings") return <AppearanceSettings onNavigate={() => onNavigate("settings")} />;
-  const title = page === "home" ? "Home" : page === "todos" ? "Todos" : page === "chats" ? "Chats" : "Accounts";
-  if (page === "home" && snapshot) return <HomePage snapshot={snapshot} api={{ previewLaunch: api.previewLaunch, launch: api.launch, listModels: api.listModels }} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onOpenChat={onOpenLaunchedChat} onViewAccounts={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} />;
-  if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ addAccount: api.addAccount, cancelAccountLogin: api.cancelAccountLogin, connectAccount: api.connectAccount, makePrimary: api.makePrimary, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits, startAccountLogin: api.startAccountLogin }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("home")} />;
-  if (page === "todos") return <QueuedTasksPage api={api} onOpenChat={onOpenLaunchedChat} />;
+  const title = page === "todos" ? "Todos" : page === "chats" ? "Chats" : "Accounts";
+  if (page === "accounts" && snapshot) return <AccountsPage snapshot={snapshot} api={{ addAccount: api.addAccount, cancelAccountLogin: api.cancelAccountLogin, connectAccount: api.connectAccount, makePrimary: api.makePrimary, openTerminal: api.openTerminal, refreshAllRateLimits: api.refreshAllRateLimits, startAccountLogin: api.startAccountLogin }} onRefresh={refresh} onRefreshUsage={refreshUsage} onBack={() => onNavigate("todos")} />;
+  if (page === "todos") return <div className="todos-workspace"><QueuedTasksPage api={api} onOpenChat={onOpenLaunchedChat} />{snapshot ? <AccountSummaryPanel accounts={snapshot.accounts} assignments={[]} tasks={[]} threads={snapshot.threads} limitResumes={snapshot.limitResumes} activeTurnKeys={activeTurnKeys} unreadTurnKeys={unreadTurnKeys} onOpenAccountChat={onOpenAccountChat} onViewMore={() => onNavigate("accounts")} onRefreshUsage={refreshUsage} /> : null}</div>;
   if (page === "chats" && snapshot) return <ChatsPage snapshot={snapshot} api={api} initialTarget={!route.openFilePath && selectedChat?.threadId ? { accountId: selectedChat.accountId, threadId: selectedChat.threadId } : undefined} initialAccountId={route.fileAccountId ?? selectedChat?.accountId ?? (route.openFilePath ? LOCAL_ACCOUNT_ID : undefined)} openMarkdownPath={route.openFilePath} onOpenMarkdownPathChange={onOpenFilePathChange} transcriptRevisions={transcriptRevisions} activeTurnKeys={activeTurnKeys} activeTurnIds={activeTurnIds} limitExhaustedTurnKeys={limitExhaustedTurnKeys} unreadTurnKeys={unreadTurnKeys} attentionTurnKeys={attentionTurnKeys} markTurnActive={markTurnActive} markThreadRead={markThreadRead} onRefresh={refresh} />;
   return (
     <section className="page" aria-label={title}>

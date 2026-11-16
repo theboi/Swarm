@@ -1,0 +1,4 @@
+.footer { display: grid; min-block-size: 0; gap: 8px; margin-block-start: 8px; }
+.toggle { inline-size: 100%; justify-content: space-between; text-align: start; }
+.summary { flex: 1; min-inline-size: 0; }
+.details { display: grid; gap: 12px; max-block-size: 35dvh; overflow: auto; padding: 8px; }

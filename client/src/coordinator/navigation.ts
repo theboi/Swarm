@@ -9,7 +9,6 @@ export interface AppRoute {
 }
 
 const paths: Record<AppPage, string> = {
-  home: "/home",
   accounts: "/accounts",
   "todos": "/todos",
   chats: "/chats",
@@ -34,7 +33,7 @@ export function parseAppRoute({ pathname, search }: Pick<Location, "pathname" | 
     : isBotProfileAccountId(requestedAccount) || isMacosBotId(requestedAccount)
       ? requestedAccount
       : null;
-  const page = openFilePath ? "chats" : /^\/settings(?:\/appearance)?\/?$/.test(pathname) ? "settings" : (Object.entries(paths).find(([, path]) => path === pathname)?.[0] as AppPage | undefined) ?? "home";
+  const page = openFilePath ? "chats" : /^\/settings(?:\/appearance)?\/?$/.test(pathname) ? "settings" : (Object.entries(paths).find(([, path]) => path === pathname)?.[0] as AppPage | undefined) ?? "chats";
   const canonicalPath = openFilePath ? filePath(openFilePath, fileAccountId) : page === "todos" && params.get("list") ? `/todos?${new URLSearchParams({ list: params.get("list")! })}` : pagePath(page);
   return { page, openFilePath, fileAccountId, canonicalPath };
 }

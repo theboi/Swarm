@@ -7,7 +7,10 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
+  const listsResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/queued-task-lists" && response.request().method() === "GET");
   await page.getByRole("link", { name: "Todos" }).click();
+  const lists = (await (await listsResponse).json()).data;
+  if (lists.length) await expect(page).toHaveURL(new RegExp(`list=${encodeURIComponent(lists[0].id)}`));
 }
 
 test("keeps long descriptions and many todos within their rows at narrow widths", async ({ page }) => {
@@ -48,9 +51,11 @@ test("mobile Back and Lists recovery work after a missing-list read", async ({ p
   await expect(page.getByRole("button", { name: "Create List" })).toBeVisible();
 });
 async function createList(page: Page, name: string) {
+  if ((page.viewportSize()?.width ?? 1440) < 768 && await page.getByRole("button", { name: "Lists", exact: true }).isVisible()) await page.getByRole("button", { name: "Lists", exact: true }).click();
   await page.getByRole("button", { name: "Create List" }).click();
   await page.getByLabel("List name").fill(name);
   await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add todo" })).toBeVisible();
 }
 async function addTodo(page: Page, description: string) {

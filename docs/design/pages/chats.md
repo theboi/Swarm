@@ -4,8 +4,9 @@ Approved 15 November 2026. Retain the linked Eden Swarm chat contract for drafts
 transcripts, accessibility and mobile navigation. These local refinements apply
 to the independent Swarm repository without changing the shared design system.
 
-- Account choices show identity, status and meaningful unread/attention dots,
-  without a chat-count badge. The selected account's chat-list total remains.
+- Account choices use horizontal scrollable EdenTabs above the list/detail area
+  at every width, retaining identity/status and unread/attention dots. Omit the
+  Accounts/count heading. The selected account's chat-list total remains.
 - Main and subagent composers use EdenTextArea with “Work with Swarm...” for idle
   prompts; retain “Steer this turn…” while working. Grow with content up to 200px,
   also constrained to 30dvh on short viewports, then scroll internally. Shrink
@@ -21,7 +22,7 @@ to the independent Swarm repository without changing the shared design system.
   non-floating primary EdenButton with compact density above the list.
 - At widths up to 768px, show the chat list first and open the conversation on
   selection. Back to chats restores the list without losing drafts. Keep the
-  accounts picker unchanged; at 768px retain the rail and account column. The
+  horizontal account tabs visible; at 768px retain the navigation rail. The
   list and conversation occupy the same content area, without an overlay or an
   empty third column. Hidden conversations must not fetch or clear unread replies.
   Mount the autosizing textarea only in the visible detail stage, retaining its
@@ -64,3 +65,11 @@ to the independent Swarm repository without changing the shared design system.
   rule and apply to main and subagent transcripts.
 
 Fixture browser checks may use port 4340. Never alter live processes or ports.
+
+- EdenListCard/EdenListCardItem use only their original shared surfaces and hover
+  states. Do not add inherited button hover overrides or vertical column dividers.
+- The pinned compact usage footer expands by pointer/keyboard into the same
+  five-hour/weekly RateLimitBars as Accounts, including percentages, reset times,
+  unknown capacity and weekly exhaustion. Collapse returns the overlaid summary.
+- Page/content uses workspace-bg; account tabs and navigation retain shared bg.
+  Keyboard account changes retain tab focus rather than focusing the composer.

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import "../styles.css";
 import { SwarmNavigation } from "./SwarmNavigation";
 
-export type AppPage = "home" | "todos" | "chats" | "accounts" | "settings";
+export type AppPage = "todos" | "chats" | "accounts" | "settings";
 
 function viewportVariant(width: number): "desktop" | "tablet" | "mobile" {
   if (width <= 767) return "mobile";

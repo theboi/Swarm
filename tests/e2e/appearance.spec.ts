@@ -48,7 +48,7 @@ for (const width of [320, 768, 1024, 1440]) {
       await more.click();
       await expect(nav.getByRole("link", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "page");
       await page.keyboard.press("Tab");
-      await expect(nav.getByRole("link", { name: "Chats", exact: true })).toBeFocused();
+      await expect(nav.getByRole("link", { name: "Settings", exact: true })).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(more).toBeFocused();
       await expect(more).toHaveAttribute("aria-expanded", "false");
@@ -61,7 +61,7 @@ for (const width of [320, 768, 1024, 1440]) {
     await expect(page.locator(".radix-themes").first()).toHaveClass(/dark/);
     await expect(page.locator(".app-shell")).toHaveCSS("background-color", "rgb(21, 25, 27)");
     await page.screenshot({ path: `/tmp/swarm-appearance-dark-${width}.png`, fullPage: true });
-    await nav.getByRole("link", { name: "Home", exact: true }).click();
+    await nav.getByRole("link", { name: "Todos", exact: true }).click();
     if (width < 768) await nav.getByRole("button", { name: "More", exact: true }).click();
     await nav.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page).toHaveURL(/\/settings\/appearance$/);

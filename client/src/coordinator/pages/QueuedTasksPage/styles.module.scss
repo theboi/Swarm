@@ -1,6 +1,6 @@
-.page { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 40px; max-inline-size: 1200px; min-inline-size: 0; align-items: start; }
+.page { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); gap: 24px; max-inline-size: 1200px; min-inline-size: 0; align-items: start; }
 .lists { min-inline-size: 0; display: grid; gap: 16px; }
-.create { justify-self: start; }
+.create { justify-self: stretch; inline-size: 100%; }
 .detail { min-inline-size: 0; }
 .header { display: flex; align-items: center; gap: 12px; min-block-size: 40px; padding-inline: 16px; }
 .header h2 { font-size: 20px; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }

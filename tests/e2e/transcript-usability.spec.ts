@@ -15,9 +15,8 @@ async function openChat(page: Page, items?: TranscriptItem[], width = 1440) {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
-  if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("link", { name: "Chats", exact: true }).click();
-  await page.getByRole("button", { name: "bot3", exact: true }).click();
+  await page.getByRole("tab", { name: "bot3", exact: true }).click();
   if (width <= 768) await page.getByRole("button", { name: "T0 · Graph planning", exact: true }).click();
   await expect(page.getByRole("article", { name: "agentMessage" }).first()).toBeVisible();
 }
@@ -46,6 +45,52 @@ for (const [width, theme] of [[375, "dark"], [375, "light"], [1280, "dark"], [12
       return { button: element.getBoundingClientRect().width, available: parent.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) };
     });
     expect(Math.abs(dimensions.button - dimensions.available)).toBeLessThan(1);
+  });
+}
+
+for (const width of [320, 768, 1440]) {
+  test(`horizontal accounts, shared list states and expanded usage fit at ${width}px`, async ({ page }) => {
+    await openChat(page, undefined, width);
+    if (width <= 768) await page.getByRole("button", { name: "Back to chats" }).click();
+    const tabs = page.getByRole("tablist", { name: "Accounts" });
+    const picker = page.getByRole("complementary", { name: "Chats for bot3" });
+    const tabBox = (await tabs.boundingBox())!;
+    const pickerBox = (await picker.boundingBox())!;
+    expect(tabBox.y + tabBox.height).toBeLessThanOrEqual(pickerBox.y + 1);
+    await expect(page.locator(".chat-account-picker__heading")).toHaveCount(0);
+    await expect(picker).toHaveCSS("border-left-width", "0px");
+    await expect(picker).toHaveCSS("border-right-width", "0px");
+    const selected = picker.getByRole("button", { name: "T0 · Graph planning", exact: true });
+    // Compare settled shared states, not an intermediate selection animation frame.
+    await selected.evaluate(element => element.getAnimations().forEach(animation => animation.finish()));
+    const selectedFill = await selected.evaluate(element => getComputedStyle(element).backgroundColor);
+    await selected.hover();
+    await expect(selected).toHaveCSS("background-color", selectedFill);
+    const row = picker.getByRole("button", { name: "U1 · Coordinator UI", exact: true });
+    await row.hover();
+    await expect(row).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+    await expect(row).toHaveCSS("transform", "none");
+    const usage = picker.getByRole("button", { name: "Usage limits for bot3" });
+    await usage.click();
+    await expect(usage).toHaveAttribute("aria-expanded", "true");
+    await expect(picker.getByLabel("Five-hour remaining: 60%")).toBeVisible();
+    await expect(picker.getByLabel("Weekly remaining: 80%")).toBeVisible();
+    await expect(picker.getByText(/^Resets /)).toHaveCount(2);
+    const workspaceColour = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.background = "var(--workspace-bg)";
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    });
+    await expect(page.locator(".chats-workspace")).toHaveCSS("background-color", workspaceColour);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`account-tabs-${width}.png`), fullPage: true });
+    await tabs.getByRole("tab", { name: "bot3", exact: true }).focus();
+    await page.keyboard.press("End");
+    await expect(tabs.getByRole("tab").last()).toBeFocused();
+    await expect(tabs.getByRole("tab").last()).toBeInViewport();
   });
 }
 

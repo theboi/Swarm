@@ -35,6 +35,12 @@ async function selectWork(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Work" }));
   await screen.findByRole("button", { name: "Edit description" });
 }
+it("opens the first list by default and gives Create List primary emphasis", async () => {
+  fixture();
+  expect(await screen.findByRole("button", { name: "Edit description" })).toBeVisible();
+  expect(window.location.search).toBe("?list=work");
+  expect(screen.getByRole("button", { name: "Create List" })).toHaveClass("appearance-primary");
+});
 it("keeps list selection and the Lists action on the Todos route", async () => {
   const user = userEvent.setup(); fixture();
   await selectWork(user);
@@ -80,6 +86,7 @@ it("creates a list and adds a description-only todo", async () => {
   await user.click(await screen.findByRole("button", { name: "Create List" }));
   await user.type(screen.getByLabelText("List name"), "New list");
   await user.click(screen.getByRole("button", { name: "Create" }));
+  await screen.findByRole("heading", { name: "New list" });
   await user.click(await screen.findByRole("button", { name: "Add todo" }));
   await user.type(screen.getByLabelText("Description"), " Exact new description ");
   await user.click(screen.getByRole("button", { name: "Add" }));

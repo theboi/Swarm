@@ -6,10 +6,9 @@ import type { AppPage } from "../AppShell";
 import styles from "./styles.module.scss";
 
 const NAVIGATION = [
-  { id: "home", label: "Home", icon: "house" },
-  { id: "accounts", label: "Accounts", icon: "usersRound" },
-  { id: "todos", label: "Todos", icon: "listTodo" },
   { id: "chats", label: "Chats", icon: "messagesSquare" },
+  { id: "todos", label: "Todos", icon: "listTodo" },
+  { id: "accounts", label: "Accounts", icon: "usersRound" },
   { id: "settings", label: "Settings", icon: "settings" },
 ] satisfies { id: AppPage; label: string; icon: IconName }[];
 
@@ -71,19 +70,18 @@ export function SwarmNavigation({ activePage, variant, hidden, hasBreakingChange
       <div className={styles.row}>
         {NAVIGATION.slice(0, 3).map(renderLink)}
         <button ref={moreTrigger} type="button" className={`${styles.link} ${styles.tab}`}
-          aria-label={hasBreakingChangeNotification ? "More — breaking change notification" : "More"}
-          aria-expanded={moreOpen} data-active={activePage === "chats" || activePage === "settings" || undefined}
+          aria-label="More"
+          aria-expanded={moreOpen} data-active={activePage === "settings" || undefined}
           onClick={() => setOpenedOnPage(moreOpen ? null : activePage)}>
           <EdenIcon name="moreHorizontal" size={20} aria-hidden="true" /><span>More</span>
-          {hasBreakingChangeNotification ? <span className={styles.notification} aria-hidden="true" /> : null}
         </button>
       </div>
       {moreOpen ? <div className={styles.more} aria-label="More destinations">{NAVIGATION.slice(3).map(renderLink)}</div> : null}
     </> : <>
       <div className={styles.brand} aria-label="Swarm"><EdenIcon name="network" size={28} aria-hidden="true" /></div>
-      {NAVIGATION.slice(0, 4).map(renderLink)}
+      {NAVIGATION.slice(0, 3).map(renderLink)}
       <div className={styles.spacer} /><div className={styles.divider} />
-      {NAVIGATION.slice(4).map(renderLink)}
+      {NAVIGATION.slice(3).map(renderLink)}
     </>}
   </nav>;
 }

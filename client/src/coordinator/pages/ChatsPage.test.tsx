@@ -35,6 +35,40 @@ const api = {
 };
 
 describe("ChatsPage", () => {
+  it("expands compact usage into the Accounts bars with percentages and reset times", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} />);
+    const picker = screen.getByRole("complementary", { name: "Chats for bot3" });
+    const usage = within(picker).getByRole("button", { name: "Usage limits for bot3" });
+    expect(usage).toHaveAttribute("aria-expanded", "false");
+    expect(within(picker).queryByText("Five-hour remaining")).not.toBeInTheDocument();
+    await user.click(usage);
+    expect(usage).toHaveAttribute("aria-expanded", "true");
+    expect(within(picker).getByLabelText("Five-hour remaining: 60%")).toBeVisible();
+    expect(within(picker).getByLabelText("Weekly remaining: 80%")).toBeVisible();
+    expect(within(picker).getAllByText(/^Resets /)).toHaveLength(2);
+    await user.click(usage);
+    expect(within(picker).queryByText("Five-hour remaining")).not.toBeInTheDocument();
+    expect(within(picker).getByLabelText("bot3: five-hour remaining 60%; weekly remaining 80%")).toBeVisible();
+  });
+
+  it("uses horizontal account tabs without a heading and supports keyboard account selection", async () => {
+    setViewport(1440);
+    const user = userEvent.setup();
+    render(<ChatsPage snapshot={chatSnapshot} api={api} unreadTurnKeys={new Set(["bot3\u0000thread-2"])} />);
+    const tabs = screen.getByRole("tablist", { name: "Accounts" });
+    const account = within(tabs).getByRole("tab", { name: "bot3" });
+    expect(account).toHaveAttribute("aria-selected", "true");
+    expect(within(account).getByRole("img", { name: "bot3 connected" })).toBeVisible();
+    expect(within(account).getByRole("img", { name: "bot3 has unread replies" })).toBeVisible();
+    expect(screen.queryByText("Accounts")).not.toBeInTheDocument();
+    account.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "bot1" })).toHaveFocus();
+    expect(screen.getByRole("complementary", { name: "Chats for bot1" })).toBeVisible();
+  });
+
   it("does not mark hidden mobile chat replies read, including a request finishing after Back", async () => {
     setViewport(390);
     const user = userEvent.setup();
@@ -68,7 +102,7 @@ describe("ChatsPage", () => {
     await user.type(screen.getByRole("textbox", { name: "Message" }), "Keep this mobile draft");
     await user.click(screen.getByRole("button", { name: "Back to chats" }));
     expect(screen.getByRole("list", { name: "Chats" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "bot3" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "bot3" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this mobile draft");
   });
@@ -233,7 +267,7 @@ describe("ChatsPage", () => {
   it("keeps account choices quiet while retaining unread status", () => {
     setViewport(1440);
     render(<ChatsPage snapshot={chatSnapshot} api={api} unreadTurnKeys={new Set(["bot3\u0000thread-2"])} />);
-    const account = screen.getByRole("button", { name: "bot3" });
+    const account = screen.getByRole("tab", { name: "bot3" });
     expect(account).toHaveTextContent(/^bot3$/);
     expect(within(account).getByRole("img", { name: "bot3 has unread replies" })).toBeVisible();
   });
@@ -292,23 +326,23 @@ describe("ChatsPage", () => {
     setViewport(390);
     const user = userEvent.setup();
     render(<ChatsPage snapshot={chatSnapshot} api={api} />);
-    expect(screen.getByRole("button", { name: "bot3" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "bot3" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "T0 · Graph planning" }));
     expect(screen.queryByRole("button", { name: "T0 · Graph planning" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Rename chat" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Back to chats" }));
     expect(screen.getByRole("button", { name: "T0 · Graph planning" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "bot1" }));
+    await user.click(screen.getByRole("tab", { name: "bot1" }));
     expect(screen.getByRole("button", { name: "Account recovery" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "bot3" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "bot3" })).toBeVisible();
   });
 
   it("selects the owning account when Queued tasks opens a mapped chat", async () => {
     setViewport(390);
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialThreadId="thread-3" />);
 
-    expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "bot1" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
   });
 
@@ -316,7 +350,7 @@ describe("ChatsPage", () => {
     setViewport(1440);
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialAccountId="bot1" />);
 
-    expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "bot1" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
   });
 
@@ -326,12 +360,12 @@ describe("ChatsPage", () => {
     const { rerender } = render(<ChatsPage snapshot={chatSnapshot} api={api} initialAccountId="bot1" />);
 
     expect(await screen.findByRole("region", { name: "Account recovery" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "bot3" }));
+    await user.click(screen.getByRole("tab", { name: "bot3" }));
     expect(await screen.findByRole("region", { name: "T0 · Graph planning" })).toBeVisible();
 
     rerender(<ChatsPage snapshot={{ ...chatSnapshot, generatedAt: chatSnapshot.generatedAt + 1, threads: [...chatSnapshot.threads] }} api={api} initialAccountId="bot1" />);
 
-    expect(screen.getByRole("button", { name: "bot3" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "bot3" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "T0 · Graph planning" })).toBeVisible();
   });
 
@@ -359,7 +393,7 @@ describe("ChatsPage", () => {
     expect(within(picker).getByLabelText("bot3: five-hour remaining 60%; weekly remaining 80%")).toBeVisible();
     expect(picker.lastElementChild).toHaveClass("thread-picker__usage");
 
-    await user.click(screen.getByRole("button", { name: "bot1" }));
+    await user.click(screen.getByRole("tab", { name: "bot1" }));
     expect(within(screen.getByLabelText("Chats for bot1")).getByLabelText("bot1: five-hour remaining unknown; weekly remaining unknown")).toBeVisible();
   });
 
@@ -367,7 +401,7 @@ describe("ChatsPage", () => {
     setViewport(390);
     render(<ChatsPage snapshot={chatSnapshot} api={api} initialTarget={{ accountId: "bot1", threadId: "thread-new" }} />);
 
-    expect(screen.getByRole("button", { name: "bot1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "bot1" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "No chat selected" })).toBeVisible();
   });
 
@@ -852,7 +886,7 @@ describe("ChatsPage", () => {
     render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readMarkdown }} openMarkdownPath="docs/runbook.md" onOpenMarkdownPathChange={onOpenMarkdownPathChange} />);
 
     await waitFor(() => expect(readMarkdown).toHaveBeenCalledWith("bot3", "docs/runbook.md"));
-    await user.click(screen.getByRole("button", { name: "bot1" }));
+    await user.click(screen.getByRole("tab", { name: "bot1" }));
     expect(await screen.findByRole("heading", { name: "bot1 runbook" })).toBeVisible();
     await act(async () => { resolveBot3({ data: { filename: "runbook.md", content: "# bot3 runbook" } }); });
 
@@ -1167,7 +1201,7 @@ describe("ChatsPage", () => {
     expect(screen.getByRole("button", { name: "Steer" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "bot3" }));
+    await user.click(screen.getByRole("tab", { name: "bot3" }));
     await user.click(screen.getByRole("button", { name: "U1 · Coordinator UI" }));
     expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();

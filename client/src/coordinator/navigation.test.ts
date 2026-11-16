@@ -5,7 +5,7 @@ import { filePath, pagePath, parseAppRoute } from "./navigation.js";
 describe("navigation", () => {
   it("retains selected list URLs on the canonical Todos destination", () => {
     expect(parseAppRoute({ pathname: "/todos", search: "?list=work%2Fnext" })).toMatchObject({ page: "todos", canonicalPath: "/todos?list=work%2Fnext" });
-    expect(parseAppRoute({ pathname: "/queued-tasks", search: "" })).toMatchObject({ page: "home", canonicalPath: "/home" });
+    expect(parseAppRoute({ pathname: "/queued-tasks", search: "" })).toMatchObject({ page: "chats", canonicalPath: "/chats" });
   });
   it("canonicalizes the trailing slash on a selected Todos list", () => {
     expect(parseAppRoute({ pathname: "/todos/", search: "?list=work" })).toMatchObject({ page: "todos", canonicalPath: "/todos?list=work" });
@@ -17,12 +17,12 @@ describe("navigation", () => {
     expect(parseAppRoute({ pathname: "/settings/appearance/", search: "" })).toMatchObject({ page: "settings", canonicalPath: "/settings/appearance" });
   });
   it.each([
-    ["/home", "", "home"],
+    ["/home", "", "chats"],
     ["/accounts", "", "accounts"],
     ["/todos", "", "todos"],
     ["/chats", "?open=docs%2Frunbook.md", "chats"],
-    ["/", "", "home"],
-    ["/unknown", "", "home"],
+    ["/", "", "chats"],
+    ["/unknown", "", "chats"],
   ] as const)("maps %s%s", (pathname, search, page) => {
     expect(parseAppRoute({ pathname, search })).toEqual(expect.objectContaining({ page }));
   });

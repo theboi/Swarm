@@ -14,7 +14,7 @@ async function signIn(page: Page): Promise<void> {
 test.describe("Profile accounts", () => {
   test("orders bot profiles, switches primary, and starts then cancels a fixture-only device challenge", async ({ page }) => {
     await signIn(page);
-    await page.getByRole("button", { name: "View more accounts" }).click();
+    await page.getByRole("link", { name: "Accounts", exact: true }).click();
 
     const accounts = page.locator(".account-bot-group__cards .account-card");
     await expect(accounts).toHaveCount(2);

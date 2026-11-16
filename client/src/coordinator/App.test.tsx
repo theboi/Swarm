@@ -53,16 +53,16 @@ const api: CoordinatorApi = {
 
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/home");
+  window.history.replaceState(null, "", "/chats");
 });
 
 describe("App", () => {
-  it("navigates between the labeled Home, Todos, and Chats screens by keyboard", async () => {
+  it("navigates between Chats and Todos screens by keyboard", async () => {
     setViewport(1440);
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    await screen.findByRole("heading", { name: "Home" });
+    await screen.findByRole("region", { name: "Chat workspace" });
     screen.getByRole("link", { name: "Todos" }).focus();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("region", { name: "Todos" })).toBeVisible();
@@ -72,11 +72,12 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "Chat workspace" })).toBeVisible();
   });
 
-  it("passes the account terminal action from the app shell to Home", async () => {
+  it("opens Accounts from the Todos account summary and runs its terminal action", async () => {
     const user = userEvent.setup();
     const openTerminal = vi.fn(async () => ({ data: {} }));
     render(<App api={{ ...api, openTerminal }} />);
 
+    await user.click(await screen.findByRole("link", { name: "Todos" }));
     await user.click(await screen.findByRole("button", { name: "View more accounts" }));
     expect(await screen.findByRole("heading", { name: "Accounts" })).toBeVisible();
     expect(screen.getByLabelText("Five-hour remaining: 60%")).toBeVisible();
@@ -130,12 +131,12 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Accounts" })).toBeVisible();
   });
 
-  it("replaces an unknown location with the canonical Home path", async () => {
+  it("replaces an unknown location with the canonical Chats path", async () => {
     window.history.replaceState(null, "", "/not-a-dashboard-page");
     render(<App api={api} />);
 
-    expect(await screen.findByText("Operating cockpit")).toBeVisible();
-    expect(window.location.pathname).toBe("/home");
+    expect(await screen.findByRole("region", { name: "Chat workspace" })).toBeVisible();
+    expect(window.location.pathname).toBe("/chats");
   });
 
   it("opens a fresh file-query deep link through the local account", async () => {

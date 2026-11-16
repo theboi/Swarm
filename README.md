@@ -220,12 +220,12 @@ multiple chats subject only to that account's own Codex usage limits.
 
 ### Dashboard routes
 
-- `/home` shows account usage and pending approvals.
 - `/accounts` shows connection, authentication, Git, and usage state.
-- `/todos` shows Lists; `/todos?list=<id>` opens one list’s todos.
+- `/todos` opens the first list by default and includes the Accounts summary; `/todos?list=<id>` opens one list’s todos.
   Descriptions, creation dates and states are saved atomically to the Git-tracked
   `manifests/queued-tasks.json` and survive restarts. Mobile uses list/detail navigation.
-- `/chats` is the multi-account chat workspace.
+- `/chats` is the default multi-account chat workspace. Navigation is Chats, Todos,
+  Accounts, with Settings as a utility.
 - `/chats?open=docs/path/file.md` opens a repository Markdown file in the
   Chats reader; the file path is URL encoded in links.
 
@@ -272,7 +272,7 @@ configured CLI is at its default path:
 ```
 
 After that command succeeds, Swarm rechecks the account automatically with
-bounded retry backoff. **Refresh usage** on Home or Accounts forces an immediate
+bounded retry backoff. **Refresh usage** on Todos or Accounts forces an immediate
 recheck. Do not add a CLI or desktop fallback to the coordinator.
 
 **Open Terminal** is available to a signed-in dashboard opened through

@@ -21,9 +21,8 @@ for (const width of [320, 375, 768, 1280]) {
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByLabel("Authentication code").fill("123456");
     await page.getByRole("button", { name: "Sign in" }).click();
-    if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("link", { name: "Chats", exact: true }).click();
-    await page.getByRole("button", { name: "bot3", exact: true }).click();
+    await page.getByRole("tab", { name: "bot3", exact: true }).click();
     if (width <= 768) await page.getByRole("button", { name: "T0 · Graph planning", exact: true }).click();
     await expect(page.getByText("Final answer", { exact: true })).toBeVisible();
     await expect(page.getByText("Keep the final answer short")).toBeVisible();

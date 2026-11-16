@@ -9,7 +9,7 @@ import "../coordinator/styles.css";
 
 const GIPHURS = localFont({ src: "../../public/fonts/Giphurs-Variable.woff2", variable: "--font-giphurs", display: "swap" });
 
-export const metadata: Metadata = { title: "Swarm · EdenMind", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Swarm", robots: { index: false, follow: false } };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, interactiveWidget: "resizes-content", themeColor: "#15191b" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

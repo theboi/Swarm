@@ -2,6 +2,7 @@ import { useEdenModal } from "@/components/overlay/EdenOverlayProvider/useEdenMo
 import { EdenRadioCardGroup } from "@/components/primitives/EdenRadioCardGroup";
 import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
 import { EdenTextArea } from "@/components/primitives/EdenTextArea";
+import { EdenTabs } from "@/components/primitives/EdenTabs";
 import { EdenListCard } from "@/components/primitives/EdenListCard";
 import { EdenListCardItem } from "@/components/primitives/EdenListCard/EdenListCardItem";
 import { EdenField } from "@/components/primitives/EdenField";
@@ -10,7 +11,7 @@ import { EdenIcon } from "@/components/primitives/EdenIcon/EdenIcon";
 
 import type { AccountId, ApiResult, ChatExecutionSettings, ChatModelOption, CoordinatorSnapshot, ThreadSummary, TranscriptItem } from "../../shared/contracts.js";
 import type { MarkdownDocument } from "../api.js";
-import type { ChatTarget } from "./HomePage.js";
+import type { ChatTarget } from "./ChatsPage/types.js";
 import { SubagentChatDialog } from "./ChatsPage/SubagentChatDialog.js";
 import { useChatDraft } from "./ChatsPage/useChatDraft.js";
 import { subagentReferences, hasActiveDescendant } from "./ChatsPage/subagents.js";
@@ -18,7 +19,7 @@ import { turnIdFromStart, queuedTurnFromStart } from "./ChatsPage/turnStart.js";
 import type { ChatsApi, SubagentReference } from "./ChatsPage/types.js";
 import { MarkdownViewer } from "../components/MarkdownViewer.js";
 import { TranscriptTurns, reconcileTranscript } from "../components/TranscriptTurns.js";
-import { AccountUsageBar } from "../components/AccountSummaryPanel.js";
+import { ChatAccountUsage } from "./ChatsPage/ChatAccountUsage/index.js";
 import { AccountStatusIndicator } from "../components/AccountStatusIndicator.js";
 import { TurnOptions } from "../components/TurnOptions.js";
 import { Toast } from "../components/Toast.js";
@@ -289,7 +290,10 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   useEffect(() => {
     if (!accountId || (!threadId && !isDraftChat) || (compact && pickerOpen)) return;
-    const timer = window.setTimeout(() => composerRef.current?.focus(), 0);
+    if (globalThis.document.activeElement?.closest('[role="tablist"]')) return;
+    const timer = window.setTimeout(() => {
+      if (!globalThis.document.activeElement?.closest('[role="tablist"]')) composerRef.current?.focus();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [accountId, threadId, isDraftChat, compact, pickerOpen]);
 
@@ -669,10 +673,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
     <section className="chats-page" aria-label="Chat workspace">
       {message ? <Toast onDismiss={() => setMessage(null)}>{message}</Toast> : null}
       {error ? <Toast tone="error" onDismiss={() => setError(null)}>{error}</Toast> : null}
-      <div className="chats-workspace" data-picker-open={pickerOpen}>
-        <nav className={`chat-account-picker ${compact ? "chat-account-picker--pills" : ""}`} aria-label="Accounts">
-          <div className="chat-account-picker__heading"><span>Accounts</span><span>{snapshot.accounts.length}</span></div>
-          {snapshot.accounts.map((account) => {
+      <EdenTabs aria-label="Accounts" className="chats-tabs" scrollable selectedTab={accountId ?? ""} setSelectedTab={(id) => { const account = snapshot.accounts.find(account => account.id === id); if (account) chooseAccount(account.id); }} tabs={snapshot.accounts.map((account) => {
             const accountThreads = threadsByAccount[account.id] ?? threadsFor(snapshot, account.id);
             const accountActiveThreadIds = new Set(accountThreads.filter((thread) => thread.activity === "active").map((thread) => thread.id));
             const accountThinking = accountThreads.some((thread) => thread.activity === "active" || activeTurnKeys.has(`${thread.accountId}\u0000${thread.id}`))
@@ -682,9 +683,9 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
               && (snapshot.limitResumes?.some((record) => record.accountId === account.id && record.state === "waiting_for_limit") ?? false);
             const accountHasUnread = accountThreads.some((thread) => unreadTurnKeys.has(`${account.id}\u0000${thread.id}`));
             const accountNeedsAttention = [...attentionTurnKeys].some((key) => key.startsWith(`${account.id}\u0000`));
-            return <button key={account.id} type="button" aria-label={account.id} aria-pressed={account.id === accountId} onClick={() => chooseAccount(account.id)}><AccountStatusIndicator account={account} working={accountThinking} waitingForLimit={accountLimitHit} /><span>{account.id}</span>{accountHasUnread ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</button>;
-          })}
-        </nav>
+            return { key: account.id, "aria-label": account.id, label: <span className="chat-account-tab"><AccountStatusIndicator account={account} working={accountThinking} waitingForLimit={accountLimitHit} /><span>{account.id}</span>{accountHasUnread ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} has unread replies`} /> : accountNeedsAttention ? <span className="notification-dot chat-account-picker__notification" role="img" aria-label={`${account.id} needs attention`} /> : null}</span> };
+          })}>
+      <div className="chats-workspace" data-picker-open={pickerOpen}>
         {!compact || pickerOpen ? <aside className="thread-picker" aria-label={`Chats for ${accountId ?? "selected account"}`}>
           <EdenButton density="compact" appearance="primary" isFloating={false} className="thread-picker__new" type="button" disabled={!accountId} onClick={beginDraftChat}><EdenIcon name="plus" aria-hidden="true" size={16} strokeWidth={2} /><span>New chat</span></EdenButton>
           <div className="thread-picker__list"><EdenListCard sections={{ chats: { title: "Chats", items: threads, emptyState: loadingAccountId === accountId ? <div className="thread-picker__loading" role="status" aria-label="Loading chats"><span className="loading-spinner" aria-hidden="true" /><span>Loading chats…</span></div> : "No chats for this account." } }} getItemKey={(thread) => thread.id} renderItem={(thread) => {
@@ -700,7 +701,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
               metadata={<span className="thread-picker__status">{status}</span>}
               trailing={<span className="thread-picker__trailing">{hasUnread ? <span className="notification-dot" role="img" aria-label={`${name} has an unread reply`} /> : needsAttention ? <span className="notification-dot" role="img" aria-label={`${name} needs attention`} /> : null}<EdenIcon name="chevronRight" aria-hidden="true" size={16} /></span>} />;
           }} /></div>
-          {selectedAccount ? <footer className="thread-picker__usage"><AccountUsageBar account={selectedAccount} showLabels /></footer> : null}
+          {selectedAccount ? <ChatAccountUsage key={selectedAccount.id} account={selectedAccount} /> : null}
         </aside> : null}
         <section className="chat-panel" hidden={compact && pickerOpen} aria-label={selectedChatName}>
           <div className="chat-panel__toolbar">
@@ -724,6 +725,7 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
           </form>
         </section>
       </div>
+      </EdenTabs>
       {fileModal.modal}{subagentModal.modal}{moveModal.modal}{renameModal.modal}
     </section>
   );

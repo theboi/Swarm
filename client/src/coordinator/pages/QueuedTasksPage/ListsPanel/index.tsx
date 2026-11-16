@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EdenListCard } from "@/components/primitives/EdenListCard";
 import { EdenListCardItem } from "@/components/primitives/EdenListCard/EdenListCardItem";
 import { EdenField } from "@/components/primitives/EdenField";
@@ -10,8 +10,11 @@ import type { QueuedTaskList } from "../../../../shared/queuedTasks.js";
 import { useTaskLists, useQueueCommand } from "../data/queries.js";
 import styles from "../styles.module.scss";
 
-export function ListsPanel({ api, selectedId, onSelect }: { api: CoordinatorApi; selectedId: string | null; onSelect: (id: string) => void }) {
+export function ListsPanel({ api, selectedId, onSelect, onDefaultSelect }: { api: CoordinatorApi; selectedId: string | null; onSelect: (id: string) => void; onDefaultSelect?: (id: string) => void }) {
   const query = useTaskLists(api);
+  useEffect(() => {
+    if (!selectedId && query.data[0]) onDefaultSelect?.(query.data[0].id);
+  }, [selectedId, query.data, onDefaultSelect]);
   const mutation = useQueueCommand<QueuedTaskList>();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -27,7 +30,7 @@ export function ListsPanel({ api, selectedId, onSelect }: { api: CoordinatorApi;
     </form>,
   });
   return <>
-    <EdenButton className={styles.create} density="compact" appearance="secondary" isFloating={false} onClick={() => { setName(""); mutation.reset(); setOpen(true); }}><EdenIcon name="plus" size={16} />Create List</EdenButton>
+    <EdenButton className={styles.create} density="compact" appearance="primary" isFloating={false} onClick={() => { setName(""); mutation.reset(); setOpen(true); }}><EdenIcon name="plus" size={16} />Create List</EdenButton>
     <EdenListCard sections={{ lists: { title: "Lists", items: query.data } }} getItemKey={list => list.id} renderItem={list => <EdenListCardItem title={list.name} selected={list.id === selectedId} onClick={() => onSelect(list.id)} trailing={<EdenIcon name="chevronRight" size={16} />} />} />
     {modal}
   </>;

@@ -12,5 +12,5 @@ test("signs in through the fixture-only password and TOTP flow", async ({ page }
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Chat workspace" })).toBeVisible();
 });

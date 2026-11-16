@@ -10,15 +10,14 @@ async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Authentication code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
-  if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("link", { name: "Chats", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chat workspace" })).toBeVisible();
 }
 
 async function selectBot3Thread(page: Page, name: string): Promise<void> {
-  const account = page.getByRole("button", { name: "bot3" });
+  const account = page.getByRole("tab", { name: "bot3" });
   const compact = (page.viewportSize()?.width ?? 1440) <= 768;
-  if (compact || await account.getAttribute("aria-pressed") !== "true") await account.click();
+  if (compact || await account.getAttribute("aria-selected") !== "true") await account.click();
   const thread = page.getByRole("button", { name });
   await expect(thread).toHaveAttribute("aria-pressed", "true");
   if (compact) await thread.click();
@@ -37,7 +36,7 @@ test.describe("Chats", () => {
         await route.fulfill({ response, json: { ...body, data: [...body.data, ...Array.from({ length: 80 }, (_, index) => ({ ...template, id: `overflow-${index}`, name: `Overflow chat ${index}`, activity: "idle" }))] } });
       });
       await signIn(page);
-      const account = page.getByRole("button", { name: "bot3", exact: true });
+      const account = page.getByRole("tab", { name: "bot3", exact: true });
       await account.click();
       const list = page.locator(".thread-picker__list");
       await expect(list.getByRole("button")).toHaveCount(82);
@@ -101,8 +100,7 @@ test.describe("Chats", () => {
       else await expect(page.locator(".app-nav")).toBeVisible();
       await page.getByRole("button", { name: "Scroll to bottom", exact: true }).click();
       await expect(page.locator(".app-nav")).toBeVisible();
-      await page.getByRole("link", { name: "Home", exact: true }).click();
-      if (width < 768) await page.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("link", { name: "Todos", exact: true }).click();
       await page.getByRole("link", { name: "Chats", exact: true }).click();
       await selectBot3Thread(page, "T0 · Graph planning");
       await expect(composer).toHaveValue(`Unsent draft at ${width}`);
@@ -115,7 +113,7 @@ test.describe("Chats", () => {
   test("opens chats from a shared list and returns with Back to chats", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
-    await page.getByRole("button", { name: "bot3", exact: true }).click();
+    await page.getByRole("tab", { name: "bot3", exact: true }).click();
     await expect(page.getByRole("list", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New chat" })).toHaveClass(/density-compact/);
@@ -147,8 +145,8 @@ test.describe("Chats", () => {
     const viewportWidth = 280;
     await page.setViewportSize({ width: viewportWidth, height: 568 });
     await signIn(page);
-    const bot3 = page.getByRole("button", { name: "bot3" });
-    if (await bot3.getAttribute("aria-pressed") !== "true") await bot3.click();
+    const bot3 = page.getByRole("tab", { name: "bot3" });
+    if (await bot3.getAttribute("aria-selected") !== "true") await bot3.click();
     await bot3.click();
     const thread = page.getByRole("button", { name: "T0 · Graph planning" });
     await expect(thread).toHaveAttribute("aria-pressed", "true");

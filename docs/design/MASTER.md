@@ -23,3 +23,12 @@ User messages use centred green-tinted EdenCard surfaces; assistant/activity
 remain unboxed. New chat fills the list column. History automatically mounts
 near the viewport and offloads distant content into measured placeholders,
 with memoized blocks/turns and no manual earlier-messages action.
+
+Accounts use horizontal scrollable EdenTabs above Chats, preserving status and unread
+indicators. The chat list retains EdenListCard interaction states without local
+hover overrides or vertical column dividers. Its usage footer expands into the
+Accounts five-hour and weekly bars. Page stages use workspace-bg, navigation bg.
+
+The browser title is Swarm. Chats is the default and first destination, followed
+by Todos and Accounts, with Settings as a utility. Home is removed. Todos opens
+its first list by default and hosts the Accounts summary in a right-hand column.
