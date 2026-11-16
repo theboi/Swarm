@@ -78,3 +78,14 @@ Fixture browser checks may use port 4340. Never alter live processes or ports.
   Expanded labels, percentages and reset times retain the collapsed summary's 13px size, without changing Accounts typography.
 - Page/content uses workspace-bg; account tabs and navigation retain shared bg.
   Keyboard account changes retain tab focus rather than focusing the composer.
+
+- File links may open absolute paths, home-relative paths and paths outside the
+  checkout, including symlink targets, subject to the selected account's OS read
+  permissions. Resolve ordinary relative links from that account's configured
+  checkout; the checkout is a base path, not an access boundary. Read bot-owned
+  files through that bot's app-server instead of traversing as the coordinator.
+- Markdown previews retain sanitized rendering and the shared file modal. Source
+  files use extension-aware syntax highlighting with escaped React token spans,
+  the canonical monospace font, preserved indentation and horizontal scrolling.
+  Unknown formats and source over 256 KiB use complete plain text. Keep the two
+  MiB read limit; reject binary/non-UTF-8 files rather than garbling their contents.

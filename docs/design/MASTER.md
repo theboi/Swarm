@@ -34,3 +34,7 @@ by Todos and Accounts, with Settings as a utility. Home is removed. Todos opens
 its first list by default and hosts the Accounts summary in a right-hand column.
 
 Chats supports browser-persisted per-chat FIFO messages above its composer, captured through Queue immediately after Steer and delivered one response at a time from the signed-in app boundary. Navigation within Swarm does not stop delivery; closed browsers do not deliver. Mobile textarea density is compact, chat rows have no selected fill, and automatic composer focus is suppressed. Focused-control removal restores bottom navigation. Subagent pills use secondary controls; expanded usage keeps compact 13px typography.
+
+File previews follow the selected account’s OS read permissions without checkout
+confinement. Markdown stays sanitized; source files use language-aware, escaped
+syntax highlighting and preserve whitespace, with plain-text fallback.

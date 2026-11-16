@@ -225,6 +225,9 @@ test.describe("Chats", () => {
     await page.getByRole("link", { name: "src/client/App.tsx", exact: true }).click();
     const sourceViewer = page.getByRole("dialog", { name: "App.tsx" });
     await expect(sourceViewer.locator("pre")).toHaveText("export function App() { return null; }");
+    await expect(sourceViewer.locator(".hljs-keyword").first()).toHaveText("export");
+    await expect(sourceViewer.getByText("typescript", { exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("highlighted-source.png") });
     await sourceViewer.getByRole("button", { name: "Close modal" }).click();
 
     for (const name of ["Send", "Archive chat", "Interrupt"]) await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();

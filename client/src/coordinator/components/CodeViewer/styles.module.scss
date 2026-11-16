@@ -1,0 +1,21 @@
+.viewer { min-inline-size: 0; }
+.language { margin-block: 0 8px; color: var(--fg-muted); font-size: var(--text-meta); }
+.source {
+  max-inline-size: 100%;
+  max-block-size: 70dvh;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--text-body-sm)/1.6 var(--mono-font);
+  white-space: pre;
+  tab-size: 2;
+}
+.hljs-keyword, .hljs-selector-tag, .hljs-type { color: var(--accent-strong); font-weight: 600; }
+.hljs-string, .hljs-regexp, .hljs-attr { color: var(--accent-strong); }
+.hljs-number, .hljs-literal, .hljs-symbol { color: var(--warning); }
+.hljs-title, .hljs-built_in, .hljs-tag, .hljs-meta { color: var(--fg); font-weight: 600; }
+.hljs-comment, .hljs-quote { color: var(--fg-muted); font-style: italic; }

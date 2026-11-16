@@ -27,7 +27,7 @@ import { AppServerClient } from "./codex/appServerClient.js";
 import { AccountRateLimitRefresher, refreshAllAccountRateLimits } from "./codex/rateLimitRefresh.js";
 import { JsonRpcClient } from "./codex/jsonRpcClient.js";
 import { LocalRolloutTranscriptReader } from "./codex/localRolloutReader.js";
-import { readWorkspaceMarkdown } from "./codex/safeFileReader.js";
+import { readAccountFile } from "./codex/safeFileReader.js";
 import { SuLauncher, type PortLease } from "./codex/suLauncher.js";
 import { openMacOsTerminal } from "./codex/terminalConsole.js";
 import { workspaceRoot } from "./codex/protocol.js";
@@ -851,7 +851,7 @@ async function createRuntime(config: SwarmConfig) {
         throw error;
       }
     },
-    readMarkdown: async (id, path) => { const file = await readWorkspaceMarkdown({ account: id, requestedPath: path, workspaceRoot: workspaceFor(id), appServer: await liveClient(id) }); return { filename: file.filename, content: file.text }; },
+    readMarkdown: async (id, path) => { const file = await readAccountFile({ account: id, requestedPath: path, slot: slotFor(id), workspaceRoot: workspaceFor(id), appServer: await liveClient(id) }); return { filename: file.filename, content: file.text }; },
     decideApproval: async (id, input) => {
       const kind = input.decision === "grant_turn" || input.decision === "grant_turn_strict" ? input.decision : input.decision === "accept" || input.decision === "decline" || input.decision === "cancel" ? input.decision : input.decision === "deny" ? "deny" : undefined;
       if (!kind) throw new Error("HUMAN_APPROVAL_REQUIRED");

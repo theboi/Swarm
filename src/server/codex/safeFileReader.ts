@@ -1,27 +1,21 @@
-import { realpath } from "node:fs/promises";
-import { basename, relative, resolve } from "node:path";
-import type { AccountId, CodexAccountSlot } from "../../shared/contracts.js";
+import { basename, resolve } from "node:path";
+import { isMacosBotId, LOCAL_ACCOUNT_ID, type AccountId, type CodexAccountSlot } from "../../shared/contracts.js";
 import { clonePath } from "./protocol.js";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export interface MarkdownFileClient {
+export interface AccountFileClient {
   readFile(path: string): Promise<{ dataBase64: string }>;
 }
 
-export interface ReadWorkspaceMarkdownInput {
+export interface ReadAccountFileInput {
   account: AccountId;
   requestedPath: string;
-  appServer: MarkdownFileClient;
+  appServer: AccountFileClient;
   /** Validated profile metadata required whenever the account is a logical profile. */
   slot?: CodexAccountSlot;
   /** Coordinator-owned root for the direct local account; bots use their assigned clone. */
   workspaceRoot?: string;
-}
-
-function contained(root: string, target: string): boolean {
-  const path = relative(root, target);
-  return path !== "" && !path.startsWith("..") && !path.includes(`..${process.platform === "win32" ? "\\" : "/"}`) && !resolve(root, path).startsWith("..");
 }
 
 function decodeBase64(value: string): Buffer {
@@ -31,25 +25,24 @@ function decodeBase64(value: string): Buffer {
   return decoded;
 }
 
-/** Reads only a realpath-proven workspace file through the owning app-server. */
-export async function readWorkspaceMarkdown(input: ReadWorkspaceMarkdownInput): Promise<{ path: string; filename: string; text: string }> {
+/** The selected account's OS permissions own access; the checkout only resolves relative paths. */
+export async function readAccountFile(input: ReadAccountFileInput): Promise<{ path: string; filename: string; text: string }> {
   if (input.slot && input.slot.id !== input.account) throw new Error("Profile slot does not match requested account");
-  const configuredRoot = input.slot?.workspaceRoot ?? input.workspaceRoot ?? clonePath(input.account);
-  const root = await realpath(configuredRoot);
-  const requested = resolve(root, input.requestedPath);
-  if (!contained(root, requested)) throw new Error("FILE_OUTSIDE_WORKSPACE: requested path is outside workspace");
-  const target = await realpath(requested);
-  if (!contained(root, target)) throw new Error("FILE_OUTSIDE_WORKSPACE: resolved path is outside workspace");
-
+  if (!input.requestedPath.trim() || input.requestedPath.includes("\0")) throw new Error("A valid file path is required");
+  const root = input.slot?.workspaceRoot ?? input.workspaceRoot ?? (input.account === LOCAL_ACCOUNT_ID ? process.cwd() : clonePath(input.account));
+  const owner = input.slot?.macosUser ?? (isMacosBotId(input.account) ? input.account : LOCAL_ACCOUNT_ID);
+  const requested = input.requestedPath.startsWith("~/")
+    ? `/Users/${owner}/${input.requestedPath.slice(2)}`
+    : input.requestedPath;
+  const target = resolve(root, requested);
+  // Do not realpath as the coordinator: bot-private paths may only be traversed
+  // by that bot. fs/readFile executes under the selected account's identity.
   const response = await input.appServer.readFile(target);
-  // fs/readFile accepts only a path today. Recheck after the remote read to
-  // detect pathname replacement; descriptor-safe no-follow reads require an
-  // app-server protocol extension and remain the only residual race window.
-  const targetAfterRead = await realpath(requested);
-  if (targetAfterRead !== target || !contained(root, targetAfterRead)) {
-    throw new Error("FILE_OUTSIDE_WORKSPACE: file changed outside workspace during read");
-  }
   const bytes = decodeBase64(response.dataBase64);
   if (bytes.byteLength > MAX_FILE_BYTES) throw new Error("File exceeds the two MiB limit");
-  return { path: target, filename: basename(target), text: bytes.toString("utf8") };
+  if (bytes.includes(0)) throw new Error("Binary files cannot be opened in the text viewer");
+  let text: string;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new Error("File is not valid UTF-8 text"); }
+  return { path: target, filename: basename(target), text };
 }

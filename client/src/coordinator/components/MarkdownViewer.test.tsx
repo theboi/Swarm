@@ -28,11 +28,18 @@ describe("MarkdownViewer", () => {
     expect(closed).toBe(true);
   });
 
-  it("shows a non-Markdown file as wrapped plain text instead of parsing it as Markdown", () => {
+  it("highlights source code without parsing it as Markdown", () => {
     render(<FilePreview document={{ filename: "app.ts", content: "const heading = '# not Markdown';" }} onClose={() => undefined} />, { wrapper: EdenOverlayProvider });
 
     const viewer = screen.getByRole("dialog", { name: "app.ts" });
     expect(viewer.querySelector("pre")).toHaveTextContent("const heading = '# not Markdown';");
     expect(viewer.querySelector("h1")).toBeNull();
+    expect(viewer.querySelector(".hljs-keyword")).toHaveTextContent("const");
   });
+  it.each(["snippet.unknown", "snippet.html"])("renders source markup as text in %s", (filename) => {
+    const { container } = render(<MarkdownViewer document={{ filename, content: "<script>window.evil = true</script>" }} />);
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("pre")).toHaveTextContent("<script>window.evil = true</script>");
+  });
+
 });
