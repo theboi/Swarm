@@ -18,3 +18,8 @@ compact primary action. Source is monospace; thinking separates summary/content.
 Chat turns keep every user message and non-commentary assistant response visible,
 including earlier questions awaiting an answer. Only intermediate activity is
 collapsed under turn details. The conversation omits the account/title header.
+
+User messages use centred green-tinted EdenCard surfaces; assistant/activity
+remain unboxed. New chat fills the list column. History automatically mounts
+near the viewport and offloads distant content into measured placeholders,
+with memoized blocks/turns and no manual earlier-messages action.

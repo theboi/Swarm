@@ -709,9 +709,14 @@ describe("ChatsPage", () => {
     expect(transcript.scrollTop).toBe(240);
   });
 
-  it("bounds the initial DOM for a very long chat and lets the operator reveal earlier messages", async () => {
+  it("bounds a long chat and automatically restores history as it enters the scroll viewport", async () => {
     setViewport(1440);
-    const user = userEvent.setup();
+    const observers = new Map<Element, IntersectionObserverCallback>();
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(element: Element) { observers.set(element, this.callback); }
+      disconnect() {}
+    });
     const longTranscript: TranscriptItem[] = Array.from({ length: 500 }, (_, index) => ({
       id: `message-${index}`,
       accountId: "bot3",
@@ -722,17 +727,20 @@ describe("ChatsPage", () => {
       createdAt: index,
       payload: { text: `Reply ${index}` },
     }));
-    render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript: async () => ({ data: longTranscript }) }} />);
+    const view = render(<ChatsPage snapshot={chatSnapshot} api={{ ...api, readTranscript: async () => ({ data: longTranscript }) }} />);
 
     await screen.findByText("Reply 499");
     expect(screen.queryByText("Reply 0")).not.toBeInTheDocument();
     expect(screen.getAllByRole("article", { name: "agentMessage" }).length).toBeLessThan(500);
 
-    while (screen.queryByRole("button", { name: /earlier messages/i })) {
-      await user.click(screen.getByRole("button", { name: /earlier messages/i }));
-    }
+    expect(screen.queryByRole("button", { name: /earlier messages/i })).not.toBeInTheDocument();
+    const first = view.container.querySelector("[data-transcript-block]")!;
+    // Rendering the latest message can settle before React attaches passive observers.
+    await waitFor(() => expect(observers.has(first)).toBe(true));
+    act(() => observers.get(first)!([{ target: first, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
     expect(screen.getByText("Reply 0")).toBeVisible();
-    // Rendering all 500 Markdown messages in JSDOM is functional coverage, not a timing benchmark.
+    act(() => observers.get(first)!([{ target: first, isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.queryByText("Reply 0")).not.toBeInTheDocument();
   }, 20_000);
 
   it("uses the conversation as the page surface and reports actions in a toast", async () => {

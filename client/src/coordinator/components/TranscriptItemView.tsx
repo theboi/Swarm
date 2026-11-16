@@ -1,6 +1,7 @@
 import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
+import { EdenCard } from "@/components/primitives/EdenCard";
 import { EdenIcon, type IconName } from "@/components/primitives/EdenIcon/EdenIcon";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useContext, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -8,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import type { TranscriptItem } from "../../shared/contracts.js";
 import { filePath } from "../navigation.js";
 import { copyMessageSource } from "./TranscriptItemView/copyMessageSource.js";
+import { TranscriptViewPreferences } from "./TranscriptTurns/viewPreferences.js";
 
 const filePathPattern = /(?:^|[\s(])((?:\.{1,2}\/|\/)?[A-Za-z0-9_./-]+?\.[A-Za-z0-9]{1,16})(?=$|[\s,)\]])/g;
 
@@ -75,8 +77,15 @@ const itemPresentation: Record<string, { label: string; icon: IconName }> = {
 const messageDateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpenMarkdown, active = false }: { item: TranscriptItem; onOpenMarkdown: (path: string) => void; active?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const [renderMarkdown, setRenderMarkdown] = useState(true);
+  const preferences = useContext(TranscriptViewPreferences);
+  const preferenceKey = `${item.accountId}\u0000${item.threadId}\u0000${item.id}`;
+  const [view, setView] = useState(() => preferences?.get(preferenceKey) ?? { expanded: false, renderMarkdown: true });
+  const { expanded, renderMarkdown } = view;
+  function toggleView(field: "expanded" | "renderMarkdown") {
+    const next = { ...view, [field]: !view[field] };
+    preferences?.set(preferenceKey, next);
+    setView(next);
+  }
   const [copied, setCopied] = useState<{ source: string } | null>(null);
   const [copyError, setCopyError] = useState(false);
   useEffect(() => {
@@ -112,9 +121,9 @@ export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpe
       setCopyError(true);
     }
   }
-  return (
+  const article = (
     <article className={`transcript-item transcript-item--${item.type}${active ? " transcript-item--active" : ""}`} aria-label={item.type} data-transcript-type={item.type} data-transcript-id={item.id}>
-      {collapsible ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-item__disclosure" type="button" aria-label={`${isExpanded ? "Collapse" : "Expand"} ${presentation.label}: ${preview}`} aria-controls={bodyId} aria-expanded={isExpanded} onClick={() => setExpanded((value) => !value)}>
+      {collapsible ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-item__disclosure" type="button" aria-label={`${isExpanded ? "Collapse" : "Expand"} ${presentation.label}: ${preview}`} aria-controls={bodyId} aria-expanded={isExpanded} onClick={() => toggleView("expanded")}>
         {active ? <span className="loading-spinner" aria-label="Thinking in progress" /> : <EdenIcon name={icon} aria-hidden="true" size={16} />}
         <span className="transcript-item__preview">{preview}</span>
         {visibleStatus ? <span className="transcript-item__status">{visibleStatus}</span> : null}
@@ -129,9 +138,10 @@ export const TranscriptItemView = memo(function TranscriptItemView({ item, onOpe
       {isMessage || (supportsMarkdown && isExpanded) ? <div className="transcript-item__source-actions">
         {isMessage && createdAtMs !== null ? <time dateTime={new Date(createdAtMs).toISOString()}>{messageDateFormat.format(createdAtMs)}</time> : null}
         {isMessage ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={sourceCopied ? "Message source copied" : "Copy message source"} title={sourceCopied ? "Copied" : "Copy message source"} onClick={() => void copySource()}>{sourceCopied ? <EdenIcon name="check" aria-hidden="true" size={14} /> : <EdenIcon name="copy" aria-hidden="true" size={14} />}</EdenButton> : null}
-        {supportsMarkdown ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={renderMarkdown ? "Show plain text" : "Render Markdown"} title={renderMarkdown ? "Show plain text" : "Render Markdown"} aria-pressed={renderMarkdown} onClick={() => setRenderMarkdown((enabled) => !enabled)}><EdenIcon name="code2" aria-hidden="true" size={14} strokeWidth={1.75} /></EdenButton> : null}
+        {supportsMarkdown ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} type="button" aria-label={renderMarkdown ? "Show plain text" : "Render Markdown"} title={renderMarkdown ? "Show plain text" : "Render Markdown"} aria-pressed={renderMarkdown} onClick={() => toggleView("renderMarkdown")}><EdenIcon name="code2" aria-hidden="true" size={14} strokeWidth={1.75} /></EdenButton> : null}
       </div> : null}
       {copyError ? <p role="alert">Unable to copy. Select the message text and copy it manually.</p> : null}
     </article>
   );
+  return item.type === "userMessage" ? <EdenCard asChild>{article}</EdenCard> : article;
 });

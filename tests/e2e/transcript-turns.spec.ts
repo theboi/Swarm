@@ -40,7 +40,8 @@ for (const width of [320, 375, 768, 1280]) {
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByText("Original request", { exact: true })).toBeVisible();
-    await expect(page.locator(".transcript-item")).toHaveCount(items.length);
+    await expect(page.locator('[data-transcript-id="progress-0"]')).toBeVisible();
+    expect(await page.locator(".transcript-item").count()).toBeLessThan(items.length);
     await page.keyboard.press("Space");
     await expect(page.getByText("Original request", { exact: true })).toBeVisible();
     await expect(page.locator(".transcript-item")).toHaveCount(3);

@@ -2,7 +2,8 @@ import { EdenButton } from "@/components/primitives/EdenButton/EdenButton";
 import { memo, useMemo, useState } from "react";
 import { EdenIcon } from "@/components/primitives/EdenIcon/EdenIcon";
 import type { TranscriptItem } from "../../shared/contracts.js";
-import { TranscriptItemView } from "./TranscriptItemView.js";
+import { TranscriptBlock } from "./TranscriptTurns/TranscriptBlock/index.js";
+import { TranscriptViewPreferences } from "./TranscriptTurns/viewPreferences.js";
 
 const RENDER_BATCH = 100;
 type Turn = { key: string; items: TranscriptItem[]; finalId?: string; visibleIds: ReadonlySet<string> };
@@ -46,39 +47,33 @@ function groupTurns(items: TranscriptItem[]): Turn[] {
   return turns;
 }
 
-function TranscriptTurn({ turn, activeReasoningId, onOpenMarkdown }: { turn: Turn; activeReasoningId?: string; onOpenMarkdown: (path: string) => void }) {
+const TranscriptTurn = memo(function TranscriptTurn({ turn, initiallyVisible, activeReasoningId, onOpenMarkdown }: { turn: Turn; initiallyVisible: boolean; activeReasoningId?: string; onOpenMarkdown: (path: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const hiddenCount = turn.finalId ? turn.items.filter((item) => item.id !== turn.finalId && !turn.visibleIds.has(item.id)).length : 0;
   const collapsed = Boolean(turn.finalId && !expanded);
+  const blocks = useMemo(() => {
+    const visible = turn.items.filter(item => !collapsed || item.id === turn.finalId || turn.visibleIds.has(item.id));
+    const blocks: TranscriptItem[][] = [];
+    for (let offset = 0; offset < visible.length; offset += 25) blocks.push(visible.slice(offset, offset + 25));
+    return blocks;
+  }, [turn, collapsed]);
   return <div className="transcript-turn">
     {hiddenCount ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier transcript-turn__toggle" type="button" aria-expanded={!collapsed} onClick={() => setExpanded((value) => !value)}>
       {collapsed ? <EdenIcon name="chevronDown" aria-hidden="true" size={16} /> : <EdenIcon name="chevronUp" aria-hidden="true" size={16} />}
       {collapsed ? "Show turn details" : "Hide turn details"} <span>({hiddenCount})</span>
     </EdenButton> : null}
-    {turn.items.filter((item) => !collapsed || item.id === turn.finalId || turn.visibleIds.has(item.id)).map((item) => <TranscriptItemView key={item.id} item={item} active={item.id === activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
+    {blocks.map((items, index) => <TranscriptBlock key={items[0].id} items={items} initiallyVisible={initiallyVisible && index >= blocks.length - 4} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
   </div>;
-}
+}, (previous, next) => previous.initiallyVisible === next.initiallyVisible && previous.onOpenMarkdown === next.onOpenMarkdown && previous.activeReasoningId === next.activeReasoningId && previous.turn.items.length === next.turn.items.length && previous.turn.items.every((item, index) => item === next.turn.items[index]));
 
 /** Owns history windowing and disclosure state, independent of composer typing. */
 export const TranscriptTurns = memo(function TranscriptTurns({ items, activeReasoningId, onOpenMarkdown }: { items: TranscriptItem[]; activeReasoningId?: string; onOpenMarkdown: (path: string) => void }) {
-  const [visibleCount, setVisibleCount] = useState(RENDER_BATCH);
+  const [preferences] = useState(() => new Map<string, { expanded: boolean; renderMarkdown: boolean }>());
   const turns = useMemo(() => groupTurns(items), [items]);
-  const cutoff = Math.max(0, items.length - visibleCount);
+  const cutoff = Math.max(0, items.length - RENDER_BATCH);
   let offset = 0;
-  let hiddenCount = 0;
-  const visibleTurns: Turn[] = [];
-  for (const turn of turns) {
-    const end = offset + turn.items.length;
-    if (end <= cutoff) hiddenCount += turn.items.length;
-    else if (offset < cutoff && !turn.finalId) {
-      // Active turns can be huge too. Group metadata still uses the full history.
-      hiddenCount += cutoff - offset;
-      visibleTurns.push({ ...turn, items: turn.items.slice(cutoff - offset) });
-    } else visibleTurns.push(turn);
-    offset = end;
-  }
-  return <>
-    {hiddenCount > 0 ? <EdenButton density="superCompact" appearance="borderless" isFloating={false} className="transcript-load-earlier" type="button" onClick={() => setVisibleCount((value) => value + RENDER_BATCH)}>Show earlier messages</EdenButton> : null}
-    {visibleTurns.map((turn) => <TranscriptTurn key={turn.key} turn={turn} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />)}
-  </>;
+  return <TranscriptViewPreferences value={preferences}>{turns.map(turn => {
+    offset += turn.items.length;
+    return <TranscriptTurn key={turn.key} turn={turn} initiallyVisible={offset > cutoff} activeReasoningId={activeReasoningId} onOpenMarkdown={onOpenMarkdown} />;
+  })}</TranscriptViewPreferences>;
 });

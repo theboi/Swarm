@@ -263,11 +263,28 @@ export function ChatsPage({ snapshot, api, initialThreadId, initialTarget, initi
 
   useLayoutEffect(() => {
     if (!scrollRequest || !scrollRef.current) return;
-    const scroll = () => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; };
+    const element = scrollRef.current;
+    let userNavigated = false;
+    const cancelSettling = () => { userNavigated = true; };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) cancelSettling();
+    };
+    element.addEventListener("wheel", cancelSettling, { passive: true });
+    element.addEventListener("touchmove", cancelSettling, { passive: true });
+    element.addEventListener("pointerdown", cancelSettling);
+    element.addEventListener("keydown", onKeyDown);
+    // Late initial measurements must not pull a reader back down after they scroll up.
+    const scroll = () => { if (!userNavigated) element.scrollTop = element.scrollHeight; };
     scroll();
     const timer = window.setTimeout(scroll, 0);
     const settledTimer = window.setTimeout(scroll, 150);
-    return () => { window.clearTimeout(timer); window.clearTimeout(settledTimer); };
+    return () => {
+      window.clearTimeout(timer); window.clearTimeout(settledTimer);
+      element.removeEventListener("wheel", cancelSettling);
+      element.removeEventListener("touchmove", cancelSettling);
+      element.removeEventListener("pointerdown", cancelSettling);
+      element.removeEventListener("keydown", onKeyDown);
+    };
   }, [scrollRequest, compact, pickerOpen]);
 
   useEffect(() => {

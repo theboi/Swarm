@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptItem } from "../../shared/contracts.js";
 import { TranscriptTurns, reconcileTranscript } from "./TranscriptTurns.js";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const openFile = () => undefined;
 const item = (id: string, type: string, text: string, extra: Partial<TranscriptItem> = {}): TranscriptItem => ({ id, type, accountId: "bot3", threadId: "thread-1", turnId: "turn-1", status: "completed", createdAt: null, payload: { text }, ...extra });
 const turn = [
@@ -15,6 +15,46 @@ const turn = [
 ];
 
 describe("TranscriptTurns", () => {
+  it("automatically restores old history and offloads distant messages without a load button", async () => {
+    const observers = new Map<Element, IntersectionObserverCallback>();
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(element: Element) { observers.set(element, this.callback); }
+      disconnect() {}
+    });
+    const entries = Array.from({ length: 300 }, (_, index) => item(`history-${index}`, "agentMessage", `History ${index}`, { turnId: null }));
+    const view = render(<TranscriptTurns items={entries} onOpenMarkdown={openFile} />);
+    expect(screen.queryByRole("button", { name: "Show earlier messages" })).not.toBeInTheDocument();
+    expect(screen.queryByText("History 0")).not.toBeInTheDocument();
+    expect(screen.getByText("History 299")).toBeVisible();
+    const first = view.container.querySelector("[data-transcript-block]")!;
+    const enter = (element: Element, isIntersecting: boolean) => act(() => observers.get(element)!([{ target: element, isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver));
+    enter(first, true);
+    expect(screen.getByText("History 0")).toBeVisible();
+    fireEvent.click(screen.getAllByRole("button", { name: "Show plain text" })[0]);
+    Object.defineProperty(first, "getBoundingClientRect", { value: () => ({ height: 345 }) });
+    enter(first, false);
+    expect(screen.queryByText("History 0")).not.toBeInTheDocument();
+    expect(first).toHaveStyle({ blockSize: "345px" });
+    enter(first, true);
+    expect(screen.getByText("History 0")).toBeVisible();
+    expect(first.querySelector("pre")).toHaveTextContent("History 0");
+    screen.getAllByRole("button", { name: "Copy message source" })[0].focus();
+    enter(first, false);
+    expect(screen.getByText("History 0")).toBeVisible();
+    act(() => screen.getAllByRole("button", { name: "Copy message source" }).at(-1)!.focus());
+    await waitFor(() => expect(screen.queryByText("History 0")).not.toBeInTheDocument());
+    enter(first, true);
+    const selection = document.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(first.querySelector("pre")!);
+    act(() => { selection.removeAllRanges(); selection.addRange(range); });
+    enter(first, false);
+    expect(screen.getByText("History 0")).toBeVisible();
+    act(() => { selection.removeAllRanges(); document.dispatchEvent(new Event("selectionchange")); });
+    await waitFor(() => expect(screen.queryByText("History 0")).not.toBeInTheDocument());
+  });
+
   it("keeps all user messages visible while disclosing intermediate activity", () => {
     render(<TranscriptTurns items={turn} onOpenMarkdown={openFile} />);
     expect(screen.getByText("Original request")).toBeVisible();

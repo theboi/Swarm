@@ -28,7 +28,15 @@ to the independent Swarm repository without changing the shared design system.
   persisted draft above that boundary so initial measurements and restoration agree.
 
 - Assistant replies and activity items have no card shell, border, shadow or
-  surface fill. User messages retain their distinct bubble.
+  surface fill. User messages use stationary EdenCard surfaces with accent-soft
+  green tint and canonical default radius. Centre them in the conversation,
+  capped at 620px and available width. New chat fills the list column.
+- Render history automatically near the viewport; offload distant message bodies
+  into measured normal-flow placeholders. Memoize blocks and unchanged turns;
+  retain full-history grouping and turn disclosure state. Preserve native scroll
+  anchoring and focused/selected content. This windows DOM, not backend data.
+  Do not show a Show earlier messages button. Main/subagent renderers share this
+  behavior, including within very long active or expanded turns.
 - Activity disclosures show an icon and the first nonempty content line, not a
   category heading. Keep accessible category labels and a running indicator.
   Activity details and extracted green file links appear only when expanded.

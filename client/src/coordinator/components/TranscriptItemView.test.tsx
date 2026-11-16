@@ -8,6 +8,14 @@ import type { TranscriptItem } from "../../shared/contracts";
 afterEach(cleanup);
 
 describe("TranscriptItemView", () => {
+  it("uses a shared card for the user without boxing assistant responses", () => {
+    const item: TranscriptItem = { id: "user-card", accountId: "bot3", threadId: "thread-1", turnId: "turn-1", type: "userMessage", status: "completed", createdAt: null, payload: { text: "My request" } };
+    const view = render(<TranscriptItemView item={item} onOpenMarkdown={() => undefined} />);
+    expect(screen.getByRole("article", { name: "userMessage" })).toHaveAttribute("data-card-radius", "lg");
+    view.rerender(<TranscriptItemView item={{ ...item, type: "agentMessage" }} onOpenMarkdown={() => undefined} />);
+    expect(screen.getByRole("article", { name: "agentMessage" })).not.toHaveAttribute("data-card-radius");
+  });
+
   it("copies new streamed source after a previous copy instead of leaving stale success feedback", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);
